@@ -2,13 +2,22 @@ import App from 'resource:///com/github/Aylur/ags/app.js';
 import Window from 'resource:///com/github/Aylur/ags/widget/window.js';
 import Box from 'resource:///com/github/Aylur/ags/widget/box.js';
 import Label from 'resource:///com/github/Aylur/ags/widget/label.js';
+import { sidecar } from './services/sidecar';
 
-const HelloWorld = () => Box({
-    className: 'bg-slate-900 text-white p-4 rounded-xl',
+const SystemStatus = () => Box({
+    className: 'bg-slate-900/80 text-white p-4 rounded-xl space-x-4 border border-slate-700',
     children: [
         Label({
-            className: 'text-xl font-bold',
-            label: 'Welcome to your new Rust + AGS Setup!'
+            className: 'text-2xl font-black text-blue-400',
+            label: sidecar.bind().transform(s => s.time)
+        }),
+        Label({
+            className: 'text-lg font-semibold text-slate-400',
+            label: sidecar.bind().transform(s => `Bat: ${s.battery}% ${s.is_charging ? '⚡' : ''}`)
+        }),
+        Label({
+            className: 'text-lg font-semibold text-purple-400',
+            label: sidecar.bind().transform(s => `WS: ${s.workspace}`)
         })
     ]
 });
@@ -16,7 +25,11 @@ const HelloWorld = () => Box({
 const Bar = Window({
     name: 'bar',
     anchor: ['top', 'left', 'right'],
-    child: HelloWorld(),
+    exclusivity: 'exclusive',
+    child: Box({
+        className: 'p-2',
+        children: [SystemStatus()]
+    }),
 });
 
 App.config({
