@@ -1,0 +1,22 @@
+# Cargo Watch Configuration for Sidecar Development
+[watch]
+# Watch for changes in these directories
+watch = ["src", "Cargo.toml"]
+
+# Commands to run on file changes
+[watch.exec]
+# Build in release mode (slower but production-like)
+# Uncomment for release builds:
+# command = "build --release"
+
+# Build in debug mode (faster, better for development)
+command = "build"
+
+# Clear screen before running
+clear = true
+
+# Show output
+verbose = true
+
+# Notify on completion
+notify = true

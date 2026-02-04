@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# Aura - AGS development launcher
+# Builds sidecar, optionally watches Rust, runs frontend watch + AGS
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SIDECAR_DIR="$SCRIPT_DIR/sidecar"
+
+# Background PIDs for cleanup
+RUST_WATCH_PID=""
+
+cleanup() {
+    echo ""
+    if [ -n "$RUST_WATCH_PID" ] && kill -0 "$RUST_WATCH_PID" 2>/dev/null; then
+        kill "$RUST_WATCH_PID" 2>/dev/null || true
+        wait "$RUST_WATCH_PID" 2>/dev/null || true
+    fi
+    exit 0
+}
+trap cleanup EXIT INT TERM
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+print_header() {
+    echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║${NC}  ${CYAN}Aura · AGS Development${NC}                                  ${BLUE}║${NC}"
+    echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+check_dependencies() {
+    local missing=0
+
+    if ! command -v cargo &> /dev/null; then
+        echo -e "${RED}✗${NC} cargo not found"
+        missing=1
+    else
+        echo -e "${GREEN}✓${NC} cargo found"
+    fi
+
+    if ! command -v cargo-watch &> /dev/null; then
+        echo -e "${YELLOW}⚠${NC} cargo-watch not found (use --no-rust-watch or: cargo install cargo-watch)"
+        CARGO_WATCH_AVAILABLE=false
+    else
+        echo -e "${GREEN}✓${NC} cargo-watch found"
+        CARGO_WATCH_AVAILABLE=true
+    fi
+
+    if ! command -v npm &> /dev/null && ! command -v bun &> /dev/null; then
+        echo -e "${RED}✗${NC} npm or bun not found"
+        missing=1
+    else
+        echo -e "${GREEN}✓${NC} Node.js tooling found"
+    fi
+
+    if [ $missing -eq 1 ]; then
+        echo -e "\n${RED}Missing required dependencies. Install them first.${NC}"
+        exit 1
+    fi
+}
+
+build_sidecar() {
+    local mode=${1:-debug}
+    echo -e "\n${CYAN}📦 Building sidecar (${mode})...${NC}"
+    cd "$SIDECAR_DIR"
+
+    if [ "$mode" = "release" ]; then
+        cargo build --release
+    else
+        cargo build
+    fi
+
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓${NC} Sidecar built"
+    else
+        echo -e "${RED}✗${NC} Sidecar build failed"
+        exit 1
+    fi
+
+    cd "$SCRIPT_DIR"
+}
+
+show_usage() {
+    echo "Usage: aura [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --release       Sidecar in release mode"
+    echo "  --debug         Sidecar in debug mode [default]"
+    echo "  --no-rust-watch Do not auto-watch Rust (no cargo-watch)"
+    echo "  --help, -h      Show this help"
+    echo ""
+    echo "Examples:"
+    echo "  aura                 # Debug + Rust watch + frontend watch"
+    echo "  aura --release       # Release + Rust watch"
+    echo "  aura --no-rust-watch # No cargo-watch (manual Rust rebuilds)"
+}
+
+# Parse arguments
+BUILD_MODE="debug"
+START_RUST_WATCH=true
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --release)
+            BUILD_MODE="release"
+            shift
+            ;;
+        --debug)
+            BUILD_MODE="debug"
+            shift
+            ;;
+        --no-rust-watch)
+            START_RUST_WATCH=false
+            shift
+            ;;
+        --help|-h)
+            show_usage
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            show_usage
+            exit 1
+            ;;
+    esac
+done
+
+# Main
+print_header
+
+echo -e "${CYAN}Checking dependencies...${NC}"
+check_dependencies
+
+echo -e "\n${CYAN}Building sidecar...${NC}"
+build_sidecar "$BUILD_MODE"
+
+# Start Rust watch in background when requested and available
+if [ "$START_RUST_WATCH" = true ] && [ "$CARGO_WATCH_AVAILABLE" = true ]; then
+    echo -e "\n${CYAN}🦀 Starting Rust watch (background)...${NC}"
+    (
+        cd "$SIDECAR_DIR"
+        if [ "$BUILD_MODE" = "release" ]; then
+            exec cargo watch -x 'build --release'
+        else
+            exec cargo watch -x 'build'
+        fi
+    ) &
+    RUST_WATCH_PID=$!
+    echo -e "${GREEN}✓${NC} cargo-watch running (PID $RUST_WATCH_PID)"
+fi
+
+echo -e "\n${CYAN}Starting frontend watch + AGS...${NC}"
+echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"
+
+cd "$SCRIPT_DIR"
+npm run watch
