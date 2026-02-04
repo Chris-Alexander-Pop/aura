@@ -1,83 +1,66 @@
 import App from 'resource:///com/github/Aylur/ags/app.js';
-import Window from 'resource:///com/github/Aylur/ags/widget/window.js';
-import Box from 'resource:///com/github/Aylur/ags/widget/box.js';
-import Label from 'resource:///com/github/Aylur/ags/widget/label.js';
 import Variable from 'resource:///com/github/Aylur/ags/variable.js';
+import Service from 'resource:///com/github/Aylur/ags/service.js';
 import { sidecar } from './services/sidecar';
+import { Bar } from './components/Bar';
+import { ControlCenter } from './components/ControlCenter';
+import { NotificationPopups } from './components/Notifications/NotificationPopups';
+import { AppLauncher } from './components/Launcher/AppLauncher';
 
-// System state variables
+// System state (used by Bar/Power and Control Center panes)
 const systemStats = Variable({ cpu: 0, ram: 0, temp: 0 });
 const batteryState = Variable({ percent: 0, charging: false, time_remaining: '' });
 
-// Poll system stats every 2 seconds
 const updateSystemStats = async () => {
     try {
-        const stats = await sidecar.getStats();
-        systemStats.setValue(stats);
-    } catch (error) {
-        console.error('Failed to get system stats:', error);
+        systemStats.setValue(await sidecar.getStats());
+    } catch (e) {
+        console.error('Failed to get system stats:', e);
     }
 };
-
 const updateBatteryState = async () => {
     try {
-        const battery = await sidecar.getBatteryState();
-        batteryState.setValue(battery);
-    } catch (error) {
-        console.error('Failed to get battery state:', error);
+        batteryState.setValue(await sidecar.getBatteryState());
+    } catch (e) {
+        console.error('Failed to get battery state:', e);
     }
 };
 
-// Initial updates
 updateSystemStats();
 updateBatteryState();
-
-// Set up polling
 setInterval(updateSystemStats, 2000);
 setInterval(updateBatteryState, 5000);
 
-// Listen for notifications
-sidecar.onNotification('System.StatsUpdate', (notification) => {
-    if (notification.params) {
-        systemStats.setValue(notification.params);
-    }
-});
+sidecar.onNotification('System.StatsUpdate', (n) => n.params && systemStats.setValue(n.params));
+sidecar.onNotification('Power.BatteryChanged', (n) =>
+    n.params && batteryState.setValue({ ...batteryState.value, ...n.params })
+);
 
-sidecar.onNotification('Power.BatteryChanged', (notification) => {
-    if (notification.params) {
-        batteryState.setValue({ ...batteryState.value, ...notification.params });
-    }
-});
+// Full behavior: load AGS services and register all Phase 3 windows
+async function start() {
+    const [hyprland, systemTray, notifications, applications] = await Promise.all([
+        Service.import('hyprland').catch(() => null),
+        Service.import('systemtray').catch(() => null),
+        Service.import('notifications').catch(() => null),
+        Service.import('applications').catch(() => null),
+    ]);
 
-const SystemStatus = () => Box({
-    className: 'bg-m3-surface-container/80 text-m3-on-surface p-4 rounded-xl space-x-4 border border-m3-outline/35',
-    children: [
-        Label({
-            className: 'text-2xl font-black text-m3-primary',
-            label: systemStats.bind().transform(s => `CPU: ${s.cpu.toFixed(1)}%`)
-        }),
-        Label({
-            className: 'text-lg font-semibold text-m3-on-surface-variant',
-            label: systemStats.bind().transform(s => `RAM: ${s.ram.toFixed(1)}%`)
-        }),
-        Label({
-            className: 'text-lg font-semibold text-m3-secondary',
-            label: batteryState.bind().transform(b => `Bat: ${b.percent}% ${b.charging ? '⚡' : ''}`)
-        })
-    ]
-});
+    App.config({
+        style: './style/style.css',
+        windows: [
+            Bar(hyprland, systemTray),
+            ControlCenter(),
+            NotificationPopups(notifications),
+            AppLauncher(applications),
+        ],
+        closeWindowDelay: {
+            'control-center': 200,
+            'app-launcher': 200,
+            'notification-popups': 150,
+        },
+    });
+}
 
-const Bar = Window({
-    name: 'bar',
-    anchor: ['top', 'left', 'right'],
-    exclusivity: 'exclusive',
-    child: Box({
-        className: 'p-2 bg-m3-surface/transparency-base',
-        children: [SystemStatus()]
-    }),
-});
-
-App.config({
-    style: './style/style.css',
-    windows: [Bar],
+start().catch((e) => {
+    console.error('AGS config failed:', e);
 });

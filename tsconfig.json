@@ -14,5 +14,5 @@
       "gi://*": ["./types/gi/*"]
     }
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "types/**/*.d.ts"]
 }
