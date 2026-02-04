@@ -1,0 +1,18 @@
+{
+  "name": "my-ags-config",
+  "version": "1.0.0",
+  "description": "Custom AGS configuration with Rust sidecar",
+  "main": "config.js",
+  "scripts": {
+    "build": "bun build ./src/main.ts --outfile config.js --external 'resource://*' --external 'gi://*'",
+    "build:css": "tailwindcss -i ./style/input.css -o ./style/style.css",
+    "watch": "concurrently \"npm run build:css -- --watch\" \"ags -b my-ags-config -w .\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "bun-types": "latest"
+  }
+}
