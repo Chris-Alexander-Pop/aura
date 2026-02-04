@@ -6,7 +6,15 @@
   "scripts": {
     "build": "bun build ./src/main.ts --outfile config.js --external 'resource://*' --external 'gi://*'",
     "build:css": "tailwindcss -i ./style/input.css -o ./style/style.css",
-    "watch": "concurrently \"npm run build:css -- --watch\" \"ags -b my-ags-config -w .\""
+    "build:sidecar": "cd sidecar && cargo build --release",
+    "build:sidecar:debug": "cd sidecar && cargo build",
+    "build:all": "npm run build:sidecar && npm run build && npm run build:css",
+    "watch": "concurrently \"npm run build:css -- --watch\" \"npm run build:watch\" \"ags -b my-ags-config -w .\"",
+    "build:watch": "bun build ./src/main.ts --outfile config.js --external 'resource://*' --external 'gi://*' --watch",
+    "dev": "./aura",
+    "dev:simple": "npm run watch",
+    "test:sidecar": "cd sidecar && cargo test",
+    "test:sidecar:client": "cd sidecar && cargo run -- client"
   },
   "devDependencies": {
     "concurrently": "^8.2.0",

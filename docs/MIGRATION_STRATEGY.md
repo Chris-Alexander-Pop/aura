@@ -28,6 +28,7 @@ Before writing any UI, we must build the backend services that power the shell. 
     - **Audio**: Pipewire integration (replacing `pw-cli` shell calls).
     - **Power**: Battery monitoring and TLP/Power-Profile-Daemon control.
     - **Network**: NetworkManager wrapper.
+- **Testing**: Unit / integration testing is important to ensure that the sidecar works as intended and to prevent regressions
 - **Deliverable**: A standalone `ags-sidecar` binary that can be queried via CLI (e.g., `ags-sidecar client get-volume`).
 
 ### Phase 2: Foundation (AGS Setup)
