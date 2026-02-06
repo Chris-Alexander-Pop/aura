@@ -1,6 +1,5 @@
 use crate::services::ServiceRegistry;
 use crate::utils::{process, storage};
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use tokio::sync::RwLock;
@@ -141,8 +140,8 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         // Start pomodoro task
         tokio::spawn(async move {
-            let mut work_minutes = work_minutes;
-            let mut break_minutes = break_minutes;
+            let work_minutes = work_minutes;
+            let break_minutes = break_minutes;
             loop {
                 let mut state = POMODORO.write().await;
                 if let Some(ref mut pomo) = *state {
@@ -270,7 +269,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Productivity.DeleteTask", |params| async move {
-        let task_id: String = serde_json::from_value(
+        let _task_id: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("task_id").cloned())

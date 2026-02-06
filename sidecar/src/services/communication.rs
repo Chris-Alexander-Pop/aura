@@ -1,6 +1,5 @@
 use crate::services::ServiceRegistry;
 use crate::utils::{process, storage};
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
@@ -21,7 +20,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Communication.MarkRead", |params| async move {
-        let message_id: String = serde_json::from_value(
+        let _message_id: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("message_id").cloned())
@@ -33,21 +32,21 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Communication.SendMessage", |params| async move {
-        let service: String = serde_json::from_value(
+        let _service: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("service").cloned())
                 .ok_or_else(|| anyhow::anyhow!("Missing service"))?,
         )?;
 
-        let recipient: String = serde_json::from_value(
+        let _recipient: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("recipient").cloned())
                 .ok_or_else(|| anyhow::anyhow!("Missing recipient"))?,
         )?;
 
-        let message: String = serde_json::from_value(
+        let _message: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("message").cloned())
@@ -89,7 +88,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Communication.MuteNotifications", |params| async move {
-        let duration_minutes: i32 = serde_json::from_value(
+        let _duration_minutes: i32 = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("duration_minutes").cloned())

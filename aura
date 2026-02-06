@@ -11,14 +11,21 @@ SIDECAR_DIR="$SCRIPT_DIR/sidecar"
 RUST_WATCH_PID=""
 
 cleanup() {
+    local exit_code=$?
     echo ""
     if [ -n "$RUST_WATCH_PID" ] && kill -0 "$RUST_WATCH_PID" 2>/dev/null; then
         kill "$RUST_WATCH_PID" 2>/dev/null || true
         wait "$RUST_WATCH_PID" 2>/dev/null || true
     fi
-    exit 0
+    exit $exit_code
 }
 trap cleanup EXIT INT TERM
+
+# Runner detection
+RUNNER="bun"
+if ! command -v bun &> /dev/null; then
+    RUNNER="npm"
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -30,7 +37,7 @@ NC='\033[0m'
 
 print_header() {
     echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${BLUE}║${NC}  ${CYAN}Aura · AGS Development${NC}                                  ${BLUE}║${NC}"
+    echo -e "${BLUE}║${NC}  ${CYAN}Aura · AGS Development${NC}                                    ${BLUE}║${NC}"
     echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -45,6 +52,13 @@ check_dependencies() {
         echo -e "${GREEN}✓${NC} cargo found"
     fi
 
+    if ! command -v ags &> /dev/null; then
+        echo -e "${RED}✗${NC} ags binary not found. Please install Aylur's GTK Shell (AGS)."
+        missing=1
+    else
+        echo -e "${GREEN}✓${NC} ags found"
+    fi
+
     if ! command -v cargo-watch &> /dev/null; then
         echo -e "${YELLOW}⚠${NC} cargo-watch not found (use --no-rust-watch or: cargo install cargo-watch)"
         CARGO_WATCH_AVAILABLE=false
@@ -53,11 +67,14 @@ check_dependencies() {
         CARGO_WATCH_AVAILABLE=true
     fi
 
-    if ! command -v npm &> /dev/null && ! command -v bun &> /dev/null; then
-        echo -e "${RED}✗${NC} npm or bun not found"
+    if [ "$RUNNER" = "npm" ] && ! command -v npm &> /dev/null; then
+        echo -e "${RED}✗${NC} npm not found"
+        missing=1
+    elif [ "$RUNNER" = "bun" ] && ! command -v bun &> /dev/null; then
+        echo -e "${RED}✗${NC} bun not found"
         missing=1
     else
-        echo -e "${GREEN}✓${NC} Node.js tooling found"
+        echo -e "${GREEN}✓${NC} JS runtime found: $RUNNER"
     fi
 
     if [ $missing -eq 1 ]; then
@@ -160,4 +177,4 @@ echo -e "\n${CYAN}Starting frontend watch + AGS...${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"
 
 cd "$SCRIPT_DIR"
-npm run watch
+$RUNNER run watch
