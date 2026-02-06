@@ -1,4 +1,2 @@
-node_modules
-config.js
-style/style.css
-target/
+node_modules/
+@girs/

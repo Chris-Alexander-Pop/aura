@@ -357,9 +357,9 @@ async fn refresh_adapters() -> Result<()> {
     Ok(())
 }
 
-async fn get_adapter_properties(address: &str) -> Result<BluetoothAdapter> {
+async fn get_adapter_properties(_address: &str) -> Result<BluetoothAdapter> {
     // Find adapter path
-    let output = process::exec_command(&[
+    let _output = process::exec_command(&[
         "dbus-send",
         "--system",
         "--print-reply",

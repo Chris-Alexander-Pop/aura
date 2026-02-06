@@ -88,7 +88,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Automation.DeleteWorkflow", |params| async move {
-        let workflow_id: String = serde_json::from_value(
+        let _workflow_id: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("workflow_id").cloned())
@@ -159,7 +159,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Automation.GetWorkflowHistory", |params| async move {
-        let workflow_id: String = serde_json::from_value(
+        let _workflow_id: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("workflow_id").cloned())
@@ -292,7 +292,7 @@ async fn execute_actions(actions: &serde_json::Value) -> Result<()> {
                             }
                         }
                         "run_script" => {
-                            if let Some(script_id) = action_obj.get("script_id").and_then(|v| v.as_str()) {
+                            if let Some(_script_id) = action_obj.get("script_id").and_then(|v| v.as_str()) {
                                 // Would call RunScript internally
                             }
                         }

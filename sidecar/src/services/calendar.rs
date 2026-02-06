@@ -1,6 +1,5 @@
 use crate::services::ServiceRegistry;
-use crate::utils::{process, storage};
-use anyhow::Result;
+use crate::utils::storage;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
@@ -24,12 +23,12 @@ pub struct Calendar {
 
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Calendar.GetEvents", |params| async move {
-        let start_date: Option<i64> = params
+        let _start_date: Option<i64> = params
             .as_ref()
             .and_then(|p| p.get("start_date").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
 
-        let end_date: Option<i64> = params
+        let _end_date: Option<i64> = params
             .as_ref()
             .and_then(|p| p.get("end_date").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
@@ -111,7 +110,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Calendar.DeleteEvent", |params| async move {
-        let event_id: String = serde_json::from_value(
+        let _event_id: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("event_id").cloned())
@@ -132,7 +131,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Calendar.GetUpcomingEvents", |params| async move {
-        let days: i32 = serde_json::from_value(
+        let _days: i32 = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("days").cloned())
@@ -170,7 +169,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Calendar.ImportIcs", |params| async move {
-        let file_path: String = serde_json::from_value(
+        let _file_path: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("file_path").cloned())
@@ -182,14 +181,14 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Calendar.ExportIcs", |params| async move {
-        let calendar_id: String = serde_json::from_value(
+        let _calendar_id: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("calendar_id").cloned())
                 .ok_or_else(|| anyhow::anyhow!("Missing calendar_id"))?,
         )?;
 
-        let file_path: String = serde_json::from_value(
+        let _file_path: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("file_path").cloned())

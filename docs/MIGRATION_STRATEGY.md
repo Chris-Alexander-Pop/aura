@@ -32,7 +32,7 @@ Before writing any UI, we must build the backend services that power the shell. 
 - **Deliverable**: A standalone `ags-sidecar` binary that can be queried via CLI (e.g., `ags-sidecar client get-volume`).
 
 ### Phase 2: Foundation (AGS Setup)
-- Initialize AGS with `npm` and `typescript`.
+- Initialize AGS with `bun` and `typescript`.
 - Configure `tailwind.config.js` with the Caelestia color palette.
 - Implement the `SidecarClient` class in TypeScript to bridge the UI with the Rust binary.
 

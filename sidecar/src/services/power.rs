@@ -2,7 +2,6 @@ use crate::services::ServiceRegistry;
 use crate::types::{BatteryState, PowerProfile};
 use crate::utils::process;
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use serde_json;
 use std::path::PathBuf;
 use tokio::fs;

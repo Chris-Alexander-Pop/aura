@@ -1,6 +1,5 @@
 use crate::services::ServiceRegistry;
 use crate::utils::storage;
-use anyhow::Result;
 use serde_json;
 use std::sync::Arc;
 use tokio::sync::RwLock;

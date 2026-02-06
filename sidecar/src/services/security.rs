@@ -4,9 +4,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use tokio::sync::RwLock;
-use tokio::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FirewallRule {
@@ -965,7 +963,7 @@ fn register_offensive_security(registry: &mut ServiceRegistry) {
                 .and_then(|p| p.get("platform").cloned())
                 .and_then(|v| serde_json::from_value(v).ok());
 
-        let exploit_type: Option<String> = params
+        let _exploit_type: Option<String> = params
             .as_ref()
                 .and_then(|p| p.get("type").cloned())
                 .and_then(|v| serde_json::from_value(v).ok());
@@ -1685,7 +1683,7 @@ fn register_offensive_security(registry: &mut ServiceRegistry) {
                 .ok_or_else(|| anyhow::anyhow!("Missing url"))?,
         )?;
 
-        let action: String = serde_json::from_value(
+        let _action: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("action").cloned())
@@ -1773,7 +1771,7 @@ fn register_offensive_security(registry: &mut ServiceRegistry) {
         process::exec_command(&["sysctl", "-w", "net.ipv4.ip_forward=1"]).await.ok();
 
         // Start ettercap or bettercap
-        let iface = interface.unwrap_or_else(|| "eth0".to_string());
+        let _iface = interface.unwrap_or_else(|| "eth0".to_string());
         process::exec_command_detached(&["ettercap", "-T", "-M", "arp", &format!("//{}", target)]).await.ok();
 
         Ok(serde_json::json!({ "started": true }))

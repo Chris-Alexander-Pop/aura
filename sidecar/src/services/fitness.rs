@@ -1,6 +1,5 @@
 use crate::services::ServiceRegistry;
-use crate::utils::{process, storage};
-use anyhow::Result;
+use crate::utils::storage;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
@@ -117,7 +116,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Fitness.SyncDevice", |params| async move {
-        let device_id: String = serde_json::from_value(
+        let _device_id: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("device_id").cloned())

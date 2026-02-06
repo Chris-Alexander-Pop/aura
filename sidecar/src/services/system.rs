@@ -3,7 +3,7 @@ use crate::types::SystemStats;
 use crate::utils::process;
 use anyhow::Result;
 use serde_json;
-use sysinfo::{System, SystemExt, CpuExt};
+use sysinfo::{System, SystemExt};
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 
