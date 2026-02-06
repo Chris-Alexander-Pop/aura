@@ -1,3 +1,20 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Caelestia Appearance */
+:root {
+    --padding-large: 12px;
+    --padding-normal: 8px;
+    --padding-small: 4px;
+    --spacing-normal: 8px;
+}
+
+* {
+    all: unset;
+}
+
+.Bar {
+    background-color: black;
+    /* Placeholder */
+}

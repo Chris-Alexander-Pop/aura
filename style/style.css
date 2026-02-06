@@ -553,3 +553,25 @@ video {
 [hidden]:where(:not([hidden="until-found"])) {
   display: none;
 }
+
+.static {
+  position: static;
+}
+
+/* Caelestia Appearance */
+
+:root {
+  --padding-large: 12px;
+  --padding-normal: 8px;
+  --padding-small: 4px;
+  --spacing-normal: 8px;
+}
+
+* {
+  all: unset;
+}
+
+.Bar {
+  background-color: black;
+  /* Placeholder */
+}
