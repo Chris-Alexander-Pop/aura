@@ -2,6 +2,8 @@ import app from "ags/gtk4/app"
 import Bar from "./src/widget/bar/Bar"
 import sidecar from "./src/lib/sidecar"
 
+import ControlCenter from "./src/widget/controlcenter/ControlCenter"
+
 // Initialize sidecar access
 // @ts-ignore
 globalThis.sidecar = sidecar
@@ -18,6 +20,12 @@ app.start({
             } catch (e) {
                 console.error("Failed to create Bar for monitor:", e)
             }
+        }
+        // Initialize Control Center (single instance for now)
+        try {
+            ControlCenter() 
+        } catch (e) {
+            console.error("Failed to create ControlCenter:", e)
         }
     },
     requestHandler(request, res) {
