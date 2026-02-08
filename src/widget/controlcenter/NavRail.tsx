@@ -3,6 +3,7 @@ import { createMemo } from "ags"
 import { activeTab, setActiveTab, navExpanded, setNavExpanded } from "./ControlCenter"
 
 const tabs = [
+    { id: "notifications", icon: "notifications" },
     { id: "network", icon: "network_manage" },
     { id: "bluetooth", icon: "settings_bluetooth" },
     { id: "audio", icon: "tune" },
@@ -24,38 +25,37 @@ function NavItem({ id, icon }: { id: string, icon: string }) {
     const isActive = createMemo(() => activeTab() === id)
 
     return <button
-        class={createMemo(() => `nav-item ${isActive() ? "active" : ""}`)}
+        class={createMemo(() => `p-3 rounded-lg hover:bg-[#313244] ${isActive() ? "bg-[#cba6f7] text-[#11111b]" : "text-white"}`)}
         onClicked={() => setActiveTab(id)}
         vexpand={false}
     >
         <box spacing={12}>
             <label
-                class="material-icon"
                 label={icon}
-                css="font-family: 'Material Symbols Rounded'; font-size: 24px;"
+                class="font-material-symbols text-2xl"
             />
-            {createMemo(() => navExpanded() ? <label label={id} /> : null)}
+            {/* @ts-ignore */}
+            {createMemo(() => navExpanded() ? <label label={id} /> : <box />)}
         </box>
     </button>
 }
 
 export default function NavRail() {
-    return <box class="nav-rail" vertical={true} css="padding: 16px; background-color: #181825;">
+    return <box class="flex flex-col p-4 bg-[#181825]" orientation={Gtk.Orientation.VERTICAL}>
         <button
             onClicked={() => setNavExpanded(!navExpanded())}
-            css="margin-bottom: 16px;"
+            class="mb-4"
         >
             <label
-                class="material-icon"
                 label="menu"
-                css="font-family: 'Material Symbols Rounded'; font-size: 24px;"
+                class="font-material-symbols text-2xl"
             />
         </button>
 
-        <scrollable vexpand={true}>
-            <box vertical={true} spacing={8}>
+        <Gtk.ScrolledWindow vexpand={true}>
+            <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
                 {tabs.map(tab => <NavItem {...tab} />)}
             </box>
-        </scrollable>
+        </Gtk.ScrolledWindow>
     </box>
 }

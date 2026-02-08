@@ -1,4 +1,5 @@
-import { App, Astal, Gtk, Gdk } from "ags/gtk4"
+import { Astal, Gtk, Gdk } from "ags/gtk4"
+import App from "ags/gtk4/app"
 import { createState } from "ags"
 import NavRail from "./NavRail"
 import Panes from "./Panes"
@@ -13,11 +14,17 @@ export default function ControlCenter() {
         name="control-center"
         anchor={anchor}
         application={App}
-        visible={true} // For now, always visible while testing
+        visible={false} // Hidden by default, toggled via App.toggle_window
         margin={10}
         keymode={Astal.Keymode.ON_DEMAND}
+        // @ts-ignore
+        onKeyPressed={(_, keyval) => {
+            if (keyval === Gdk.KEY_Escape) {
+                App.toggle_window("control-center")
+            }
+        }}
     >
-        <box css="background-color: #1e1e2e; border-radius: 12px; padding: 0;">
+        <box class="bg-[#1e1e2e] rounded-xl p-0">
             <NavRail />
             <Panes />
         </box>

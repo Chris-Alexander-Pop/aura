@@ -2,7 +2,17 @@
 import GObject from 'gi://GObject'
 import Gio from 'gi://Gio'
 import GLib from 'gi://GLib'
-import { JsonRpcRequest, JsonRpcResponse, JsonRpcNotification } from './types'
+import { 
+    JsonRpcRequest, 
+    JsonRpcResponse, 
+    JsonRpcNotification,
+    BluetoothDevice,
+    BluetoothAdapter,
+    AudioDevice,
+    AudioStream,
+    NetworkStatus,
+    AccessPoint
+} from './types'
 
 class SidecarService extends GObject.Object {
     static {
@@ -170,8 +180,11 @@ class SidecarService extends GObject.Object {
     public async setPowerProfile(profile: 'performance' | 'balanced' | 'saver') { return this.send('Power.SetProfile', { profile }) }
 
     // Network
-    public async getNetworkStatus() { return this.send('Network.GetStatus') }
-    public async scanNetworks() { return this.send('Network.Scan') }
+    public async getNetworkStatus(): Promise<NetworkStatus> { return this.send('Network.GetStatus') }
+    public async scanNetworks(): Promise<AccessPoint[]> { return this.send('Network.ScanNetworks') }
+    public async toggleWifi(enabled: boolean) { return this.send('Network.ToggleWifi', { enabled }) }
+    public async connectNetwork(ssid: string, password?: string) { return this.send('Network.Connect', { ssid, password }) }
+    public async disconnectNetwork() { return this.send('Network.Disconnect') }
 
     // System
     public async getSystemStats() { return this.send('System.GetStats') }
@@ -181,7 +194,11 @@ class SidecarService extends GObject.Object {
     public async setBrightness(monitor: string, percent: number) { return this.send('Brightness.Set', { monitor, percent }) }
 
     // Audio
-    public async getAudioState() { return this.send('Audio.GetState') }
+    public async getAudioState(): Promise<{ sinks: AudioDevice[], sources: AudioDevice[] }> { return this.send('Audio.GetDevices') }
+    public async getAudioStreams(): Promise<AudioStream[]> { return this.send('Audio.GetStreams') }
+    public async setStreamVolume(stream_id: number, volume: number) { return this.send('Audio.SetStreamVolume', { stream_id, volume }) }
+    public async setStreamMute(stream_id: number, muted: boolean) { return this.send('Audio.SetStreamMute', { stream_id, muted }) }
+    public async setDefaultDevice(device_id: number, type: 'output' | 'input' = 'output') { return this.send('Audio.SetDefaultDevice', { device_id, type }) }
     // Weather
     public async getWeather() { return this.send('Weather.Get') }
     // VPN
@@ -190,7 +207,16 @@ class SidecarService extends GObject.Object {
     public async disconnectVpn() { return this.send('Vpn.Disconnect') }
 
     // Bluetooth
-    public async getBluetoothState() { return this.send('Bluetooth.GetState') }
+    public async getBluetoothAdapters(): Promise<BluetoothAdapter[]> { return this.send('Bluetooth.GetAdapters') }
+    public async getBluetoothDevices(): Promise<BluetoothDevice[]> { return this.send('Bluetooth.GetDevices') }
+    public async scanBluetooth() { return this.send('Bluetooth.Scan') }
+    public async stopScanBluetooth() { return this.send('Bluetooth.StopScan') }
+    public async pairDevice(device_address: string) { return this.send('Bluetooth.Pair', { device_address }) }
+    public async connectDevice(device_address: string) { return this.send('Bluetooth.Connect', { device_address }) }
+    public async disconnectDevice(device_address: string) { return this.send('Bluetooth.Disconnect', { device_address }) }
+    public async removeDevice(device_address: string) { return this.send('Bluetooth.Remove', { device_address }) }
+    public async setAdapterPower(adapter_path: string, powered: boolean) { return this.send('Bluetooth.SetAdapterPower', { adapter_path, powered }) }
+    public async setAdapterDiscoverable(adapter_path: string, discoverable: boolean) { return this.send('Bluetooth.SetAdapterDiscoverable', { adapter_path, discoverable }) }
 
     // Gamemode
     public async getGamemodeStatus() { return this.send('Gamemode.GetStatus') }

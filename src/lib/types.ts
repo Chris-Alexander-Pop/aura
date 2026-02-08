@@ -66,6 +66,47 @@ export interface WeatherData {
     icon: string
 }
 
+
+export interface BluetoothDevice {
+    address: string
+    path: string
+    name: string
+    alias: string
+    connected: boolean
+    paired: boolean
+    trusted: boolean
+    rssi?: number
+    battery_percentage?: number
+    device_type: string
+    services: string[]
+}
+
+export interface BluetoothAdapter {
+    path: string
+    name: string
+    alias: string
+    powered: boolean
+    discoverable: boolean
+    pairable: boolean
+    discovering: boolean
+}
+
+export interface AudioDevice {
+    id: number
+    name: string
+    info: string
+    volume: number
+    is_default: boolean
+}
+
+export interface AudioStream {
+    id: number
+    name: string
+    app: string
+    volume: number
+    sink_id: number
+}
+
 export interface JsonRpcRequest {
     jsonrpc: string
     method: string
