@@ -42,6 +42,17 @@ print_header() {
     echo ""
 }
 
+cleanup_environment() {
+    echo -e "${CYAN}Cleaning up existing instances and notification daemons...${NC}"
+    # Kill competing notification daemons that could prevent AGS from acquiring the D-Bus name
+    killall mako quickshell dunst swaync notify-osd 2>/dev/null || true
+    # Kill orphaned Aura processes
+    killall ags bun ags-sidecar cargo-watch gjs 2>/dev/null || true
+    # Wait briefly for full termination
+    sleep 0.5
+    echo -e "${GREEN}✓${NC} Environment cleaned"
+}
+
 check_dependencies() {
     local missing=0
 
@@ -151,6 +162,8 @@ done
 
 # Main
 print_header
+
+cleanup_environment
 
 echo -e "${CYAN}Checking dependencies...${NC}"
 check_dependencies

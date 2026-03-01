@@ -13,7 +13,7 @@ import SystemStats from "./SystemStats"
 import PowerProfile from "./PowerProfile"
 
 function PlaceholderPane({ title, ...props }: { title: string } & any) {
-    return <box vertical={true} class="p-6" {...props}>
+    return <box orientation={Gtk.Orientation.VERTICAL} class="p-6" {...props}>
         <label label={title} class="text-2xl font-bold" halign={Gtk.Align.START} />
         <label label="Coming Soon..." class="text-[#a6adc8]" halign={Gtk.Align.START} />
     </box>

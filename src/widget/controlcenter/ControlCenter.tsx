@@ -16,13 +16,6 @@ export default function ControlCenter() {
         application={App}
         visible={false} // Hidden by default, toggled via App.toggle_window
         margin={10}
-        keymode={Astal.Keymode.ON_DEMAND}
-        // @ts-ignore
-        onKeyPressed={(_, keyval) => {
-            if (keyval === Gdk.KEY_Escape) {
-                App.toggle_window("control-center")
-            }
-        }}
     >
         <box class="bg-[#1e1e2e] rounded-xl p-0">
             <NavRail />
