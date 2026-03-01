@@ -568,6 +568,10 @@ video {
   margin-bottom: 1rem;
 }
 
+.block {
+  display: block;
+}
+
 .flex {
   display: flex;
 }
@@ -598,6 +602,11 @@ video {
   background-color: rgb(30 30 46 / var(--tw-bg-opacity, 1));
 }
 
+.bg-\[\#313244\] {
+  --tw-bg-opacity: 1;
+  background-color: rgb(49 50 68 / var(--tw-bg-opacity, 1));
+}
+
 .bg-\[\#cba6f7\] {
   --tw-bg-opacity: 1;
   background-color: rgb(203 166 247 / var(--tw-bg-opacity, 1));
@@ -609,6 +618,10 @@ video {
 
 .p-0 {
   padding: 0px;
+}
+
+.p-2 {
+  padding: 0.5rem;
 }
 
 .p-3 {
@@ -626,6 +639,11 @@ video {
 .text-2xl {
   font-size: 1.5rem;
   line-height: 2rem;
+}
+
+.text-xl {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
 }
 
 .font-bold {
@@ -651,6 +669,20 @@ video {
   filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
 }
 
+.transition {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, -webkit-backdrop-filter;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter, -webkit-backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+.transition-colors {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
 .font-material-symbols {
   font-family: 'Material Symbols Rounded';
 }
@@ -658,4 +690,9 @@ video {
 .hover\:bg-\[\#313244\]:hover {
   --tw-bg-opacity: 1;
   background-color: rgb(49 50 68 / var(--tw-bg-opacity, 1));
+}
+
+.hover\:bg-\[\#45475a\]:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(69 71 90 / var(--tw-bg-opacity, 1));
 }

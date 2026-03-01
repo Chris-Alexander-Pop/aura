@@ -2,10 +2,10 @@ import { Astal, Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib"
 import App from "ags/gtk4/app"
 import { createState, createEffect } from "ags"
-import Apps, { Application } from "gi://AstalApps"
+import AstalApps, { Application } from "gi://AstalApps"
 
 export default function Launcher() {
-    const apps = new Apps()
+    const apps = new AstalApps.Apps()
     const [query, setQuery] = createState("")
     const [list, setList] = createState<Application[]>([])
 
@@ -108,10 +108,6 @@ export default function Launcher() {
         visible={false}
         keymode={Astal.Keymode.EXCLUSIVE}
         anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.BOTTOM | Astal.WindowAnchor.LEFT | Astal.WindowAnchor.RIGHT}
-        // @ts-ignore
-        onKeyPressed={(_, keyval) => {
-            if (keyval === Gdk.KEY_Escape) hide()
-        }}
     >
         <box css="padding: 80px;" halign={Gtk.Align.CENTER} valign={Gtk.Align.START}>
             <box
