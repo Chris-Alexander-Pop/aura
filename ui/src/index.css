@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    font-family: "Inter", "Rubik", system-ui, sans-serif;
+  }
+
+  body {
+    background: transparent;
+    color: #cdd6f4;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Material Symbols utility */
+  .icon {
+    font-family: "Material Symbols Rounded";
+    font-weight: normal;
+    font-style: normal;
+    font-size: 20px;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+    user-select: none;
+  }
+
+  .icon-outline {
+    font-variation-settings: "FILL" 0, "wght" 300, "GRAD" 0, "opsz" 24;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #45475a;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #585b70;
+  }
+}
+
+@layer components {
+  /* Glassmorphism panel */
+  .glass {
+    @apply bg-mantle/80 backdrop-blur-2xl border border-surface0/60 rounded-2xl;
+  }
+
+  .glass-card {
+    @apply bg-surface0/50 backdrop-blur-xl border border-surface1/40 rounded-xl;
+  }
+
+  /* Button variants */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium
+           transition-all duration-150 active:scale-95 select-none cursor-pointer;
+  }
+
+  .btn-primary {
+    @apply btn bg-mauve text-crust hover:bg-mauve/90;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-subtext1 hover:bg-surface0 hover:text-text;
+  }
+
+  .btn-surface {
+    @apply btn bg-surface0 text-text hover:bg-surface1;
+  }
+
+  /* Icon button */
+  .icon-btn {
+    @apply inline-flex items-center justify-center w-9 h-9 rounded-lg
+           text-subtext1 hover:text-text hover:bg-surface0
+           transition-all duration-150 active:scale-90 cursor-pointer;
+  }
+
+  /* Toggle chip */
+  .toggle-chip {
+    @apply flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-surface0
+           text-subtext1 text-sm font-medium cursor-pointer
+           transition-all duration-200 select-none;
+  }
+
+  .toggle-chip.active {
+    @apply bg-mauve/20 text-mauve border border-mauve/30;
+  }
+
+  /* Nav item */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-subtext1
+           hover:text-text hover:bg-surface0/60
+           transition-all duration-150 cursor-pointer text-sm font-medium;
+  }
+
+  .nav-item.active {
+    @apply bg-mauve/15 text-mauve;
+  }
+
+  /* Input */
+  .input {
+    @apply w-full bg-surface0 border border-surface1/50 rounded-xl px-3 py-2
+           text-sm text-text placeholder:text-overlay0
+           focus:outline-none focus:border-mauve/50 focus:ring-1 focus:ring-mauve/30
+           transition-all duration-150;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    @apply h-1.5 rounded-full bg-surface1 overflow-hidden;
+  }
+
+  .progress-fill {
+    @apply h-full rounded-full bg-gradient-to-r from-mauve to-lavender transition-all duration-500;
+  }
+
+  /* Shimmer skeleton */
+  .skeleton {
+    @apply animate-pulse bg-surface1 rounded-lg;
+  }
+}
