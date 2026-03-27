@@ -23,6 +23,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 lazy_static = "1.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 quick-xml = { version = "0.31", features = ["serialize"] }
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+tokio-tungstenite = "0.21"
 
 [dev-dependencies]
 tokio-test = "0.4"

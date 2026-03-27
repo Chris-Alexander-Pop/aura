@@ -1,18 +1,16 @@
 import app from "ags/gtk4/app"
 import Bar from "./src/widget/bar/Bar"
 import sidecar from "./src/lib/sidecar"
-
-import ControlCenter from "./src/widget/controlcenter/ControlCenter"
-import Launcher from "./src/widget/launcher/Launcher"
 import OSD from "./src/widget/osd/OSD"
+import Launcher from "./src/widget/launcher/Launcher"
 
-// Popouts
-import AudioPopout from "./src/widget/bar/popouts/AudioPopout"
-import NetworkPopout from "./src/widget/bar/popouts/NetworkPopout"
-import BluetoothPopout from "./src/widget/bar/popouts/BluetoothPopout"
-import BatteryPopout from "./src/widget/bar/popouts/BatteryPopout"
+// WebView overlay windows (React UI served from sidecar at localhost:9080)
+import ControlCenterWindow from "./src/widget/webview/ControlCenterWindow"
+import SidebarWindow from "./src/widget/webview/SidebarWindow"
+import DropdownWindow from "./src/widget/webview/DropdownWindow"
+import CalendarWindow from "./src/widget/webview/CalendarWindow"
 
-// Initialize sidecar access
+// Initialize sidecar access (used by bar/osd via sidecar.ts)
 // @ts-ignore
 globalThis.sidecar = sidecar
 
@@ -20,31 +18,30 @@ app.start({
     css: "./style/style.css",
     main() {
         const monitors = app.monitors || []
-        
+
         for (const monitor of monitors) {
             try {
                 Bar(monitor)
                 OSD(monitor)
             } catch (e) {
-                console.error("Failed to create windows for monitor:", e)
+                console.error("Failed to create per-monitor windows:", e)
             }
         }
 
         // Singleton windows
         try {
-            ControlCenter() 
             Launcher()
-            
-            // Popout windows
-            AudioPopout()
-            NetworkPopout()
-            BluetoothPopout()
-            BatteryPopout()
+
+            // WebKit overlay panels
+            ControlCenterWindow()
+            SidebarWindow()
+            DropdownWindow()
+            CalendarWindow()
         } catch (e) {
-            console.error("Failed to create singletons:", e)
+            console.error("Failed to create singleton windows:", e)
         }
     },
-    requestHandler(request, res) {
+    requestHandler(request: string, res: (r: string) => void) {
         res("ok")
     }
 })
