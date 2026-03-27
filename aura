@@ -7,7 +7,6 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SIDECAR_DIR="$SCRIPT_DIR/sidecar"
 
-# Background PIDs for cleanup
 RUST_WATCH_PID=""
 
 cleanup() {
@@ -21,13 +20,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Runner detection
 RUNNER="bun"
 if ! command -v bun &> /dev/null; then
     RUNNER="npm"
 fi
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -43,35 +40,39 @@ print_header() {
 }
 
 cleanup_environment() {
-    echo -e "${CYAN}Cleaning up existing instances and notification daemons...${NC}"
-    # Kill competing notification daemons that could prevent AGS from acquiring the D-Bus name
-    killall mako quickshell dunst swaync notify-osd 2>/dev/null || true
+    echo -e "${CYAN}Cleaning up existing instances...${NC}"
+
+    # Kill competing shells — Caelestia / Quickshell must be stopped before Aura
+    # Note: Caelestia/Quickshell process is named 'qs'
+    killall qs quickshell caelestia 2>/dev/null || true
+
+    # Kill competing notification daemons
+    killall mako dunst swaync notify-osd 2>/dev/null || true
+
     # Kill orphaned Aura processes
     killall ags bun ags-sidecar cargo-watch gjs 2>/dev/null || true
-    # Wait briefly for full termination
+
     sleep 0.5
-    echo -e "${GREEN}✓${NC} Environment cleaned"
+    echo -e "${GREEN}✓${NC} Environment cleaned (caelestia/quickshell stopped)"
 }
 
 check_dependencies() {
     local missing=0
 
     if ! command -v cargo &> /dev/null; then
-        echo -e "${RED}✗${NC} cargo not found"
-        missing=1
+        echo -e "${RED}✗${NC} cargo not found"; missing=1
     else
         echo -e "${GREEN}✓${NC} cargo found"
     fi
 
     if ! command -v ags &> /dev/null; then
-        echo -e "${RED}✗${NC} ags binary not found. Please install Aylur's GTK Shell (AGS)."
-        missing=1
+        echo -e "${RED}✗${NC} ags not found"; missing=1
     else
         echo -e "${GREEN}✓${NC} ags found"
     fi
 
     if ! command -v cargo-watch &> /dev/null; then
-        echo -e "${YELLOW}⚠${NC} cargo-watch not found (use --no-rust-watch or: cargo install cargo-watch)"
+        echo -e "${YELLOW}⚠${NC} cargo-watch not found (--no-rust-watch or: cargo install cargo-watch)"
         CARGO_WATCH_AVAILABLE=false
     else
         echo -e "${GREEN}✓${NC} cargo-watch found"
@@ -79,17 +80,15 @@ check_dependencies() {
     fi
 
     if [ "$RUNNER" = "npm" ] && ! command -v npm &> /dev/null; then
-        echo -e "${RED}✗${NC} npm not found"
-        missing=1
+        echo -e "${RED}✗${NC} npm not found"; missing=1
     elif [ "$RUNNER" = "bun" ] && ! command -v bun &> /dev/null; then
-        echo -e "${RED}✗${NC} bun not found"
-        missing=1
+        echo -e "${RED}✗${NC} bun not found"; missing=1
     else
-        echo -e "${GREEN}✓${NC} JS runtime found: $RUNNER"
+        echo -e "${GREEN}✓${NC} JS runtime: $RUNNER"
     fi
 
     if [ $missing -eq 1 ]; then
-        echo -e "\n${RED}Missing required dependencies. Install them first.${NC}"
+        echo -e "\n${RED}Missing required dependencies.${NC}"
         exit 1
     fi
 }
@@ -98,20 +97,20 @@ build_sidecar() {
     local mode=${1:-debug}
     echo -e "\n${CYAN}📦 Building sidecar (${mode})...${NC}"
     cd "$SIDECAR_DIR"
-
     if [ "$mode" = "release" ]; then
         cargo build --release
     else
         cargo build
     fi
+    echo -e "${GREEN}✓${NC} Sidecar built"
+    cd "$SCRIPT_DIR"
+}
 
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓${NC} Sidecar built"
-    else
-        echo -e "${RED}✗${NC} Sidecar build failed"
-        exit 1
-    fi
-
+build_ui() {
+    echo -e "\n${CYAN}⚛️  Building React UI...${NC}"
+    cd "$SCRIPT_DIR/ui"
+    npm run build
+    echo -e "${GREEN}✓${NC} React UI built → ui/dist"
     cd "$SCRIPT_DIR"
 }
 
@@ -121,48 +120,30 @@ show_usage() {
     echo "Options:"
     echo "  --release       Sidecar in release mode"
     echo "  --debug         Sidecar in debug mode [default]"
-    echo "  --no-rust-watch Do not auto-watch Rust (no cargo-watch)"
+    echo "  --no-rust-watch Do not auto-watch Rust"
+    echo "  --no-ui-build   Skip React UI build (use existing dist)"
     echo "  --help, -h      Show this help"
-    echo ""
-    echo "Examples:"
-    echo "  aura                 # Debug + Rust watch + frontend watch"
-    echo "  aura --release       # Release + Rust watch"
-    echo "  aura --no-rust-watch # No cargo-watch (manual Rust rebuilds)"
 }
 
-# Parse arguments
 BUILD_MODE="debug"
 START_RUST_WATCH=true
+BUILD_UI=true
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --release)
-            BUILD_MODE="release"
-            shift
-            ;;
-        --debug)
-            BUILD_MODE="debug"
-            shift
-            ;;
-        --no-rust-watch)
-            START_RUST_WATCH=false
-            shift
-            ;;
-        --help|-h)
-            show_usage
-            exit 0
-            ;;
+        --release)       BUILD_MODE="release"; shift ;;
+        --debug)         BUILD_MODE="debug"; shift ;;
+        --no-rust-watch) START_RUST_WATCH=false; shift ;;
+        --no-ui-build)   BUILD_UI=false; shift ;;
+        --help|-h)       show_usage; exit 0 ;;
         *)
             echo -e "${RED}Unknown option: $1${NC}"
-            show_usage
-            exit 1
+            show_usage; exit 1
             ;;
     esac
 done
 
-# Main
 print_header
-
 cleanup_environment
 
 echo -e "${CYAN}Checking dependencies...${NC}"
@@ -171,7 +152,10 @@ check_dependencies
 echo -e "\n${CYAN}Building sidecar...${NC}"
 build_sidecar "$BUILD_MODE"
 
-# Start Rust watch in background when requested and available
+if [ "$BUILD_UI" = true ]; then
+    build_ui
+fi
+
 if [ "$START_RUST_WATCH" = true ] && [ "$CARGO_WATCH_AVAILABLE" = true ]; then
     echo -e "\n${CYAN}🦀 Starting Rust watch (background)...${NC}"
     (
@@ -183,7 +167,7 @@ if [ "$START_RUST_WATCH" = true ] && [ "$CARGO_WATCH_AVAILABLE" = true ]; then
         fi
     ) &
     RUST_WATCH_PID=$!
-    echo -e "${GREEN}✓${NC} cargo-watch running (PID $RUST_WATCH_PID)"
+    echo -e "${GREEN}✓${NC} cargo-watch PID $RUST_WATCH_PID"
 fi
 
 echo -e "\n${CYAN}Starting frontend watch + AGS...${NC}"

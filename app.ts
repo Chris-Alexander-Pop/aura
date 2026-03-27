@@ -10,7 +10,10 @@ import SidebarWindow from "./src/widget/webview/SidebarWindow"
 import DropdownWindow from "./src/widget/webview/DropdownWindow"
 import CalendarWindow from "./src/widget/webview/CalendarWindow"
 
-// Initialize sidecar access (used by bar/osd via sidecar.ts)
+// Dropdown hot-corner trigger strip
+import DropdownTrigger from "./src/widget/dropdown/DropdownTrigger"
+
+// Initialize sidecar (bar/osd use stdin/stdout path)
 // @ts-ignore
 globalThis.sidecar = sidecar
 
@@ -34,14 +37,52 @@ app.start({
 
             // WebKit overlay panels
             ControlCenterWindow()
-            SidebarWindow()
-            DropdownWindow()
+            SidebarWindow()     // always visible
+            DropdownWindow()    // shown/hidden by hot-corner trigger
             CalendarWindow()
+
+            // Dropdown hot-corner trigger strip (always-on, top-center)
+            DropdownTrigger()
         } catch (e) {
             console.error("Failed to create singleton windows:", e)
         }
     },
+
+    // Handle: ags msg <command>
+    // Used by keybinds: ags msg toggle control-center
     requestHandler(request: string, res: (r: string) => void) {
-        res("ok")
+        const parts = request.trim().split(/\s+/)
+
+        switch (parts[0]) {
+            case "toggle": {
+                const name = parts[1]
+                if (name) {
+                    const win = app.get_window(name)
+                    if (win) {
+                        win.visible = !win.visible
+                        res(`toggled ${name} → ${win.visible}`)
+                    } else {
+                        res(`window not found: ${name}`)
+                    }
+                } else {
+                    res("usage: toggle <window-name>")
+                }
+                break
+            }
+            case "show": {
+                const win = app.get_window(parts[1])
+                if (win) { win.visible = true; res("ok") }
+                else res("not found")
+                break
+            }
+            case "hide": {
+                const win = app.get_window(parts[1])
+                if (win) { win.visible = false; res("ok") }
+                else res("not found")
+                break
+            }
+            default:
+                res("ok")
+        }
     }
 })
