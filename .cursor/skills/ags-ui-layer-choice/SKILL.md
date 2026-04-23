@@ -28,7 +28,8 @@ description: >-
 
 ## Parity and planning
 
-- `docs/feature_matrix.md` — what is done vs backend-only vs missing UI.
+- `todo.md` and `docs/roadmap/` — what to build, per area.
+- `docs/feature_matrix.md` — lean stack / implementation snapshot; use `docs/roadmap/` for product detail.
 - `docs/COMPONENT_MAPPING.md` — legacy Caelestia → this repo mapping.
 
 ## Anti-pattern

@@ -17,9 +17,10 @@ alwaysApply: true
 
 ## Docs
 
+- `todo.md`, `docs/roadmap/README.md` — product scope and per-panel specs.
 - `docs/MIGRATION_STRATEGY.md` — migration context.
 - `docs/COMPONENT_MAPPING.md` — legacy → new mapping.
-- `docs/feature_matrix.md` — feature parity.
+- `docs/feature_matrix.md` — shallow planning + stack snapshot (not a full parity matrix).
 
 ## Legacy
 

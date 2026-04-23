@@ -1,6 +1,6 @@
 Clean up / fix login
 Review all installed packages + system cleanup
-Better vicinae integration + custom commands (must be OP)
+Better vicinae integration + custom commands (must be overpowered)
 Fix notifications ffs
 Fix mute BS, wire up other F12 buttons
 Revamp screenshot / screen recording stuff
@@ -29,7 +29,7 @@ Performance panel (resource allocations per app / priority / presets / configura
 Revamped keybind panel
 Security panel (add hooks to run AV daily / when something new is installed, password + fingerprint management)
 VPN panel (ie some apps on launch are always routed thru vpn, other security options / whatever)
-Productivity panel (env config / usage, blocking etc.. basically CT in linux)
+Productivity panel (env config / usage, blocking etc.. basically ColdTurkey in linux)
 Automations (basically AutoMate/n8n within linux, vaultwarden, lightweight, any other apps like mail-golem)
 System settings (aura settings, linux settings, wayland settings, etc..)
 Notification panel
