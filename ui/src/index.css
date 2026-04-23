@@ -24,6 +24,13 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* Bar WebKit host: unpainted surface must stay transparent (no white slab). */
+  html.aura-bar-host,
+  html.aura-bar-host body,
+  html.aura-bar-host #root {
+    background: transparent !important;
+  }
+
   /* Material Symbols utility */
   .icon {
     font-family: "Material Symbols Rounded";

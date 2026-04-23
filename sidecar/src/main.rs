@@ -60,6 +60,10 @@ async fn run_server() -> Result<()> {
     services::automation::register(&mut registry);
     services::communication::register(&mut registry);
     services::fitness::register(&mut registry);
+    services::hyprland::register(&mut registry);
+    services::shell::register(&mut registry);
+    services::mpris::register(&mut registry);
+    services::processes::register(&mut registry);
 
     let registry = Arc::new(Mutex::new(registry));
 

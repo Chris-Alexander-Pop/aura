@@ -2,7 +2,11 @@
 import { Astal } from "ags/gtk4"
 import { createWebViewWindow } from "./WebViewWindow"
 
-const BAR_WIDTH = 58 // bar min-width (50px) + padding (4+4px)
+/** Align with BarWebViewWindow: marginLeft (8) + strip column (56) + gap before sidebar */
+const BAR_PAD_H = 8
+const BAR_STRIP_W = 56
+const SIDEBAR_GAP = 8
+const SIDEBAR_MARGIN_LEFT = BAR_PAD_H + BAR_STRIP_W + SIDEBAR_GAP
 
 export default function SidebarWindow() {
     return createWebViewWindow({
@@ -12,7 +16,7 @@ export default function SidebarWindow() {
             Astal.WindowAnchor.LEFT |
             Astal.WindowAnchor.TOP |
             Astal.WindowAnchor.BOTTOM,
-        marginLeft: BAR_WIDTH + 8, // push it right of the bar
+        marginLeft: SIDEBAR_MARGIN_LEFT,
         marginTop: 8,
         marginBottom: 8,
         marginRight: 0,
