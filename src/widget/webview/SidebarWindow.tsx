@@ -1,4 +1,4 @@
-// Sidebar WebKit window — always visible, sits to the right of the 52px bar
+// Sidebar WebKit window — layer shell strip beside the bar (hidden until toggled)
 import { Astal } from "ags/gtk4"
 import { createWebViewWindow } from "./WebViewWindow"
 
@@ -18,6 +18,6 @@ export default function SidebarWindow() {
         marginRight: 0,
         width: 340,
         height: 720,
-        visible: true, // always on
+        visible: false,
     })
 }
