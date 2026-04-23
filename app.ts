@@ -37,7 +37,7 @@ app.start({
 
             // WebKit overlay panels
             ControlCenterWindow()
-            SidebarWindow()     // always visible
+            SidebarWindow()     // hidden by default — `ags request toggle sidebar`
             DropdownWindow()    // shown/hidden by hot-corner trigger
             CalendarWindow()
 
@@ -48,10 +48,12 @@ app.start({
         }
     },
 
-    // Handle: ags msg <command>
-    // Used by keybinds: ags msg toggle control-center
-    requestHandler(request: string, res: (r: string) => void) {
-        const parts = request.trim().split(/\s+/)
+    // Handle: ags request <command>…  (argv[] from DBus; may include leading "ags", "request")
+    // Hyprland: exec, ags request toggle control-center
+    requestHandler(argv: string[], res: (r: string) => void) {
+        const raw = argv.filter((s) => s.length > 0)
+        const reqAt = raw.indexOf("request")
+        const parts = reqAt !== -1 && reqAt + 1 < raw.length ? raw.slice(reqAt + 1) : raw
 
         switch (parts[0]) {
             case "toggle": {

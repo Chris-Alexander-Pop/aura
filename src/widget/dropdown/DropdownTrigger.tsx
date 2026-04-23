@@ -9,7 +9,10 @@ export default function DropdownTrigger() {
     let hideTimer: ReturnType<typeof setTimeout> | null = null
 
     const clearHide = () => {
-        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
+        if (hideTimer) {
+            clearTimeout(hideTimer)
+            hideTimer = null
+        }
     }
 
     const scheduleHide = () => {
@@ -21,22 +24,25 @@ export default function DropdownTrigger() {
 
     return <window
         name="dropdown-trigger"
-        // Anchor only to TOP so it centres horizontally
         anchor={Astal.WindowAnchor.TOP}
-        // Layer: overlay so it sits above everything
         layer={Astal.Layer.OVERLAY}
         exclusivity={Astal.Exclusivity.IGNORE}
         visible={true}
         application={App}
         css="background-color: transparent;"
     >
-        {/* Thin invisible hit-zone: 480px wide × 4px tall */}
-        <eventbox
+        <box
             css="min-width: 480px; min-height: 4px; background-color: transparent;"
-            onHoverLost={() => scheduleHide()}
-            onHover={() => {
-                clearHide()
-                App.get_window("dropdown")?.show()
+            $={(self) => {
+                const motion = Gtk.EventControllerMotion.new()
+                motion.connect("enter", () => {
+                    clearHide()
+                    App.get_window("dropdown")?.show()
+                })
+                motion.connect("leave", () => {
+                    scheduleHide()
+                })
+                self.add_controller(motion)
             }}
         />
     </window>
