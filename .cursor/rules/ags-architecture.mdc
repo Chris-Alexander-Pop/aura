@@ -1,0 +1,28 @@
+---
+description: Aura AGS repo layout — GTK shell, React webviews, Rust sidecar, IPC
+alwaysApply: true
+---
+
+# Architecture
+
+- **Entry**: `app.ts` — registers monitors (bar, OSD), singletons (launcher, webview windows, dropdown trigger), loads `style/style.css`, handles `ags msg` in `requestHandler` (`toggle` / `show` / `hide` + window name).
+- **GTK layer**: `src/widget/` — AGS/GTK4 TypeScript (`jsxImportSource: ags/gtk4`). Bar pieces under `src/widget/bar/`. WebKit wrappers under `src/widget/webview/` (e.g. `control-center`, `sidebar`, `dropdown`, `calendar`).
+- **React layer**: `ui/` — Vite app; build output consumed by WebKit windows. API: `ui/src/lib/api.ts`.
+- **Sidecar**: `sidecar/` — `ags-sidecar`; JSON-RPC in `src/rpc.rs`, shared types `src/types.rs`, services `src/services/`. Tests: `sidecar/tests/`.
+- **Bridge**: `src/lib/sidecar.ts` spawns the binary; `globalThis.sidecar` is set from `app.ts`. GTK widgets and React (via HTTP) talk to the sidecar.
+
+## Sidecar binary location
+
+`src/lib/sidecar.ts` looks only under `$HOME/.config/ags/sidecar/target/{debug,release}/ags-sidecar`. A clone outside `~/.config/ags` must still produce that binary path for the shell to spawn it, until the resolver is generalized.
+
+## Docs
+
+- `docs/MIGRATION_STRATEGY.md` — migration context.
+- `docs/COMPONENT_MAPPING.md` — legacy → new mapping.
+- `docs/feature_matrix.md` — feature parity.
+
+## Legacy
+
+`widget/Bar.tsx` is superseded by `src/widget/bar/Bar.tsx` (stale re-export comment only).
+
+Human/agent playbook: `AGENTS.md`.

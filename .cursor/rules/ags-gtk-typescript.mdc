@@ -1,0 +1,13 @@
+---
+description: AGS GTK4 TypeScript widgets under src/ (not ui/)
+globs: src/**/*.ts,src/**/*.tsx
+alwaysApply: false
+---
+
+# GTK / AGS TypeScript (`src/`)
+
+- Use AGS/GJS imports (`gi://`, `ags/gtk4`, `resource:///com/github/Aylur/ags/...` where the codebase already does). Prefer patterns from existing widgets in `src/widget/`.
+- **Sidecar**: use `globalThis.sidecar` / `src/lib/sidecar.ts` for RPC; keep payload shapes aligned with `src/lib/types.ts` and Rust `sidecar/src/types.rs`.
+- **Hyprland**: `src/lib/hyprland.ts` and related helpers — reuse instead of ad-hoc `execAsync` where a service exists.
+- **Webview shells**: `src/widget/webview/*Window.tsx` own window names and visibility; React pages live in `ui/src/pages/` — do not duplicate large UI in GTK unless intentional.
+- **Strict TS**: `strict` is on in `tsconfig.json`; avoid `@ts-ignore` except where GJS typing is genuinely missing (match existing minimal suppressions).
