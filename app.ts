@@ -1,4 +1,5 @@
 import app from "ags/gtk4/app"
+import GLib from "gi://GLib"
 import Bar from "./src/widget/bar/Bar"
 import sidecar from "./src/lib/sidecar"
 import OSD from "./src/widget/osd/OSD"
@@ -12,6 +13,10 @@ import CalendarWindow from "./src/widget/webview/CalendarWindow"
 
 // Dropdown hot-corner trigger strip
 import DropdownTrigger from "./src/widget/dropdown/DropdownTrigger"
+import BarWebViewWindow from "./src/widget/webview/BarWebViewWindow"
+
+/** Legacy GTK vertical bar — set `AURA_GTK_BAR=1` to restore it instead of the React/WebKit strip */
+const USE_GTK_BAR = GLib.getenv("AURA_GTK_BAR") === "1"
 
 // Initialize sidecar (bar/osd use stdin/stdout path)
 // @ts-ignore
@@ -24,7 +29,11 @@ app.start({
 
         for (const monitor of monitors) {
             try {
-                Bar(monitor)
+                if (USE_GTK_BAR) {
+                    Bar(monitor)
+                } else {
+                    BarWebViewWindow(monitor)
+                }
                 OSD(monitor)
             } catch (e) {
                 console.error("Failed to create per-monitor windows:", e)
@@ -37,7 +46,7 @@ app.start({
 
             // WebKit overlay panels
             ControlCenterWindow()
-            SidebarWindow()     // hidden by default — `ags request toggle sidebar`
+            SidebarWindow()     // hidden by default — Hypr: Super+Shift+B → `ags request toggle sidebar`
             DropdownWindow()    // shown/hidden by hot-corner trigger
             CalendarWindow()
 

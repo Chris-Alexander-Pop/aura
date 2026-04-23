@@ -98,16 +98,17 @@ export default function StatusIcons() {
         halign={Gtk.Align.CENTER}
         css={`background-color: ${colors.m3surfaceContainer}; border-radius: 1000px; padding-top: 8px; padding-bottom: 8px;`}
     >
-        <button class="si-btn" onClicked={() => App.toggle_window("popout-audio")} tooltipText={volTip()}>
+        {/* GTK popout windows were never registered in app.ts — use Control Center until dedicated popouts exist */}
+        <button class="si-btn" onClicked={() => App.toggle_window("control-center")} tooltipText={volTip()}>
             <label label={volIcon()} css={MI(volIcon(), ic)} />
         </button>
-        <button class="si-btn" onClicked={() => App.toggle_window("popout-network")} tooltipText={netTip()}>
+        <button class="si-btn" onClicked={() => App.toggle_window("control-center")} tooltipText={netTip()}>
             <label label={netIcon()} css={MI(netIcon(), ic)} />
         </button>
-        <button class="si-btn" onClicked={() => App.toggle_window("popout-bluetooth")} tooltipText={btTip()}>
+        <button class="si-btn" onClicked={() => App.toggle_window("control-center")} tooltipText={btTip()}>
             <label label={btIcon()} css={MI(btIcon(), ic)} />
         </button>
-        <button class="si-btn" onClicked={() => App.toggle_window("popout-battery")} tooltipText={batTip()}>
+        <button class="si-btn" onClicked={() => App.toggle_window("control-center")} tooltipText={batTip()}>
             <label label={batIcon()} css={MI(batIcon(), batLow() ? colors.m3error : ic)} />
         </button>
     </box>

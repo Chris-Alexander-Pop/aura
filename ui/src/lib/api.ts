@@ -116,6 +116,34 @@ export const api = {
   getBrightness: (monitor: string) => call<{ brightness: number }>("Brightness.Get", { monitor }),
   setBrightness: (monitor: string, percent: number) =>
     call("Brightness.Set", { monitor, percent }),
+
+  // Hyprland (React bar — replaces GJS hyprland.ts)
+  hyprlandGetWorkspaces: () => call<unknown>("Hyprland.GetWorkspaces"),
+  hyprlandGetActiveWorkspace: () => call<unknown>("Hyprland.GetActiveWorkspace"),
+  hyprlandGetClients: () => call<unknown>("Hyprland.GetClients"),
+  hyprlandGetActiveWindow: () => call<unknown>("Hyprland.GetActiveWindow"),
+  hyprlandDispatch: (command: string) => call<{ ok: boolean }>("Hyprland.Dispatch", { command }),
+
+  // Session / Aura / Apps (allowlisted shell)
+  sessionLock: () => call<{ ok: boolean }>("Session.Lock"),
+  sessionLogout: () => call<{ ok: boolean }>("Session.Logout"),
+  sessionSuspend: () => call<{ ok: boolean }>("Session.Suspend"),
+  sessionReboot: () => call<{ ok: boolean }>("Session.Reboot"),
+  sessionPowerOff: () => call<{ ok: boolean }>("Session.PowerOff"),
+  auraToggleWindow: (name: "control-center" | "sidebar" | "calendar" | "dropdown") =>
+    call<{ ok: boolean }>("Aura.ToggleWindow", { name }),
+  appsLaunch: (id: string) => call<{ ok: boolean }>("Apps.Launch", { id }),
+
+  // Media (playerctl)
+  getMediaNowPlaying: () =>
+    call<{ playing: boolean; title: string; artist: string }>("Media.GetNowPlaying"),
+
+  // Processes (task manager)
+  processListTop: (limit?: number) =>
+    call<Array<{ pid: number; cpu: number; name: string }>>("Process.ListTop", {
+      ...(limit != null ? { limit } : {}),
+    }),
+  processKill: (pid: number) => call<{ ok: boolean }>("Process.Kill", { pid }),
 }
 
 export default api

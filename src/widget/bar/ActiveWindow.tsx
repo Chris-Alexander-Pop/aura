@@ -1,7 +1,6 @@
 import { Gtk } from "ags/gtk4"
 import { createState, onMount, onCleanup } from "ags"
 import GLib from "gi://GLib"
-import hyprland from "../../lib/hyprland"
 import { colors, fonts } from "../../lib/theme"
 
 function appIcon(cls: string): string {
@@ -25,25 +24,34 @@ export default function ActiveWindow() {
     onMount(() => {
         const update = () => {
             try {
-                const clients = hyprland.clients || []
-                const focused = clients.find((c: any) => c.focus)
-                if (focused) {
-                    setIcon(appIcon(focused.class || ""))
-                    setTitle(focused.title || focused.class || "")
-                    setHasWindow(true)
-                } else {
+                const [ok, out] = GLib.spawn_command_line_sync("hyprctl activewindow -j")
+                if (!ok || !out?.length) {
                     setHasWindow(false)
+                    return
                 }
+                const raw = new TextDecoder().decode(out).trim()
+                if (!raw || raw === "null") {
+                    setHasWindow(false)
+                    return
+                }
+                const focused = JSON.parse(raw) as { class?: string; title?: string }
+                if (!focused?.class) {
+                    setHasWindow(false)
+                    return
+                }
+                setIcon(appIcon(focused.class))
+                setTitle(focused.title || focused.class || "")
+                setHasWindow(true)
             } catch {
                 setHasWindow(false)
             }
         }
 
-        // @ts-ignore
-        hyprland.connect('focused-workspace-changed', update)
         update()
-
-        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => { update(); return true })
+        const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
+            update()
+            return true
+        })
         onCleanup(() => GLib.source_remove(id))
     })
 

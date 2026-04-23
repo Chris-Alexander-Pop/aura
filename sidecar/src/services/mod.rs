@@ -18,6 +18,10 @@ pub mod packages;
 pub mod automation;
 pub mod communication;
 pub mod fitness;
+pub mod hyprland;
+pub mod shell;
+pub mod mpris;
+pub mod processes;
 
 use crate::types::JsonRpcRequest;
 use anyhow::Result;

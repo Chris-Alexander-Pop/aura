@@ -79,8 +79,16 @@ declare module "gi://Astal" {
         ON_DEMAND = 1,
         EXCLUSIVE = 2,
     }
+    /** zwlr-layer-shell-v1 layers — values match wlroots / Astal runtime */
+    export enum Layer {
+        BACKGROUND = 0,
+        BOTTOM = 1,
+        TOP = 2,
+        OVERLAY = 3,
+    }
     export enum Exclusivity {
-        EXCLUSIVE = 1,
         NORMAL = 0,
+        EXCLUSIVE = 1,
+        IGNORE = 2,
     }
 }

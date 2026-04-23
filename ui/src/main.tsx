@@ -8,6 +8,7 @@ import ControlCenter from "./pages/ControlCenter"
 import Sidebar from "./pages/Sidebar"
 import Dropdown from "./pages/Dropdown"
 import Calendar from "./pages/Calendar"
+import BarStrip from "./pages/BarStrip"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +29,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/sidebar" element={<Sidebar />} />
           <Route path="/dropdown" element={<Dropdown />} />
           <Route path="/calendar" element={<Calendar />} />
+          <Route path="/bar" element={<BarStrip />} />
           {/* Dev landing page */}
           <Route
             path="/"
@@ -37,6 +39,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                 <a href="#/sidebar" className="nav-item">Sidebar</a>
                 <a href="#/dropdown" className="nav-item">Dropdown</a>
                 <a href="#/calendar" className="nav-item">Calendar</a>
+                <a href="#/bar" className="nav-item text-teal font-medium">Bar strip</a>
               </div>
             }
           />
