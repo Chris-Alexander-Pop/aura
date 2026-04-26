@@ -36,6 +36,8 @@ export interface WebViewWindowOptions {
     width?: number
     height?: number
     visible?: boolean
+    /** Called with the raw WebKit.WebView right after creation (before the GTK window is wrapped). */
+    onSetup?: (webview: unknown) => void
 }
 
 function makeWebView(page: string, width: number, height: number, fixedMinSize: boolean, transparent?: boolean) {
@@ -126,6 +128,7 @@ export function createWebViewWindow(opts: WebViewWindowOptions) {
     } = opts
 
     const webview = makeWebView(page, width, height, true, transparentWebView)
+    opts.onSetup?.(webview)
 
     const win = <window
         name={name}

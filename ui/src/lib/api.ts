@@ -130,7 +130,7 @@ export const api = {
   sessionSuspend: () => call<{ ok: boolean }>("Session.Suspend"),
   sessionReboot: () => call<{ ok: boolean }>("Session.Reboot"),
   sessionPowerOff: () => call<{ ok: boolean }>("Session.PowerOff"),
-  auraToggleWindow: (name: "control-center" | "sidebar" | "calendar" | "dropdown") =>
+  auraToggleWindow: (name: "control-center" | "calendar" | "dropdown") =>
     call<{ ok: boolean }>("Aura.ToggleWindow", { name }),
   appsLaunch: (id: string) => call<{ ok: boolean }>("Apps.Launch", { id }),
 

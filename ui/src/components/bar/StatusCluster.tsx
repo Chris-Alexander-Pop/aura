@@ -5,12 +5,11 @@ import { cn } from "@/lib/utils"
 import type { StatusFlyoutId } from "./useFlyoutHover"
 
 type Props = {
-  stripRootRef: RefObject<HTMLElement | null>
   onSegmentEnter: (id: StatusFlyoutId, anchorCenterY: number) => void
   onSegmentLeave: () => void
 }
 
-export default function StatusCluster({ stripRootRef, onSegmentEnter, onSegmentLeave }: Props) {
+export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props) {
   const netRef = useRef<HTMLButtonElement>(null)
   const btRef = useRef<HTMLButtonElement>(null)
   const battRef = useRef<HTMLButtonElement>(null)
@@ -24,16 +23,15 @@ export default function StatusCluster({ stripRootRef, onSegmentEnter, onSegmentL
   const btOn = adapters?.some((a) => a.powered)
   const btConn = devices?.some((d) => d.connected)
 
+  // Y is viewport-relative — matches the flyout window's coordinate space
+  // (same marginTop as the strip, so viewport Y transfers directly).
   const anchorFor = useCallback(
     (id: StatusFlyoutId, el: HTMLElement | null) => {
-      const root = stripRootRef.current
-      if (!el || !root) return
+      if (!el) return
       const er = el.getBoundingClientRect()
-      const rr = root.getBoundingClientRect()
-      const center = er.top - rr.top + er.height / 2
-      onSegmentEnter(id, center)
+      onSegmentEnter(id, er.top + er.height / 2)
     },
-    [stripRootRef, onSegmentEnter]
+    [onSegmentEnter]
   )
 
   const segment = (
@@ -48,18 +46,18 @@ export default function StatusCluster({ stripRootRef, onSegmentEnter, onSegmentL
       type="button"
       title={title}
       className={cn(
-        "flex h-10 w-full shrink-0 items-center justify-center rounded-xl transition-colors",
-        highlight ? "bg-teal/15 text-teal" : "text-subtext1 hover:bg-surface1/80"
+        "flex h-9 w-full shrink-0 items-center justify-center rounded-xl transition-colors",
+        highlight ? "text-text hover:bg-surface1/70" : "text-subtext1 hover:bg-surface1/70 hover:text-text"
       )}
       onMouseEnter={() => anchorFor(id, ref.current)}
       onMouseLeave={onSegmentLeave}
     >
-      <span className="icon text-xl">{icon}</span>
+      <span className="icon text-[21px]">{icon}</span>
     </button>
   )
 
   return (
-    <div className="flex flex-col items-center gap-0.5 rounded-full bg-surface0/70 px-1 py-1.5">
+    <div className="flex flex-col items-center gap-0.5 py-1">
       {segment(
         "network",
         netRef,

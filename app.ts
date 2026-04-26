@@ -7,7 +7,6 @@ import Launcher from "./src/widget/launcher/Launcher"
 
 // WebView overlay windows (React UI served from sidecar at localhost:9080)
 import ControlCenterWindow from "./src/widget/webview/ControlCenterWindow"
-import SidebarWindow from "./src/widget/webview/SidebarWindow"
 import DropdownWindow from "./src/widget/webview/DropdownWindow"
 import CalendarWindow from "./src/widget/webview/CalendarWindow"
 
@@ -46,7 +45,6 @@ app.start({
 
             // WebKit overlay panels
             ControlCenterWindow()
-            SidebarWindow()     // hidden by default — Hypr: Super+Shift+B → `ags request toggle sidebar`
             DropdownWindow()    // shown/hidden by hot-corner trigger
             CalendarWindow()
 
