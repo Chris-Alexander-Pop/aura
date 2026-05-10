@@ -49,3 +49,32 @@ Project skills live under `.cursor/skills/` (launch, RPC, UI layer choice).
 ## Hooks (deferred)
 
 There is no `hooks.json` in this repo yet. Auto-format on save would need a formatter dependency (e.g. Prettier) and a tested `afterFileEdit` hook; command hooks that parse stdin often depend on `jq`. Add hooks only after choosing tooling and verifying in Cursor’s Hooks UI.
+
+
+## Cursor Cloud specific instructions
+
+### Environment limitations
+
+The AGS GTK4 shell (`ags run app.ts`, `bun run watch`) cannot run in cloud VMs — it requires Hyprland, Wayland, GTK4, and GJS. The testable components in cloud are:
+
+| Component | How to run | Notes |
+|-----------|-----------|-------|
+| Rust sidecar | `cd sidecar && cargo build && ./target/debug/ags-sidecar` | Serves HTTP on `:9080`, requires `libssl-dev` + `pkg-config` |
+| React UI (dev) | `cd ui && bun run dev` | Vite on `:5173`, proxies `/api` and `/ws` to sidecar |
+| React UI (build) | `cd ui && bun run build` | Outputs to `ui/dist` |
+| TailwindCSS (GTK) | `bun run build:css` (from repo root) | Produces `style/style.css` |
+| TypeScript check | `cd ui && bun run tsc --noEmit` | Type-checks the React UI |
+| Sidecar tests | `cd sidecar && cargo test` | Integration tests in `tests/integration_test.rs` |
+
+### Running the sidecar + UI together
+
+1. Start sidecar: `cd sidecar && ./target/debug/ags-sidecar` (background or separate terminal)
+2. Start Vite: `cd ui && bun run dev`
+3. Open `http://localhost:5173` — the UI loads and API calls proxy through to the sidecar
+
+### Gotchas
+
+- The sidecar build requires `libssl-dev` and `pkg-config` system packages (for `openssl-sys` crate).
+- Use `bun` (not `npm`/`npx`) for all JS commands — bun is the project’s package manager and its lockfiles (`bun.lock`) are committed.
+- `bun run tsc --noEmit` works for type checking without needing a separate Node.js installation.
+- The sidecar binary serves `ui/dist` as static files; it finds the directory by walking up from its own executable path. When running from `sidecar/target/debug/`, it correctly resolves `../../ui/dist`.
