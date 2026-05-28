@@ -1,11 +1,20 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type PowerProfile } from "@/lib/api"
+import { FlyoutLoading, FlyoutEmpty } from "@/components/bar/flyouts/FlyoutStates"
 import { cn } from "@/lib/utils"
 
 export default function BatteryFlyout() {
   const qc = useQueryClient()
-  const { data: batt } = useQuery({ queryKey: ["batt"], queryFn: api.getBatteryState, refetchInterval: 8000 })
-  const { data: prof } = useQuery({ queryKey: ["pwr"], queryFn: api.getPowerProfile, refetchInterval: 15_000 })
+  const {
+    data: batt,
+    isPending: battPending,
+    isError: battErr,
+  } = useQuery({ queryKey: ["batt"], queryFn: api.getBatteryState, refetchInterval: 8000 })
+  const { data: prof, isPending: profPending } = useQuery({
+    queryKey: ["pwr"],
+    queryFn: api.getPowerProfile,
+    refetchInterval: 15_000,
+  })
 
   const cycle = async () => {
     const order: PowerProfile[] = ["balanced", "performance", "saver"]
@@ -29,9 +38,31 @@ export default function BatteryFlyout() {
 
   const profileLine = `Power profile: ${prof?.profile ?? "balanced"}`
 
+  if (battPending) {
+    return (
+      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
+        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Battery</h2>
+        <FlyoutLoading label="Reading battery status…" />
+      </div>
+    )
+  }
+
+  if (battErr || batt == null) {
+    return (
+      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
+        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Battery</h2>
+        <FlyoutEmpty
+          icon="battery_unknown"
+          title="Battery status unavailable"
+          detail="Plug in AC or open Control Center to troubleshoot power info."
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-      <h2 className={cn("text-sm font-semibold leading-tight", low ? "text-red" : "text-subtext1")}>
+      <h2 className={cn("pr-2 text-sm font-semibold leading-tight", low ? "text-red" : "text-subtext1")}>
         {hasBattery ? `Remaining: ${batt.percent}%` : "No battery detected"}
       </h2>
 
@@ -41,11 +72,23 @@ export default function BatteryFlyout() {
 
       <button
         type="button"
-        className="w-full rounded-xl bg-surface0/90 px-3 py-2.5 text-left text-[12px] font-medium text-subtext1 transition-colors hover:bg-surface1"
+        disabled={profPending}
+        className="w-full rounded-xl bg-surface0/90 px-3 py-2.5 text-left text-[12px] font-medium text-subtext1 transition-colors hover:bg-surface1 disabled:opacity-60"
         onClick={() => cycle()}
       >
-        <span className="text-text">{prof?.profile ?? "balanced"}</span>
-        <span className="mt-0.5 block text-[10px] font-normal text-subtext0">Click to cycle performance / balanced / saver</span>
+        {profPending ? (
+          <span className="flex items-center gap-2 text-subtext0">
+            <span className="icon animate-spin text-xl text-teal">progress_activity</span>
+            Loading profile…
+          </span>
+        ) : (
+          <>
+            <span className="text-text">{prof?.profile ?? "balanced"}</span>
+            <span className="mt-0.5 block text-[10px] font-normal text-subtext0">
+              Click to cycle performance / balanced / saver
+            </span>
+          </>
+        )}
       </button>
 
       <div className="flex justify-center pt-1">

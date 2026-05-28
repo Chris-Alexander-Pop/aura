@@ -67,13 +67,21 @@ function clientWorkspaceId(client: HyprClient): number | null {
 }
 
 function WorkspacesBlock() {
-  const { data: wsRaw } = useQuery({ queryKey: ["hypr-ws"], queryFn: api.hyprlandGetWorkspaces, refetchInterval: 1500 })
-  const { data: activeRaw } = useQuery({
+  const { data: wsRaw, isPending: wsPending } = useQuery({
+    queryKey: ["hypr-ws"],
+    queryFn: api.hyprlandGetWorkspaces,
+    refetchInterval: 1500,
+  })
+  const { data: activeRaw, isPending: activePending } = useQuery({
     queryKey: ["hypr-active-ws"],
     queryFn: api.hyprlandGetActiveWorkspace,
     refetchInterval: 1500,
   })
-  const { data: clientsRaw } = useQuery({ queryKey: ["clients"], queryFn: api.hyprlandGetClients, refetchInterval: 1500 })
+  const { data: clientsRaw, isPending: clientsPending } = useQuery({
+    queryKey: ["clients"],
+    queryFn: api.hyprlandGetClients,
+    refetchInterval: 1500,
+  })
 
   const list = useMemo(() => parseWorkspaces(wsRaw), [wsRaw])
   const activeId = useMemo(() => parseActiveWsId(activeRaw), [activeRaw])
@@ -95,6 +103,18 @@ function WorkspacesBlock() {
     const offset = Math.floor((safeActive - 1) / 5) * 5
     return Array.from({ length: 5 }, (_, i) => offset + i + 1)
   }, [activeId])
+
+  const workspacesLoading = (wsPending || activePending) && list.length === 0
+
+  if (workspacesLoading) {
+    return (
+      <div className="flex flex-col items-center gap-1 py-1" aria-busy="true" aria-label="Loading workspaces">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-11 w-full animate-pulse rounded-2xl bg-surface1/35" />
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col items-center gap-1 py-1">
@@ -138,8 +158,16 @@ function WorkspacesBlock() {
 }
 
 function RunningAppsBlock() {
-  const { data: clientsRaw } = useQuery({ queryKey: ["clients"], queryFn: api.hyprlandGetClients, refetchInterval: 1500 })
-  const { data: activeRaw } = useQuery({ queryKey: ["hypr-active"], queryFn: api.hyprlandGetActiveWindow, refetchInterval: 1000 })
+  const { data: clientsRaw, isPending: clientsPending } = useQuery({
+    queryKey: ["clients"],
+    queryFn: api.hyprlandGetClients,
+    refetchInterval: 1500,
+  })
+  const { data: activeRaw } = useQuery({
+    queryKey: ["hypr-active"],
+    queryFn: api.hyprlandGetActiveWindow,
+    refetchInterval: 1000,
+  })
 
   const activeAddr =
     activeRaw && typeof activeRaw === "object" && "address" in activeRaw
@@ -158,7 +186,24 @@ function RunningAppsBlock() {
     return [...byClass.values()].slice(0, 7)
   }, [activeAddr, clientsRaw])
 
-  if (apps.length === 0) return null
+  if (clientsPending && apps.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-1 px-0.5 py-1" aria-busy="true" aria-label="Loading apps">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-9 w-full animate-pulse rounded-xl bg-surface1/35" />
+        ))}
+      </div>
+    )
+  }
+
+  if (apps.length === 0) {
+    return (
+      <div className="mx-0.5 flex flex-col items-center justify-center rounded-xl border border-surface1/45 bg-surface0/35 px-1 py-3 text-center">
+        <span className="icon text-lg leading-none text-overlay0">widgets</span>
+        <p className="mt-1.5 text-[9px] leading-tight text-subtext0">No running apps</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col items-center gap-0.5 py-1">
@@ -198,16 +243,32 @@ function MediaBlock() {
 }
 
 function CalendarPreviewBlock() {
-  const { data: evs } = useQuery({ queryKey: ["cal"], queryFn: api.getCalendarEvents, refetchInterval: 60_000 })
+  const { data: evs, isPending: calPending } = useQuery({
+    queryKey: ["cal"],
+    queryFn: api.getCalendarEvents,
+    refetchInterval: 60_000,
+  })
   const preview = Array.isArray(evs) ? evs.slice(0, 2) : []
 
   return (
-    <div className="rounded-md bg-surface0/50 px-1 py-1">
+    <div className="rounded-md border border-surface1/35 bg-surface0/50 px-1 py-1">
       <button type="button" className="mb-1 flex w-full justify-center text-amber" onClick={() => api.auraToggleWindow("calendar")} title="Open calendar">
         <span className="icon">calendar_month</span>
       </button>
       <div className="max-h-12 overflow-hidden text-[8px] leading-snug text-subtext0">
-        {preview.length === 0 ? <span>No events</span> : preview.map((e, i) => <div key={i}>{String((e as Record<string, unknown>)?.title ?? "—")}</div>)}
+        {calPending && preview.length === 0 ? (
+          <div className="space-y-1 px-0.5 py-1" aria-busy="true">
+            <div className="h-2.5 animate-pulse rounded bg-surface1/40" />
+            <div className="h-2.5 w-[85%] max-w-full animate-pulse rounded bg-surface1/30" />
+          </div>
+        ) : preview.length === 0 ? (
+          <div className="flex flex-col items-center gap-1 rounded-md border border-surface1/30 bg-mantle/40 px-1 py-2 text-center">
+            <span className="icon text-sm text-overlay0">event_busy</span>
+            <span>No events soon</span>
+          </div>
+        ) : (
+          preview.map((e, i) => <div key={i}>{String((e as { title?: unknown }).title ?? "—")}</div>)
+        )}
       </div>
     </div>
   )

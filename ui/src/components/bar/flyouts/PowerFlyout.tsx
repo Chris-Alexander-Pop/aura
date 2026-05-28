@@ -31,7 +31,7 @@ export default function PowerFlyout() {
 
   return (
     <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-      <h2 className="text-sm font-semibold leading-tight text-subtext1">Session</h2>
+      <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Session</h2>
 
       <div className="grid grid-cols-3 gap-2">
         {actions.map((action) => (
@@ -42,7 +42,12 @@ export default function PowerFlyout() {
             disabled={busy != null}
             onClick={() => run(action.id, action.run)}
           >
-            <span className="icon text-[26px]">{busy === action.id ? "progress_activity" : action.icon}</span>
+            <span
+              className={cn("icon text-[26px]", busy === action.id && "animate-spin")}
+              aria-busy={busy === action.id}
+            >
+              {busy === action.id ? "progress_activity" : action.icon}
+            </span>
             <span className="text-[11px] font-medium">{action.label}</span>
           </button>
         ))}
@@ -78,13 +83,20 @@ export default function PowerFlyout() {
             <button
               type="button"
               className={cn(
-                "flex-1 rounded-full bg-red px-3 py-2 text-[12px] font-semibold text-crust",
-                busy === confirm && "opacity-70"
+                "flex flex-1 items-center justify-center gap-1.5 rounded-full bg-red px-3 py-2 text-[12px] font-semibold text-crust",
+                busy === confirm && "opacity-70",
               )}
               disabled={busy != null}
               onClick={runConfirmed}
             >
-              {busy === confirm ? "Working..." : "Confirm"}
+              {busy === confirm ? (
+                <>
+                  <span className="icon animate-spin text-lg">progress_activity</span>
+                  Working…
+                </>
+              ) : (
+                "Confirm"
+              )}
             </button>
             <button
               type="button"

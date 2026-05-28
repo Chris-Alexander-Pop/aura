@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
 
 function strengthIcon(strength: number): string {
   if (strength >= 75) return "wifi"
@@ -14,8 +15,12 @@ export default function NetworkFlyout() {
   const qc = useQueryClient()
   const [connectingToSsid, setConnectingToSsid] = useState<string | null>(null)
 
-  const { data: net } = useQuery({ queryKey: ["net"], queryFn: api.getNetworkStatus, refetchInterval: 8000 })
-  const { data: scan, isFetching: scanning } = useQuery({
+  const { data: net, isPending: netPending, isError: netError } = useQuery({
+    queryKey: ["net"],
+    queryFn: api.getNetworkStatus,
+    refetchInterval: 8000,
+  })
+  const { data: scan, isFetching: scanning, isPending: scanPending } = useQuery({
     queryKey: ["wifi-scan"],
     queryFn: api.scanNetworks,
     staleTime: 15_000,
@@ -60,10 +65,30 @@ export default function NetworkFlyout() {
 
   const availableCount = sorted.length
 
+  if (netPending) {
+    return (
+      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
+        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Wi‑Fi</h2>
+        <FlyoutLoading label="Fetching network status…" />
+      </div>
+    )
+  }
+
+  if (netError) {
+    return (
+      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
+        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Wi‑Fi</h2>
+        <FlyoutEmpty icon="wifi_off" title="Could not load Wi‑Fi" detail="Try again from Control Center." />
+      </div>
+    )
+  }
+
+  const listBusy = wifiOn && sorted.length === 0 && (scanning || scanPending)
+
   return (
     <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
       <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">
-        Wifi {wifiOn ? "enabled" : "disabled"}
+        Wi‑Fi {wifiOn ? "enabled" : "disabled"}
       </h2>
 
       <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-surface0/90 px-3 py-2.5">
@@ -77,11 +102,26 @@ export default function NetworkFlyout() {
       </label>
 
       <p className="px-0.5 text-[11px] leading-snug text-subtext0">
-        {availableCount} network{availableCount === 1 ? "" : "s"} available
+        {wifiOn
+          ? `${availableCount} network${availableCount === 1 ? "" : "s"} available`
+          : "Turn on Wi‑Fi to scan and connect."}
       </p>
 
-      <ul className="flex max-h-56 flex-col gap-1.5 overflow-y-auto pr-0.5">
-        {sorted.map((ap) => {
+      {listBusy ? <FlyoutLoading label="Scanning for networks…" /> : null}
+      {!wifiOn ? (
+        <FlyoutEmpty icon="wifi_off" title="Wi‑Fi is off" detail="Enable Wi‑Fi above to see nearby networks." />
+      ) : null}
+      {wifiOn && !listBusy && sorted.length === 0 ? (
+        <FlyoutEmpty
+          icon="wifi_find"
+          title="No networks found"
+          detail="Move closer to your router or rescan. Hidden SSIDs may not appear here."
+        />
+      ) : null}
+
+      {wifiOn ? (
+        <ul className="flex max-h-56 flex-col gap-1.5 overflow-y-auto pr-0.5">
+          {sorted.map((ap) => {
           const isConnecting = connectingToSsid === ap.ssid
           const isSecure = ap.security && ap.security !== "none"
 
@@ -133,7 +173,8 @@ export default function NetworkFlyout() {
             </li>
           )
         })}
-      </ul>
+        </ul>
+      ) : null}
 
       <button
         type="button"

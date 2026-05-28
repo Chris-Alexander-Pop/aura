@@ -1,7 +1,24 @@
 // Typed fetch wrappers for the sidecar REST API at localhost:9080
+import {
+  adaptLogEntries,
+  adaptPackageUpdates,
+  adaptPerformanceMetrics,
+  adaptSecurityStatus,
+  parseCalendarEvents,
+  type LogEntryView,
+  type PackageUpdateView,
+  type PerformanceMetricsView,
+  type SecurityStatusView,
+} from "./api-types"
+
 const BASE = "/api"
 
 async function call<T>(method: string, params?: Record<string, unknown>): Promise<T> {
+  const data = await callData(method, params)
+  return data as T
+}
+
+async function callData(method: string, params?: Record<string, unknown>): Promise<unknown> {
   const isGet = !params || Object.keys(params).length === 0
   const url = `${BASE}/${encodeURIComponent(method)}`
 
@@ -11,15 +28,40 @@ async function call<T>(method: string, params?: Record<string, unknown>): Promis
     body: isGet ? undefined : JSON.stringify(params),
   })
 
-  const json = await res.json()
+  const text = await res.text()
+  const trimmed = text.trim()
+  if (!trimmed) {
+    throw new Error(
+      res.ok
+        ? "Sidecar returned an empty body — start ags-sidecar on :9080 or check the Vite /api proxy."
+        : `Sidecar HTTP ${res.status}: empty body`
+    )
+  }
+
+  let json: { ok?: boolean; error?: string; data?: unknown }
+  try {
+    json = JSON.parse(trimmed) as { ok?: boolean; error?: string; data?: unknown }
+  } catch {
+    throw new Error(
+      "Could not parse sidecar JSON — another process may be answering /api, or the response was truncated."
+    )
+  }
   if (!json.ok) throw new Error(json.error ?? "Sidecar error")
-  return json.data as T
+  return json.data
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Power
 // ─────────────────────────────────────────────────────────────────────────────
 export type PowerProfile = "performance" | "balanced" | "saver"
+
+export type {
+  CalendarEvent,
+  LogEntryView,
+  PackageUpdateView,
+  PerformanceMetricsView,
+  SecurityStatusView,
+} from "./api-types"
 
 export interface BatteryState {
   percent: number
@@ -93,19 +135,19 @@ export const api = {
   disconnectVpn: () => call("Vpn.Disconnect"),
 
   // Calendar
-  getCalendarEvents: () => call<unknown[]>("Calendar.GetEvents"),
+  getCalendarEvents: () => callData("Calendar.GetEvents").then(parseCalendarEvents),
 
   // Packages
-  getPackageUpdates: () => call<unknown[]>("Packages.GetUpdates"),
+  getPackageUpdates: () => callData("Packages.GetUpdates").then(adaptPackageUpdates),
 
   // Logs
-  getLogs: () => call<unknown[]>("Logs.Get"),
+  getLogs: () => callData("Logs.Get").then(adaptLogEntries),
 
   // Security
-  getSecurityStatus: () => call<Record<string, unknown>>("Security.GetStatus"),
+  getSecurityStatus: () => callData("Security.GetStatus").then(adaptSecurityStatus),
 
   // Performance / Devops / Productivity / Automation / Communication / Fitness
-  getPerformanceMetrics: () => call<Record<string, unknown>>("Performance.GetMetrics"),
+  getPerformanceMetrics: () => callData("Performance.GetMetrics").then(adaptPerformanceMetrics),
   getDevopsStatus:       () => call<Record<string, unknown>>("Devops.GetStatus"),
   getProductivityStats:  () => call<Record<string, unknown>>("Productivity.GetStats"),
   getAutomationRules:    () => call<unknown[]>("Automation.ListRules"),
