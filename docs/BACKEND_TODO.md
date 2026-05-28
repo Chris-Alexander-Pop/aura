@@ -54,12 +54,12 @@
 
 ### 0.3 Storage (`sidecar/src/utils/storage.rs`)
 
-- [ ] `list_keys(namespace) -> Vec<String>`
-- [ ] `list_namespace(prefix) -> Vec<(namespace, key)>`
-- [ ] `delete_kv(namespace, key)`
-- [ ] `scan_namespace(namespace) -> Vec<serde_json::Value>` for calendar events, workflows, tasks
-- [ ] Migrations table + schema version
-- [ ] Unit tests: round-trip, concurrent writes, corrupt JSON handling
+- [x] `list_keys(namespace) -> Vec<String>`
+- [x] `list_namespace(prefix) -> Vec<(namespace, key)>`
+- [x] `delete_kv(namespace, key)`
+- [x] `scan_namespace(namespace) -> Vec<serde_json::Value>` for calendar events, workflows, tasks
+- [x] Migrations table + schema version
+- [x] Unit tests: round-trip, concurrent writes, corrupt JSON handling
 
 ### 0.4 Process & privileges (`utils/process.rs`, `utils/keyring.rs`)
 
@@ -79,8 +79,8 @@
 ### 0.6 Real-time events
 
 - [ ] Define notification schema: `{ method, params }` for WebSocket + future stdin notify
-- [ ] Emit on: battery change, network connect/disconnect, VPN state, audio default device, Bluetooth device
-- [ ] GTK `sidecar.ts` already listens for `Power.BatteryState` / `Power.Profile` — **implement emitters** in `power.rs`
+- [x] Emit on: battery change, network connect/disconnect (partial — power + network done; VPN/audio/BT pending)
+- [x] GTK `sidecar.ts` already listens for `Power.BatteryState` / `Power.Profile` — **implement emitters** in `power.rs`
 - [ ] Integration test: connect WS client, trigger change, assert message
 
 ### 0.7 Test infrastructure
@@ -125,24 +125,24 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ### 2.1 Power (`power.rs`) — P0
 
-- [ ] Battery % from `/sys/class/power_supply` or UPower (zbus)
-- [ ] Charging state + **time remaining** (fix TODO in source)
-- [ ] Power profiles: `powerprofilesctl` / TLP / PPD — verify on target hardware
-- [ ] `Power.SetProfile` persists and reports errors clearly
-- [ ] Emit `Power.BatteryState` notifications on change (poll or uevent)
+- [x] Battery % from `/sys/class/power_supply` or UPower (zbus)
+- [x] Charging state + **time remaining** (fix TODO in source)
+- [x] Power profiles: `powerprofilesctl` / TLP / PPD — verify on target hardware
+- [x] `Power.SetProfile` persists and reports errors clearly
+- [x] Emit `Power.BatteryState` notifications on change (poll or uevent)
 - [ ] Unit tests: parse sysfs fixtures
 - [ ] Integration tests: `GetBatteryState`, `GetProfile`, `SetProfile` (mock profiles daemon)
 
 ### 2.2 Network (`network.rs`) — P0
 
-- [ ] `Network.GetStatus`: wifi enabled, active SSID, IPs, **public IP** (optional cached)
-- [ ] `Network.ScanNetworks`: signal, security type, hidden SSIDs
-- [ ] `Network.Connect`: open/WPA2/WPA3; **802.1X** path
-- [ ] Saved networks: list, forget, auto-connect flag
+- [x] `Network.GetStatus`: wifi enabled, active SSID, IPs, **public IP** (optional cached)
+- [x] `Network.ScanNetworks`: signal, security type, hidden SSIDs
+- [ ] `Network.Connect`: open/WPA2/WPA3; **802.1X** path (WPA via nmcli + keyring done; 802.1X deferred)
+- [x] Saved networks: list, forget, auto-connect flag
 - [ ] Captive portal detection helper
-- [ ] Keyring integration for passwords
-- [ ] `Network.ToggleWifi` reliable on NM
-- [ ] Ethernet/VPN interface status in `GetStatus`
+- [x] Keyring integration for passwords
+- [x] `Network.ToggleWifi` reliable on NM
+- [x] Ethernet/VPN interface status in `GetStatus` (ethernet done; VPN in status deferred)
 - [ ] Unit tests: parse `nmcli` fixtures
 - [ ] Integration tests with **nmcli test mode** or mocked commands
 - [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) Wi-Fi panel, [system-and-input-foundation.md](roadmap/system-and-input-foundation.md) login paths
@@ -559,8 +559,8 @@ Manual (hardware):
 
 ### 6.1 P0 smoke suite (automate first)
 
-- [ ] `Power.GetBatteryState`
-- [ ] `Network.GetStatus`
+- [x] `Power.GetBatteryState`
+- [x] `Network.GetStatus`
 - [ ] `Audio.GetDevices`
 - [ ] `Hyprland.GetWorkspaces`
 - [ ] `System.GetStats`

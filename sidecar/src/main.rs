@@ -1,11 +1,12 @@
 use ags_sidecar::build_registry;
+use ags_sidecar::notify;
 use ags_sidecar::rpc::{create_error_response, create_success_response, RpcServer};
-use ags_sidecar::types::{error_codes, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
+use ags_sidecar::types::{error_codes, JsonRpcRequest, JsonRpcResponse};
 use anyhow::Result;
 use serde_json;
 use std::env;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{broadcast, mpsc, Mutex};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,8 +30,9 @@ async fn main() -> Result<()> {
 async fn run_server() -> Result<()> {
     let (request_tx, mut request_rx) =
         mpsc::unbounded_channel::<(JsonRpcRequest, mpsc::UnboundedSender<JsonRpcResponse>)>();
-    let (notification_tx, _notification_rx) =
-        mpsc::unbounded_channel::<JsonRpcNotification>();
+    let (notify_tx, notify_rx) = broadcast::channel::<String>(256);
+    notify::init(notify_tx.clone());
+    notify::spawn_stdout_forwarder(notify_rx);
 
     let registry = Arc::new(Mutex::new(build_registry()));
 
@@ -53,13 +55,14 @@ async fn run_server() -> Result<()> {
     });
 
     let registry_http = registry.clone();
+    let http_notify = notify_tx.clone();
     tokio::spawn(async move {
-        if let Err(e) = ags_sidecar::server::run(registry_http).await {
+        if let Err(e) = ags_sidecar::server::run(registry_http, http_notify).await {
             tracing::error!("HTTP server error: {}", e);
         }
     });
 
-    let rpc_server = RpcServer::new(request_tx, notification_tx);
+    let rpc_server = RpcServer::new(request_tx);
     rpc_server.run().await?;
 
     Ok(())

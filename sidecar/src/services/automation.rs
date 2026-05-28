@@ -57,8 +57,13 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Automation.GetWorkflows", |_params| async move {
-        // Would need storage list method
-        Ok(serde_json::json!([]))
+        storage::init().await?;
+        let items = storage::scan_namespace("automation_workflows").await?;
+        let workflows: Vec<Workflow> = items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect();
+        Ok(serde_json::to_value(workflows)?)
     });
 
     registry.register("Automation.UpdateWorkflow", |params| async move {

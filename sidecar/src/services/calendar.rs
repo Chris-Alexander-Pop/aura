@@ -23,19 +23,31 @@ pub struct Calendar {
 
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Calendar.GetEvents", |params| async move {
-        let _start_date: Option<i64> = params
+        let start_date: Option<i64> = params
             .as_ref()
             .and_then(|p| p.get("start_date").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
 
-        let _end_date: Option<i64> = params
+        let end_date: Option<i64> = params
             .as_ref()
             .and_then(|p| p.get("end_date").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
 
-        // Get events from storage
-        // Note: Would need storage list method
-        Ok(serde_json::json!([]))
+        storage::init().await?;
+        let items = storage::scan_namespace("calendar_events").await?;
+        let mut events: Vec<CalendarEvent> = items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect();
+
+        if let Some(start) = start_date {
+            events.retain(|e| e.end >= start);
+        }
+        if let Some(end) = end_date {
+            events.retain(|e| e.start <= end);
+        }
+
+        Ok(serde_json::to_value(events)?)
     });
 
     registry.register("Calendar.CreateEvent", |params| async move {

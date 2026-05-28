@@ -8,7 +8,7 @@ use axum::{
     },
     http::Method,
     response::{IntoResponse, Response},
-    routing::{any, get, post},
+    routing::get,
     Json, Router,
 };
 use serde_json::{json, Value};
@@ -27,9 +27,7 @@ pub struct AppState {
     pub notify_tx: NotifyTx,
 }
 
-pub async fn run(registry: Arc<Mutex<ServiceRegistry>>) -> Result<()> {
-    let (notify_tx, _) = broadcast::channel::<String>(256);
-
+pub async fn run(registry: Arc<Mutex<ServiceRegistry>>, notify_tx: NotifyTx) -> Result<()> {
     let state = AppState {
         registry,
         notify_tx,
@@ -78,12 +76,6 @@ pub async fn run(registry: Arc<Mutex<ServiceRegistry>>) -> Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
-}
-
-/// Push a JSON notification to all connected WebSocket clients.
-pub fn push_notification(tx: &NotifyTx, method: &str, params: Value) {
-    let msg = json!({ "method": method, "params": params }).to_string();
-    let _ = tx.send(msg);
 }
 
 // ── REST handlers ────────────────────────────────────────────────────────────

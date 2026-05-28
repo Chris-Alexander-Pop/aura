@@ -1,7 +1,9 @@
+use crate::notify;
 use crate::services::ServiceRegistry;
-use crate::types::AccessPoint;
-use crate::utils::process;
+use crate::types::{AccessPoint, NetworkStatus};
+use crate::utils::{keyring, process};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -9,23 +11,32 @@ use tokio::time::{interval, Duration};
 
 #[derive(Debug, Clone)]
 struct NetworkState {
-    wifi_enabled: bool,
-    active_connection: Option<String>,
-    local_ip: Option<String>,
-    public_ip: Option<String>,
+    status: NetworkStatus,
     networks: Vec<AccessPoint>,
 }
 
 impl Default for NetworkState {
     fn default() -> Self {
         Self {
-            wifi_enabled: true,
-            active_connection: None,
-            local_ip: None,
-            public_ip: None,
+            status: NetworkStatus {
+                wifi_enabled: true,
+                active_connection: None,
+                active_ssid: None,
+                connection_type: "none".to_string(),
+                ethernet_connected: false,
+                local_ip: None,
+                public_ip: None,
+            },
             networks: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedNetwork {
+    pub name: String,
+    pub uuid: String,
+    pub autoconnect: bool,
 }
 
 lazy_static::lazy_static! {
@@ -33,11 +44,10 @@ lazy_static::lazy_static! {
 }
 
 pub fn register(registry: &mut ServiceRegistry) {
-    // Start monitoring tasks
     tokio::spawn(async {
-        let mut interval = interval(Duration::from_secs(10));
+        let mut tick = interval(Duration::from_secs(10));
         loop {
-            interval.tick().await;
+            tick.tick().await;
             if let Err(e) = update_network_state().await {
                 tracing::debug!("Failed to update network state: {}", e);
             }
@@ -45,9 +55,9 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     tokio::spawn(async {
-        let mut interval = interval(Duration::from_secs(30));
+        let mut tick = interval(Duration::from_secs(30));
         loop {
-            interval.tick().await;
+            tick.tick().await;
             if let Err(e) = update_public_ip().await {
                 tracing::debug!("Failed to update public IP: {}", e);
             }
@@ -64,17 +74,14 @@ pub fn register(registry: &mut ServiceRegistry) {
         let cmd = if enabled { "on" } else { "off" };
         process::exec_command(&["nmcli", "radio", "wifi", cmd]).await?;
 
-        let mut state = STATE.write().await;
-        state.wifi_enabled = enabled;
-
+        update_network_state().await?;
+        emit_network_state().await;
         Ok(serde_json::json!({ "success": true, "wifi_enabled": enabled }))
     });
 
     registry.register("Network.ScanNetworks", |_params| async move {
-        // Trigger rescan
         let _ = process::exec_command(&["nmcli", "dev", "wifi", "rescan"]).await;
 
-        // Get networks
         let output = process::exec_command(&[
             "nmcli",
             "-g",
@@ -103,44 +110,132 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|p| p.get("password").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
 
-        if let Some(pass) = password {
-            process::exec_command(&[
-                "nmcli",
-                "dev",
-                "wifi",
-                "connect",
-                &ssid,
-                "password",
-                &pass,
-            ])
-            .await?;
-        } else {
-            process::exec_command(&["nmcli", "conn", "up", &ssid]).await?;
-        }
+        let password = match password {
+            Some(p) => {
+                if !p.is_empty() {
+                    let _ = keyring::store_wifi_password(&ssid, &p).await;
+                }
+                Some(p)
+            }
+            None => keyring::lookup_wifi_password(&ssid).await?,
+        };
 
-        Ok(serde_json::json!({ "success": true }))
+        let result = if let Some(ref pass) = password {
+            if pass.is_empty() {
+                connect_open_or_saved(&ssid).await
+            } else {
+                process::exec_command(&[
+                    "nmcli",
+                    "dev",
+                    "wifi",
+                    "connect",
+                    &ssid,
+                    "password",
+                    pass,
+                ])
+                .await
+                .map(|_| ())
+            }
+        } else {
+            connect_open_or_saved(&ssid).await
+        };
+
+        match result {
+            Ok(()) => {
+                update_network_state().await.ok();
+                emit_network_state().await;
+                Ok(serde_json::json!({ "success": true }))
+            }
+            Err(e) => Ok(serde_json::json!({
+                "success": false,
+                "error": e.to_string(),
+            })),
+        }
     });
 
     registry.register("Network.Disconnect", |_params| async move {
-        let state = STATE.read().await;
-        if let Some(ref conn) = state.active_connection {
-            process::exec_command(&["nmcli", "connection", "down", conn]).await?;
+        let conn = {
+            let state = STATE.read().await;
+            state.status.active_connection.clone()
+        };
+        if let Some(ref c) = conn {
+            process::exec_command(&["nmcli", "connection", "down", c]).await?;
         }
+        update_network_state().await?;
+        emit_network_state().await;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Network.GetStatus", |_params| async move {
         let state = STATE.read().await;
-        Ok(serde_json::json!({
-            "wifi_enabled": state.wifi_enabled,
-            "active_connection": state.active_connection,
-            "local_ip": state.local_ip,
-            "public_ip": state.public_ip,
-        }))
+        Ok(serde_json::to_value(&state.status)?)
+    });
+
+    registry.register("Network.ListSaved", |_params| async move {
+        let output = process::exec_command(&[
+            "nmcli",
+            "-t",
+            "-f",
+            "NAME,UUID,TYPE,AUTOCONNECT",
+            "connection",
+            "show",
+        ])
+        .await
+        .unwrap_or_default();
+
+        let saved = parse_saved_connections(&output);
+        Ok(serde_json::to_value(saved)?)
+    });
+
+    registry.register("Network.Forget", |params| async move {
+        let uuid: Option<String> = params
+            .as_ref()
+            .and_then(|p| p.get("uuid").cloned())
+            .and_then(|v| serde_json::from_value(v).ok());
+        let name: Option<String> = params
+            .as_ref()
+            .and_then(|p| p.get("name").cloned())
+            .and_then(|v| serde_json::from_value(v).ok());
+
+        let target = uuid.or(name).ok_or_else(|| anyhow::anyhow!("Missing uuid or name"))?;
+        process::exec_command(&["nmcli", "connection", "delete", &target]).await?;
+        Ok(serde_json::json!({ "success": true }))
     });
 }
 
-fn parse_networks(output: &str) -> Vec<AccessPoint> {
+async fn connect_open_or_saved(ssid: &str) -> Result<()> {
+    if process::exec_command(&["nmcli", "dev", "wifi", "connect", ssid])
+        .await
+        .is_ok()
+    {
+        return Ok(());
+    }
+    process::exec_command(&["nmcli", "connection", "up", ssid]).await?;
+    Ok(())
+}
+
+fn parse_saved_connections(output: &str) -> Vec<SavedNetwork> {
+    let mut list = Vec::new();
+    for line in output.lines() {
+        let parts: Vec<&str> = line.split(':').collect();
+        if parts.len() < 4 {
+            continue;
+        }
+        let conn_type = parts[2].trim();
+        if conn_type != "802-11-wireless" && conn_type != "wifi" {
+            continue;
+        }
+        let autoconnect = parts[3].trim().eq_ignore_ascii_case("yes");
+        list.push(SavedNetwork {
+            name: parts[0].to_string(),
+            uuid: parts[1].to_string(),
+            autoconnect,
+        });
+    }
+    list
+}
+
+pub(crate) fn parse_networks(output: &str) -> Vec<AccessPoint> {
     let mut network_map: HashMap<String, AccessPoint> = HashMap::new();
 
     for line in output.lines() {
@@ -153,10 +248,12 @@ fn parse_networks(output: &str) -> Vec<AccessPoint> {
         let strength: i32 = parts[1].parse().unwrap_or(0);
         let frequency: i32 = parts[2].parse().unwrap_or(0);
         let ssid = parts[3].to_string();
+        if ssid.is_empty() || ssid == "--" {
+            continue;
+        }
         let bssid = parts[4].to_string();
         let security = parts[5].to_string();
 
-        // Group by SSID, prioritize active connections
         let entry = network_map.entry(ssid.clone()).or_insert_with(|| AccessPoint {
             ssid: ssid.clone(),
             bssid: bssid.clone(),
@@ -166,7 +263,6 @@ fn parse_networks(output: &str) -> Vec<AccessPoint> {
             security: security.clone(),
         });
 
-        // Update if this is active or has better signal
         if active && !entry.active {
             *entry = AccessPoint {
                 ssid,
@@ -188,38 +284,115 @@ fn parse_networks(output: &str) -> Vec<AccessPoint> {
 }
 
 async fn update_network_state() -> Result<()> {
-    // Check WiFi status
     let wifi_status = process::exec_command(&["nmcli", "radio", "wifi"]).await?;
     let wifi_enabled = wifi_status.trim() == "enabled";
 
-    // Get active connection
-    let active_output = process::exec_command(&["nmcli", "-t", "-f", "NAME,DEVICE", "c", "show", "--active"]).await?;
-    let active_connection = active_output
-        .lines()
-        .next()
-        .and_then(|line| line.split(':').next().map(|s| s.to_string()));
+    let active_output =
+        process::exec_command(&["nmcli", "-t", "-f", "NAME,DEVICE,TYPE", "c", "show", "--active"])
+            .await
+            .unwrap_or_default();
 
-    // Get local IP
-    let local_ip_output = process::exec_command(&[
-        "sh",
-        "-c",
-        "ip -4 addr show wlan0 2>/dev/null | grep -oP '(?<=inet\\s)\\d+(\\.\\d+){3}' || ip -4 addr show | grep -oP '(?<=inet\\s)\\d+(\\.\\d+){3}' | head -1",
-    ])
-    .await
-    .ok();
-    let local_ip = local_ip_output.and_then(|s| {
-        let trimmed = s.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
+    let mut active_connection = None;
+    let mut active_device = None;
+    let mut connection_type = "none".to_string();
+    let mut ethernet_connected = false;
+
+    for line in active_output.lines() {
+        let parts: Vec<&str> = line.split(':').collect();
+        if parts.len() < 3 {
+            continue;
         }
-    });
+        active_connection = Some(parts[0].to_string());
+        active_device = Some(parts[1].to_string());
+        let ctype = parts[2].trim();
+        if ctype.contains("wireless") || ctype == "802-11-wireless" {
+            connection_type = "wifi".to_string();
+        } else if ctype.contains("ethernet") || ctype == "802-3-ethernet" {
+            connection_type = "ethernet".to_string();
+            ethernet_connected = true;
+        }
+        break;
+    }
+
+    let active_ssid = if connection_type == "wifi" {
+        process::exec_command(&["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"])
+            .await
+            .ok()
+            .and_then(|out| {
+                out.lines().find_map(|line| {
+                    let p: Vec<&str> = line.split(':').collect();
+                    if p.len() >= 2 && p[0] == "yes" && p[1] != "--" && !p[1].is_empty() {
+                        Some(p[1].to_string())
+                    } else {
+                        None
+                    }
+                })
+            })
+    } else {
+        None
+    };
+
+    let local_ip = if let Some(ref dev) = active_device {
+        process::exec_command(&[
+            "nmcli",
+            "-t",
+            "-f",
+            "IP4.ADDRESS",
+            "device",
+            "show",
+            dev,
+        ])
+        .await
+        .ok()
+        .and_then(|out| {
+            out.lines().find_map(|line| {
+                let ip = line.split('/').next()?.trim();
+                if ip.is_empty() {
+                    None
+                } else {
+                    Some(ip.to_string())
+                }
+            })
+        })
+    } else {
+        None
+    };
+
+    let device_status = process::exec_command(&["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device"])
+        .await
+        .unwrap_or_default();
+    for line in device_status.lines() {
+        let p: Vec<&str> = line.split(':').collect();
+        if p.len() >= 3
+            && (p[1].contains("ethernet") || p[1] == "802-3-ethernet")
+            && p[2] == "connected"
+        {
+            ethernet_connected = true;
+            if connection_type == "none" {
+                connection_type = "ethernet".to_string();
+            }
+        }
+    }
+
+    let public_ip = STATE.read().await.status.public_ip.clone();
+
+    let new_status = NetworkStatus {
+        wifi_enabled,
+        active_connection,
+        active_ssid,
+        connection_type,
+        ethernet_connected,
+        local_ip,
+        public_ip,
+    };
 
     let mut state = STATE.write().await;
-    state.wifi_enabled = wifi_enabled;
-    state.active_connection = active_connection;
-    state.local_ip = local_ip;
+    let prev = state.status.clone();
+    state.status = new_status.clone();
+
+    if prev != new_status {
+        notify::emit("Network.StateChanged", serde_json::to_value(&new_status)?);
+    }
 
     Ok(())
 }
@@ -233,7 +406,44 @@ async fn update_public_ip() -> Result<()> {
         .to_string();
 
     let mut state = STATE.write().await;
-    state.public_ip = Some(public_ip);
+    if state.status.public_ip.as_deref() != Some(&public_ip) {
+        state.status.public_ip = Some(public_ip.clone());
+        let status = state.status.clone();
+        drop(state);
+        notify::emit("Network.StateChanged", serde_json::to_value(&status)?);
+    }
 
     Ok(())
+}
+
+async fn emit_network_state() -> Result<()> {
+    let state = STATE.read().await;
+    notify::emit(
+        "Network.StateChanged",
+        serde_json::to_value(&state.status)?,
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_networks_fixture() {
+        let fixture = include_str!("../../tests/fixtures/network/nmcli_wifi_list.txt");
+        let networks = parse_networks(fixture);
+        assert!(!networks.is_empty());
+        assert!(networks.iter().any(|n| n.ssid == "TestNet"));
+        assert!(!networks.iter().any(|n| n.ssid == "--"));
+    }
+
+    #[test]
+    fn parse_saved_connections_lines() {
+        let input = "Home:uuid-1:802-11-wireless:yes\nWork:uuid-2:802-11-wireless:no\n";
+        let saved = parse_saved_connections(input);
+        assert_eq!(saved.len(), 2);
+        assert_eq!(saved[0].name, "Home");
+        assert!(saved[0].autoconnect);
+    }
 }

@@ -1,6 +1,7 @@
-import { useCallback, useRef, type Ref, type RefObject } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useCallback, useEffect, useRef, type Ref, type RefObject } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import type { StatusFlyoutId } from "./useFlyoutHover"
 
@@ -10,10 +11,25 @@ type Props = {
 }
 
 export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props) {
+  const qc = useQueryClient()
   const netRef = useRef<HTMLButtonElement>(null)
   const btRef = useRef<HTMLButtonElement>(null)
   const battRef = useRef<HTMLButtonElement>(null)
   const winRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    connectWs()
+    const offBatt = useWsStore.getState().on("Power.BatteryState", () => {
+      void qc.invalidateQueries({ queryKey: ["batt"] })
+    })
+    const offNet = useWsStore.getState().on("Network.StateChanged", () => {
+      void qc.invalidateQueries({ queryKey: ["net"] })
+    })
+    return () => {
+      offBatt()
+      offNet()
+    }
+  }, [qc])
 
   const { data: net } = useQuery({ queryKey: ["net"], queryFn: api.getNetworkStatus, refetchInterval: 5000 })
   const { data: batt } = useQuery({ queryKey: ["batt"], queryFn: api.getBatteryState, refetchInterval: 8000 })

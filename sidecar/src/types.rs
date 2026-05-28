@@ -42,7 +42,7 @@ pub struct BatteryState {
     pub time_remaining: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PowerProfile {
     Performance,
@@ -61,10 +61,14 @@ pub struct AccessPoint {
     pub security: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NetworkStatus {
     pub wifi_enabled: bool,
     pub active_connection: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_ssid: Option<String>,
+    pub connection_type: String,
+    pub ethernet_connected: bool,
     pub local_ip: Option<String>,
     pub public_ip: Option<String>,
 }

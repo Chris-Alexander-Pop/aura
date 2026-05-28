@@ -3,10 +3,6 @@ use crate::utils::storage;
 use serde_json;
 
 /// Generic key-value storage service backed by SQLite.
-///
-/// Methods:
-/// - Storage.Set(namespace: string, key: string, value: any)
-/// - Storage.Get(namespace: string, key: string) -> any | null
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Storage.Set", |params| async move {
         let ns: String = serde_json::from_value(
@@ -54,5 +50,53 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         Ok(serde_json::json!({ "value": value }))
     });
-}
 
+    registry.register("Storage.ListKeys", |params| async move {
+        let ns: String = serde_json::from_value(
+            params
+                .as_ref()
+                .and_then(|p| p.get("namespace").cloned())
+                .ok_or_else(|| anyhow::anyhow!("Missing namespace"))?,
+        )?;
+
+        storage::init().await?;
+        let keys = storage::list_keys(&ns).await?;
+
+        Ok(serde_json::json!({ "keys": keys }))
+    });
+
+    registry.register("Storage.Delete", |params| async move {
+        let ns: String = serde_json::from_value(
+            params
+                .as_ref()
+                .and_then(|p| p.get("namespace").cloned())
+                .ok_or_else(|| anyhow::anyhow!("Missing namespace"))?,
+        )?;
+
+        let key: String = serde_json::from_value(
+            params
+                .as_ref()
+                .and_then(|p| p.get("key").cloned())
+                .ok_or_else(|| anyhow::anyhow!("Missing key"))?,
+        )?;
+
+        storage::init().await?;
+        let deleted = storage::delete_kv(&ns, &key).await?;
+
+        Ok(serde_json::json!({ "deleted": deleted }))
+    });
+
+    registry.register("Storage.ScanNamespace", |params| async move {
+        let ns: String = serde_json::from_value(
+            params
+                .as_ref()
+                .and_then(|p| p.get("namespace").cloned())
+                .ok_or_else(|| anyhow::anyhow!("Missing namespace"))?,
+        )?;
+
+        storage::init().await?;
+        let items = storage::scan_namespace(&ns).await?;
+
+        Ok(serde_json::json!({ "items": items }))
+    });
+}

@@ -560,22 +560,29 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     registry.register("Audio.Profiles.List", |_params| async move {
         storage::init().await?;
-        // Get all profiles from storage
-        // Note: Storage.Get doesn't support listing all keys, so we'll need to enhance storage
-        // For now, return empty list
-        Ok(serde_json::json!([]))
+        let keys = storage::list_keys("audio_profiles").await?;
+        let mut profiles = Vec::new();
+        for name in keys {
+            if let Some(profile_json) = storage::get_kv("audio_profiles", &name).await? {
+                if let Ok(profile) = serde_json::from_value::<AudioProfile>(profile_json) {
+                    profiles.push(profile);
+                }
+            }
+        }
+        Ok(serde_json::to_value(profiles)?)
     });
 
     registry.register("Audio.Profiles.Delete", |params| async move {
-        let _name: String = serde_json::from_value(
+        let name: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("name").cloned())
                 .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
         )?;
 
-        // Delete from storage (would need storage delete method)
-        Ok(serde_json::json!({ "success": true }))
+        storage::init().await?;
+        let deleted = storage::delete_kv("audio_profiles", &name).await?;
+        Ok(serde_json::json!({ "success": deleted }))
     });
 
     registry.register("Audio.Profiles.GetCurrent", |_params| async move {

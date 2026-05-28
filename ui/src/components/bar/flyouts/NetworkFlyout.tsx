@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
 
@@ -14,6 +15,15 @@ function strengthIcon(strength: number): string {
 export default function NetworkFlyout() {
   const qc = useQueryClient()
   const [connectingToSsid, setConnectingToSsid] = useState<string | null>(null)
+
+  useEffect(() => {
+    connectWs()
+    const off = useWsStore.getState().on("Network.StateChanged", () => {
+      void qc.invalidateQueries({ queryKey: ["net"] })
+      void qc.invalidateQueries({ queryKey: ["wifi-scan"] })
+    })
+    return off
+  }, [qc])
 
   const { data: net, isPending: netPending, isError: netError } = useQuery({
     queryKey: ["net"],

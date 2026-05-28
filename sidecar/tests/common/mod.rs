@@ -1,10 +1,17 @@
 use ags_sidecar::build_registry;
+use ags_sidecar::notify;
 use ags_sidecar::services::ServiceRegistry;
 use ags_sidecar::types::JsonRpcRequest;
 use anyhow::Result;
 use serde_json::Value;
+use std::sync::Once;
+
+static INIT_NOTIFY: Once = Once::new();
 
 pub fn test_registry() -> ServiceRegistry {
+    INIT_NOTIFY.call_once(|| {
+        notify::init_for_tests();
+    });
     build_registry()
 }
 

@@ -1,4 +1,4 @@
-use crate::types::{error_codes, JsonRpcError, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
+use crate::types::{error_codes, JsonRpcError, JsonRpcRequest, JsonRpcResponse};
 use anyhow::Result;
 use serde_json;
 use std::io::{self, BufRead, BufReader, Write};
@@ -6,18 +6,13 @@ use tokio::sync::mpsc;
 
 pub struct RpcServer {
     request_tx: mpsc::UnboundedSender<(JsonRpcRequest, mpsc::UnboundedSender<JsonRpcResponse>)>,
-    notification_tx: mpsc::UnboundedSender<JsonRpcNotification>,
 }
 
 impl RpcServer {
     pub fn new(
         request_tx: mpsc::UnboundedSender<(JsonRpcRequest, mpsc::UnboundedSender<JsonRpcResponse>)>,
-        notification_tx: mpsc::UnboundedSender<JsonRpcNotification>,
     ) -> Self {
-        Self {
-            request_tx,
-            notification_tx,
-        }
+        Self { request_tx }
     }
 
     pub async fn run(&self) -> Result<()> {
@@ -65,19 +60,11 @@ impl RpcServer {
                     }
                 }
                 Err(e) => {
-                    // Try to parse as notification (no id field)
-                    if let Ok(notification) = serde_json::from_str::<JsonRpcNotification>(line) {
-                        if notification.jsonrpc == "2.0" {
-                            let _ = self.notification_tx.send(notification);
-                        }
-                    } else {
-                        // Invalid JSON, send parse error
-                        self.send_error(
-                            serde_json::Value::Null,
-                            error_codes::PARSE_ERROR,
-                            format!("Parse error: {}", e),
-                        )?;
-                    }
+                    self.send_error(
+                        serde_json::Value::Null,
+                        error_codes::PARSE_ERROR,
+                        format!("Parse error: {}", e),
+                    )?;
                 }
             }
         }
