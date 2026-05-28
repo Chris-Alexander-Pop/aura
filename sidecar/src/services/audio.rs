@@ -873,7 +873,7 @@ async fn refresh_devices() -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn parse_devices(output: &str) -> (Vec<AudioDevice>, Vec<AudioDevice>) {
+pub fn parse_devices(output: &str) -> (Vec<AudioDevice>, Vec<AudioDevice>) {
     let mut sinks = Vec::new();
     let mut sources = Vec::new();
     let mut in_audio_section = false;
@@ -927,7 +927,7 @@ pub(crate) fn parse_devices(output: &str) -> (Vec<AudioDevice>, Vec<AudioDevice>
     (sinks, sources)
 }
 
-fn parse_device_line(line: &str) -> Option<AudioDevice> {
+pub fn parse_device_line(line: &str) -> Option<AudioDevice> {
     // Parse lines like: │   ●   47. Headphones [vol: 0.50]
     let re = regex::Regex::new(r"^\s*[│├└]\s*([●\*\s])\s*(\d+)\.\s*(.+)$").ok()?;
     let cap = re.captures(line)?;
@@ -984,7 +984,7 @@ async fn refresh_streams() -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn parse_streams(output: &str) -> Vec<AudioStream> {
+pub fn parse_streams(output: &str) -> Vec<AudioStream> {
     let mut streams = Vec::new();
     let mut current_stream: Option<AudioStream> = None;
 
@@ -1212,5 +1212,50 @@ mod tests {
         assert_eq!(streams.len(), 1);
         assert_eq!(streams[0].app, "Firefox");
         assert_eq!(streams[0].volume, 100);
+        assert_eq!(streams[0].sink_id, 47);
+    }
+
+    #[test]
+    fn parse_wpctl_multiple_devices_fixture() {
+        let fixture = include_str!("../../tests/fixtures/audio/wpctl_status_multi.txt");
+        let (sinks, sources) = parse_devices(fixture);
+        assert_eq!(sinks.len(), 2);
+        assert!(!sinks[0].is_default);
+        assert!(sinks[1].is_default);
+        assert!((sinks[1].volume - 0.75).abs() < f64::EPSILON);
+        assert_eq!(sources.len(), 1);
+        assert!(sources[0].is_default);
+    }
+
+    #[test]
+    fn parse_device_line_extracts_volume_and_mute() {
+        let line = "│  *   99. Speakers [vol: 0.25 MUTED]";
+        let dev = parse_device_line(line).expect("device");
+        assert_eq!(dev.id, 99);
+        assert!(dev.is_default);
+        assert!(dev.muted);
+        assert!((dev.volume - 0.25).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_device_line_rejects_malformed() {
+        assert!(parse_device_line("not a wpctl device row").is_none());
+        assert!(parse_device_line("│   no-id. Broken").is_none());
+    }
+
+    #[test]
+    fn parse_streams_empty_fixture() {
+        let fixture = include_str!("../../tests/fixtures/audio/pactl_sink_inputs_empty.txt");
+        assert!(parse_streams(fixture).is_empty());
+    }
+
+    #[test]
+    fn parse_devices_skips_line_without_brackets() {
+        let fixture = include_str!("../../tests/fixtures/audio/wpctl_status_plain_name.txt");
+        let (sinks, sources) = parse_devices(fixture);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].name, "HDMI Output");
+        assert_eq!(sinks[0].info, "");
+        assert!(sources.is_empty());
     }
 }

@@ -375,20 +375,24 @@ async fn collect_metrics_json() -> Result<Value> {
     }))
 }
 
-async fn metrics_changed(current: &Value) -> bool {
-    let prev = LAST_METRICS.read().await;
-    let Some(p) = prev.as_ref() else {
-        return true;
-    };
-    let threshold = 2.0_f64;
+/// Returns true when any tracked metric moved by at least `threshold` points.
+pub(crate) fn metrics_delta_significant(prev: &Value, current: &Value, threshold: f64) -> bool {
     for key in ["cpu_percent", "memory_percent", "disk_percent"] {
-        let prev_v = p.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let prev_v = prev.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
         let cur_v = current.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
         if (prev_v - cur_v).abs() >= threshold {
             return true;
         }
     }
     false
+}
+
+async fn metrics_changed(current: &Value) -> bool {
+    let prev = LAST_METRICS.read().await;
+    let Some(p) = prev.as_ref() else {
+        return true;
+    };
+    metrics_delta_significant(p, current, 2.0)
 }
 
 async fn schedule_metrics_emit() {
@@ -524,4 +528,39 @@ async fn get_network_stats() -> Result<Vec<NetworkStats>> {
     }
 
     Ok(stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn metrics_delta_significant_detects_cpu_change() {
+        let prev = json!({ "cpu_percent": 10.0, "memory_percent": 50.0, "disk_percent": 30.0 });
+        let cur = json!({ "cpu_percent": 13.0, "memory_percent": 50.5, "disk_percent": 30.0 });
+        assert!(metrics_delta_significant(&prev, &cur, 2.0));
+    }
+
+    #[test]
+    fn metrics_delta_significant_ignores_small_drift() {
+        let prev = json!({ "cpu_percent": 10.0, "memory_percent": 50.0, "disk_percent": 30.0 });
+        let cur = json!({ "cpu_percent": 11.0, "memory_percent": 51.0, "disk_percent": 31.0 });
+        assert!(!metrics_delta_significant(&prev, &cur, 2.0));
+    }
+
+    #[test]
+    fn metrics_delta_significant_missing_keys_treated_as_zero() {
+        let cur = json!({ "cpu_percent": 5.0, "memory_percent": 40.0, "disk_percent": 20.0 });
+        assert!(metrics_delta_significant(&json!({}), &cur, 2.0));
+    }
+
+    #[tokio::test]
+    async fn collect_metrics_json_shape() {
+        let m = collect_metrics_json().await.expect("metrics");
+        assert!(m.get("cpu_percent").and_then(|v| v.as_f64()).is_some());
+        assert!(m.get("memory_percent").and_then(|v| v.as_f64()).is_some());
+        assert!(m.get("disk_percent").and_then(|v| v.as_f64()).is_some());
+        assert!(m.get("temperature_c").and_then(|v| v.as_f64()).is_some());
+    }
 }

@@ -1,9 +1,13 @@
 Device AA:BB:CC:DD:EE:FF (public)
 	Name: Test Headphones
 	Alias: Test Headphones
-	Paired: yes
-	Trusted: yes
-	Connected: yes
-	Battery Percentage: 0x55 (85)
-	RSSI: -45
+	Class: 0x00240404
 	Icon: audio-headphones
+	Paired: yes
+	Bonded: yes
+	Trusted: yes
+	Blocked: no
+	Connected: yes
+	LegacyPairing: no
+	RSSI: -45
+	Battery Percentage: 0x55 (85)

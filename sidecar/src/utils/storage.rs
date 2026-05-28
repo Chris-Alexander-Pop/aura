@@ -207,8 +207,12 @@ pub async fn scan_namespace(namespace: &str) -> Result<Vec<serde_json::Value>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
-    fn setup() {
+    static STORAGE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn setup() -> std::sync::MutexGuard<'static, ()> {
+        let guard = STORAGE_TEST_LOCK.lock().unwrap();
         let n = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
@@ -220,11 +224,12 @@ mod tests {
         ));
         let _ = std::fs::remove_file(&path);
         std::env::set_var("AURA_STORAGE_DB", path.to_string_lossy().to_string());
+        guard
     }
 
     #[tokio::test]
     async fn round_trip_set_list_scan_delete() {
-        setup();
+        let _guard = setup();
         init().await.unwrap();
 
         set_kv("test_ns", "a", &serde_json::json!({"x": 1}))
@@ -249,7 +254,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_namespaces_with_prefix() {
-        setup();
+        let _guard = setup();
         init().await.unwrap();
 
         set_kv("auto_a", "k", &serde_json::json!(1))
@@ -266,5 +271,56 @@ mod tests {
         assert!(ns.contains(&"auto_a".to_string()));
         assert!(ns.contains(&"auto_b".to_string()));
         assert!(!ns.contains(&"other".to_string()));
+    }
+
+    #[tokio::test]
+    async fn get_kv_missing_and_round_trip() {
+        let _guard = setup();
+        init().await.unwrap();
+
+        assert!(get_kv("ns", "missing").await.unwrap().is_none());
+
+        set_kv("ns", "k", &serde_json::json!({ "n": 42 }))
+            .await
+            .unwrap();
+        let v = get_kv("ns", "k").await.unwrap().expect("value");
+        assert_eq!(v, serde_json::json!({ "n": 42 }));
+    }
+
+    #[tokio::test]
+    async fn set_kv_overwrites_existing() {
+        let _guard = setup();
+        init().await.unwrap();
+
+        set_kv("ns", "k", &serde_json::json!(1)).await.unwrap();
+        set_kv("ns", "k", &serde_json::json!(2)).await.unwrap();
+        let v = get_kv("ns", "k").await.unwrap().expect("value");
+        assert_eq!(v, serde_json::json!(2));
+    }
+
+    #[tokio::test]
+    async fn scan_namespace_skips_corrupt_rows() {
+        let _guard = setup();
+        let path = db_path().unwrap();
+        init().await.unwrap();
+
+        set_kv("corrupt_ns", "good", &serde_json::json!({ "ok": true }))
+            .await
+            .unwrap();
+
+        task::spawn_blocking(move || {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute(
+                "INSERT INTO kv(namespace, key, value) VALUES (?1, ?2, ?3)",
+                params!["corrupt_ns", "bad", "not-json"],
+            )
+            .unwrap();
+        })
+        .await
+        .unwrap();
+
+        let items = scan_namespace("corrupt_ns").await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0], serde_json::json!({ "ok": true }));
     }
 }

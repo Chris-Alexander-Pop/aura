@@ -1,0 +1,2 @@
+Controller AA:BB:CC:DD:EE:00 Built-in Radio [default]
+Controller 11:22:33:44:55:66 USB Adapter

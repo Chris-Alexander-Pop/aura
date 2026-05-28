@@ -293,13 +293,13 @@ async fn fetch_adapters() -> Result<Vec<BluetoothAdapter>> {
     Ok(adapters)
 }
 
-struct AdapterShowDetails {
-    name: Option<String>,
-    alias: Option<String>,
-    powered: Option<bool>,
-    discoverable: Option<bool>,
-    pairable: Option<bool>,
-    discovering: Option<bool>,
+pub(crate) struct AdapterShowDetails {
+    pub name: Option<String>,
+    pub alias: Option<String>,
+    pub powered: Option<bool>,
+    pub discoverable: Option<bool>,
+    pub pairable: Option<bool>,
+    pub discovering: Option<bool>,
 }
 
 async fn fetch_adapter_show(address: &str) -> AdapterShowDetails {
@@ -309,7 +309,7 @@ async fn fetch_adapter_show(address: &str) -> AdapterShowDetails {
     parse_show_block(&output)
 }
 
-fn parse_show_block(output: &str) -> AdapterShowDetails {
+pub(crate) fn parse_show_block(output: &str) -> AdapterShowDetails {
     let mut details = AdapterShowDetails {
         name: None,
         alias: None,
@@ -344,16 +344,15 @@ async fn fetch_devices() -> Result<Vec<BluetoothDevice>> {
 
     for line in output.lines() {
         let line = line.trim();
-        if !line.starts_with("Device ") {
+        let Some(address) = parse_devices_list_address(line) else {
             continue;
-        }
-        let rest = line.strip_prefix("Device ").unwrap_or(line);
-        let mut parts = rest.splitn(2, ' ');
-        let address = parts.next().unwrap_or("").to_string();
-        if !address.contains(':') {
-            continue;
-        }
-        let name = parts.next().unwrap_or("").trim().to_string();
+        };
+        let name = line
+            .strip_prefix("Device ")
+            .and_then(|rest| rest.splitn(2, ' ').nth(1))
+            .unwrap_or("")
+            .trim()
+            .to_string();
         if let Ok(device) = fetch_device_info(&address).await {
             devices.push(device);
         } else {
@@ -444,6 +443,24 @@ fn device_path_for_address(address: &str) -> String {
     format!("/org/bluez/hci0/dev_{}", address.replace(':', "_"))
 }
 
+pub fn bluetoothctl_device_not_found(output: &str) -> bool {
+    output.contains("Device not found") || output.contains("not available")
+}
+
+pub(crate) fn parse_devices_list_address(line: &str) -> Option<String> {
+    let line = line.trim();
+    if !line.starts_with("Device ") {
+        return None;
+    }
+    let rest = line.strip_prefix("Device ")?;
+    let address = rest.split_whitespace().next()?.to_string();
+    if address.contains(':') {
+        Some(address)
+    } else {
+        None
+    }
+}
+
 pub(crate) fn parse_controller_list_line(line: &str) -> Option<(String, String)> {
     let line = line.trim();
     if !line.starts_with("Controller ") {
@@ -483,5 +500,65 @@ mod tests {
         assert!(dev.paired);
         assert!(dev.connected);
         assert_eq!(dev.battery_percentage, Some(85));
+        assert_eq!(dev.device_type, "audio-headphones");
+        assert_eq!(dev.rssi, Some(-45));
+    }
+
+    #[test]
+    fn parse_show_block_fixture() {
+        let fixture = include_str!("../../tests/fixtures/bluetooth/bluetoothctl_show.txt");
+        let details = parse_show_block(fixture);
+        assert_eq!(details.name.as_deref(), Some("My-PC"));
+        assert_eq!(details.alias.as_deref(), Some("My-PC"));
+        assert_eq!(details.powered, Some(true));
+        assert_eq!(details.discoverable, Some(false));
+        assert_eq!(details.pairable, Some(true));
+        assert_eq!(details.discovering, Some(false));
+    }
+
+    #[test]
+    fn parse_controller_list_multiple() {
+        let fixture = include_str!("../../tests/fixtures/bluetooth/bluetoothctl_list_multi.txt");
+        let mut addrs = Vec::new();
+        for line in fixture.lines() {
+            if let Some((addr, name)) = parse_controller_list_line(line) {
+                addrs.push((addr, name));
+            }
+        }
+        assert_eq!(addrs.len(), 2);
+        assert_eq!(addrs[0].0, "AA:BB:CC:DD:EE:00");
+        assert_eq!(addrs[1].0, "11:22:33:44:55:66");
+        assert!(addrs[1].1.contains("USB"));
+    }
+
+    #[test]
+    fn parse_device_info_minimal_fixture() {
+        let fixture = include_str!("../../tests/fixtures/bluetooth/bluetoothctl_info_minimal.txt");
+        let dev = parse_device_info("11:22:33:44:55:66", fixture);
+        assert_eq!(dev.name, "Unknown Device");
+        assert!(!dev.paired);
+        assert!(!dev.connected);
+        assert_eq!(dev.battery_percentage, None);
+        assert_eq!(dev.alias, "Unknown Device");
+    }
+
+    #[test]
+    fn bluetoothctl_not_found_fixture() {
+        let fixture =
+            include_str!("../../tests/fixtures/bluetooth/bluetoothctl_info_not_found.txt");
+        assert!(bluetoothctl_device_not_found(fixture));
+    }
+
+    #[test]
+    fn parse_device_list_line_skips_non_devices() {
+        let fixture = include_str!("../../tests/fixtures/bluetooth/bluetoothctl_devices.txt");
+        let mut addresses = Vec::new();
+        for line in fixture.lines() {
+            if let Some(addr) = parse_devices_list_address(line) {
+                addresses.push(addr);
+            }
+        }
+        assert_eq!(addresses.len(), 2);
+        assert_eq!(addresses[0], "AA:BB:CC:DD:EE:FF");
     }
 }

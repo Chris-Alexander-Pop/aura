@@ -53,15 +53,8 @@ pub fn register(registry: &mut ServiceRegistry) {
         let mut containers = Vec::new();
 
         for line in output.lines() {
-            let parts: Vec<&str> = line.split('|').collect();
-            if parts.len() >= 5 {
-                containers.push(DockerContainer {
-                    id: parts[0].to_string(),
-                    name: parts[1].to_string(),
-                    image: parts[2].to_string(),
-                    status: parts[3].to_string(),
-                    ports: parts[4].to_string(),
-                });
+            if let Some(c) = parse_docker_ps_line(line) {
+                containers.push(c);
             }
         }
 
@@ -175,15 +168,9 @@ pub fn register(registry: &mut ServiceRegistry) {
         let mut containers = Vec::new();
 
         for line in output.lines() {
-            let parts: Vec<&str> = line.split('|').collect();
-            if parts.len() >= 4 {
-                containers.push(DockerContainer {
-                    id: parts[0].to_string(),
-                    name: parts[1].to_string(),
-                    image: parts[2].to_string(),
-                    status: parts[3].to_string(),
-                    ports: String::new(),
-                });
+            if let Some(mut c) = parse_docker_ps_line(line) {
+                c.ports.clear();
+                containers.push(c);
             }
         }
 
@@ -317,6 +304,44 @@ pub fn register(registry: &mut ServiceRegistry) {
             "git_dirty_hint": git_dirty_hint,
         }))
     });
+}
+
+pub fn parse_docker_ps_line(line: &str) -> Option<DockerContainer> {
+    let line = line.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let parts: Vec<&str> = line.split('|').collect();
+    if parts.len() >= 4 {
+        Some(DockerContainer {
+            id: parts[0].to_string(),
+            name: parts[1].to_string(),
+            image: parts[2].to_string(),
+            status: parts[3].to_string(),
+            ports: parts.get(4).unwrap_or(&"").to_string(),
+        })
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_docker_ps_fixture() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/devops/docker_ps.txt"
+        );
+        let text = std::fs::read_to_string(path).expect("fixture");
+        let containers: Vec<_> = text.lines().filter_map(parse_docker_ps_line).collect();
+        assert_eq!(containers.len(), 2);
+        assert_eq!(containers[0].name, "my-app");
+        assert_eq!(containers[0].ports, "0.0.0.0:8080->80/tcp");
+        assert_eq!(containers[1].status, "Exited (0) 1 day ago");
+    }
 }
 
 async fn scan_git_repos(path: PathBuf, repos: &mut Vec<GitRepo>) -> Result<()> {

@@ -59,11 +59,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Automation.GetWorkflows", |_params| async move {
         storage::init().await?;
         let items = storage::scan_namespace("automation_workflows").await?;
-        let workflows: Vec<Workflow> = items
-            .into_iter()
-            .filter_map(|v| serde_json::from_value(v).ok())
-            .collect();
-        Ok(serde_json::to_value(workflows)?)
+        Ok(serde_json::to_value(&workflows_from_storage_values(items))?)
     });
 
     registry.register("Automation.UpdateWorkflow", |params| async move {
@@ -275,6 +271,44 @@ pub fn register(registry: &mut ServiceRegistry) {
             "run_script"
         ]))
     });
+}
+
+pub(crate) fn workflows_from_storage_values(items: Vec<serde_json::Value>) -> Vec<Workflow> {
+    items
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn workflows_from_storage_skips_corrupt_entries() {
+        let valid = Workflow {
+            id: "w1".into(),
+            name: "n".into(),
+            enabled: true,
+            triggers: json!([]),
+            actions: json!([]),
+            created_at: 1,
+        };
+        let items = vec![
+            serde_json::to_value(&valid).unwrap(),
+            json!({ "not_a_workflow": true }),
+            json!("bare string"),
+        ];
+        let out = workflows_from_storage_values(items);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, "w1");
+    }
+
+    #[test]
+    fn workflows_from_storage_empty_namespace() {
+        assert!(workflows_from_storage_values(vec![]).is_empty());
+    }
 }
 
 async fn execute_actions(actions: &serde_json::Value) -> Result<()> {

@@ -1,0 +1,1 @@
+Mar 28 10:01:00 host sudo: alice : TTY=pts/0 ; PWD=/home/user ; USER=root ; COMMAND=/bin/true

@@ -36,6 +36,11 @@ pub struct KeybindValidation {
 }
 
 pub fn aura_binds_path() -> PathBuf {
+    if let Ok(p) = std::env::var("AURA_KEYBINDS_PATH") {
+        if !p.is_empty() {
+            return PathBuf::from(p);
+        }
+    }
     if let Ok(home) = std::env::var("HOME") {
         return PathBuf::from(home)
             .join(".config")
@@ -396,6 +401,13 @@ async fn write_aura_binds(entries: &[KeybindEntry]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/keybinds")
+            .join(name)
+    }
 
     #[test]
     fn parse_sample_binds() {
@@ -443,5 +455,91 @@ binde = SUPER, left, resizeactive, -20 0
         ];
         let v = validate_entries(&entries);
         assert!(!v.duplicates.is_empty());
+    }
+
+    #[test]
+    fn parse_bind_line_prefixes() {
+        assert_eq!(
+            parse_bind_line("bind = SUPER, Q, killactive"),
+            Some(("bind", "SUPER, Q, killactive"))
+        );
+        assert_eq!(
+            parse_bind_line("binde=SUPER, left, resizeactive, -20 0"),
+            Some(("binde", "SUPER, left, resizeactive, -20 0"))
+        );
+        assert!(parse_bind_line("exec = foot").is_none());
+    }
+
+    #[test]
+    fn parse_edge_cases_fixture() {
+        let text = std::fs::read_to_string(fixture("edge_cases.conf")).expect("fixture");
+        let entries = parse_keybinds(&text, "edge_cases.conf");
+        assert!(entries.iter().any(|e| e.bind_type == "bindl"));
+        assert!(entries.iter().any(|e| e.bind_type == "bindm"));
+        assert!(entries.iter().any(|e| e.category == "launcher"));
+        assert!(!entries.iter().any(|e| e.combo.starts_with(", ")));
+    }
+
+    #[test]
+    fn categorize_action_buckets() {
+        assert_eq!(categorize_action("dispatch movetoworkspace 2"), "workspace");
+        assert_eq!(categorize_action("dispatch togglefloating"), "window");
+        assert_eq!(categorize_action("exec playerctl next"), "media");
+        assert_eq!(categorize_action("exec wofi"), "launcher");
+        assert_eq!(categorize_action("dispatch exit"), "system");
+        assert_eq!(categorize_action("dispatch pseudo"), "other");
+    }
+
+    #[test]
+    fn validate_unknown_dispatch() {
+        let entries = vec![KeybindEntry {
+            combo: "SUPER, Z".into(),
+            action: "dispatch notarealcommand".into(),
+            bind_type: "bind".into(),
+            flags: None,
+            file: "t".into(),
+            line: 1,
+            category: "other".into(),
+        }];
+        let v = validate_entries(&entries);
+        assert_eq!(v.duplicates.len(), 0);
+        assert!(!v.unknown_dispatches.is_empty());
+    }
+
+    #[test]
+    fn collect_config_sources_fixture() {
+        let root = fixture("sources/root.conf");
+        let mut files = Vec::new();
+        collect_config_files(&root, 0, &mut files).expect("collect");
+        assert!(files.len() >= 2);
+        let merged: Vec<_> = files
+            .iter()
+            .flat_map(|p| parse_keybinds(&std::fs::read_to_string(p).unwrap(), &p.display().to_string()))
+            .collect();
+        assert!(merged.iter().any(|e| e.combo == "SUPER, X"));
+        assert!(merged.iter().any(|e| e.combo == "SUPER, Y"));
+    }
+
+    #[tokio::test]
+    async fn write_aura_binds_uses_temp_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("aura-binds.conf");
+        std::env::set_var("AURA_KEYBINDS_PATH", path.to_string_lossy().as_ref());
+
+        let entries = vec![KeybindEntry {
+            combo: "SUPER, T".into(),
+            action: "killactive".into(),
+            bind_type: "bind".into(),
+            flags: None,
+            file: path.display().to_string(),
+            line: 0,
+            category: "window".into(),
+        }];
+        write_aura_binds(&entries).await.expect("write");
+        let text = tokio::fs::read_to_string(&path).await.expect("read");
+        assert!(text.contains("Aura-managed"));
+        assert!(text.contains("bind = SUPER, T, killactive"));
+
+        std::env::remove_var("AURA_KEYBINDS_PATH");
     }
 }

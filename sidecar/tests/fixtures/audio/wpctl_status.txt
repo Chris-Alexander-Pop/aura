@@ -1,12 +1,13 @@
+PipeWire 'pipewire-0' [v1.2.0]
+ └─ Clients:
+        ...
+
 Audio
- ├─ Devices:
- │     50. Built-in Audio Analog Stereo
+ ├ Devices:
  │  
- ├─ Sinks:
- │  *   47. Headphones [vol: 0.50 MUTED]
+ ├ Sinks:
+ │  ●   47. Headphones [vol: 0.50 MUTED]
+ ├ Sources:
+ │  ●   50. Built-in Microphone [vol: 1.00]
+ ├ Sink Inputs:
  │  
- ├─ Sources:
- │  *   48. Microphone [vol: 0.80]
- │  
- ├─ Sink Inputs:
- │     55. Firefox

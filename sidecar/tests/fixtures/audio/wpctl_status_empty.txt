@@ -1,0 +1,7 @@
+PipeWire 'pipewire-0' [v1.2.0]
+Audio
+ ├ Devices:
+ ├ Sinks:
+ ├ Sources:
+Video
+ ├ Devices:

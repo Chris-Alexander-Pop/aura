@@ -27,25 +27,18 @@ pub struct AppState {
     pub notify_tx: NotifyTx,
 }
 
-pub async fn run(registry: Arc<Mutex<ServiceRegistry>>, notify_tx: NotifyTx) -> Result<()> {
-    let state = AppState {
-        registry,
-        notify_tx,
-    };
+/// Production bind address (stdio sidecar spawns HTTP here).
+pub const DEFAULT_HTTP_ADDR: std::net::SocketAddr =
+    std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 9080);
 
-    let cors = CorsLayer::new()
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers(Any)
-        .allow_origin(Any);
-
-    // Resolve ui/dist relative to the sidecar binary location
+/// Resolve `ui/dist` relative to the sidecar binary location.
+pub fn resolve_ui_dist() -> std::path::PathBuf {
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-    // Walk up to workspace root and find ui/dist
-    let ui_dist = exe_dir
+    exe_dir
         .ancestors()
         .find_map(|p| {
             let candidate = p.join("ui").join("dist");
@@ -55,27 +48,52 @@ pub async fn run(registry: Arc<Mutex<ServiceRegistry>>, notify_tx: NotifyTx) -> 
                 None
             }
         })
-        .unwrap_or_else(|| exe_dir.join("ui").join("dist"));
+        .unwrap_or_else(|| exe_dir.join("ui").join("dist"))
+}
 
-    tracing::info!("Serving UI from: {:?}", ui_dist);
+pub fn app_router(state: AppState, ui_dist: &std::path::Path) -> Router {
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(Any)
+        .allow_origin(Any);
 
-    let app = Router::new()
-        // WebSocket push channel
+    Router::new()
         .route("/ws", get(ws_handler))
-        // REST: GET /api/Service.Method
         .route("/api/:method", get(handle_get).post(handle_post))
-        // Static UI files
-        .nest_service("/", ServeDir::new(&ui_dist))
+        .nest_service("/", ServeDir::new(ui_dist))
         .layer(cors)
-        .with_state(state);
+        .with_state(state)
+}
 
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 9080));
-    tracing::info!("HTTP server listening on {}", addr);
+/// Bind `127.0.0.1:0` for integration tests (never competes with a dev sidecar on :9080).
+pub async fn bind_ephemeral() -> Result<(tokio::net::TcpListener, std::net::SocketAddr)> {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+    let addr = listener.local_addr()?;
+    Ok((listener, addr))
+}
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+pub async fn serve(
+    listener: tokio::net::TcpListener,
+    registry: Arc<Mutex<ServiceRegistry>>,
+    notify_tx: NotifyTx,
+    ui_dist: std::path::PathBuf,
+) -> Result<()> {
+    let state = AppState {
+        registry,
+        notify_tx,
+    };
+    let app = app_router(state, &ui_dist);
     axum::serve(listener, app).await?;
-
     Ok(())
+}
+
+pub async fn run(registry: Arc<Mutex<ServiceRegistry>>, notify_tx: NotifyTx) -> Result<()> {
+    let ui_dist = resolve_ui_dist();
+    tracing::info!("Serving UI from: {:?}", ui_dist);
+    tracing::info!("HTTP server listening on {}", DEFAULT_HTTP_ADDR);
+
+    let listener = tokio::net::TcpListener::bind(DEFAULT_HTTP_ADDR).await?;
+    serve(listener, registry, notify_tx, ui_dist).await
 }
 
 // ── REST handlers ────────────────────────────────────────────────────────────

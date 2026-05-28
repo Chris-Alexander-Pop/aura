@@ -1,0 +1,14 @@
+{
+  "current_condition": [
+    {
+      "temp_C": "18",
+      "temp_F": "64",
+      "FeelsLikeC": "17",
+      "FeelsLikeF": "63",
+      "humidity": "72",
+      "weatherDesc": [{ "value": "Partly cloudy" }],
+      "weatherCode": "116"
+    }
+  ],
+  "weather": []
+}

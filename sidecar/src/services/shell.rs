@@ -5,7 +5,7 @@ use anyhow::bail;
 use serde_json::json;
 use std::collections::HashMap;
 
-fn aura_allowlist(name: &str) -> bool {
+pub(crate) fn aura_window_allowed(name: &str) -> bool {
     matches!(
         name,
         "control-center" | "sidebar" | "calendar" | "dropdown"
@@ -66,7 +66,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|n| n.as_str())
             .map(str::to_owned)
             .ok_or_else(|| anyhow::anyhow!("missing name"))?;
-        if !aura_allowlist(&name) {
+        if !aura_window_allowed(&name) {
             bail!("window name not allowed: {name}");
         }
         process::exec_command_detached(&["ags", "request", "toggle", name.as_str()]).await?;
@@ -90,4 +90,18 @@ pub fn register(registry: &mut ServiceRegistry) {
         process::exec_command_detached(&refs).await?;
         Ok(json!({"ok": true}))
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::aura_window_allowed;
+
+    #[test]
+    fn aura_window_allowlist() {
+        for allowed in ["control-center", "sidebar", "calendar", "dropdown"] {
+            assert!(aura_window_allowed(allowed), "{allowed}");
+        }
+        assert!(!aura_window_allowed("launcher"));
+        assert!(!aura_window_allowed(""));
+    }
 }

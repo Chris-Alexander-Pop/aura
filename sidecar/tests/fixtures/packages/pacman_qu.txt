@@ -1,2 +1,2 @@
-linux 6.15.0.arch1-1
-firefox 138.0.1-1
+linux 6.12.1-1
+firefox 133.0-1

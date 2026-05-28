@@ -97,7 +97,7 @@ fn find_monitor<'a>(monitors: &'a HashMap<String, Monitor>, query: &str) -> Opti
     }
 }
 
-pub(crate) fn parse_brightness_value(value: &str, current: f64) -> Result<f64> {
+pub fn parse_brightness_value(value: &str, current: f64) -> Result<f64> {
     let value = value.trim();
     
     if value.ends_with("%-") {
@@ -196,8 +196,18 @@ fn parse_ddc_monitors(output: &str) -> Vec<(String, String)> {
     let mut current_bus: Option<String> = None;
     let mut current_connector: Option<String> = None;
 
+    let mut flush = |monitors: &mut Vec<(String, String)>,
+                     bus: &mut Option<String>,
+                     connector: &mut Option<String>| {
+        if let (Some(b), Some(c)) = (bus.take(), connector.take()) {
+            monitors.push((c, b));
+        }
+    };
+
     for line in output.lines() {
         if line.starts_with("Display ") {
+            flush(&mut monitors, &mut current_bus, &mut current_connector);
+        } else if line.contains("I2C bus:") {
             if let Some(bus) = line
                 .split("I2C bus:")
                 .nth(1)
@@ -214,13 +224,12 @@ fn parse_ddc_monitors(output: &str) -> Vec<(String, String)> {
             {
                 current_connector = Some(connector);
             }
-        } else if line.is_empty() && current_bus.is_some() && current_connector.is_some() {
-            if let (Some(bus), Some(conn)) = (current_bus.take(), current_connector.take()) {
-                monitors.push((conn.clone(), bus));
-            }
+        } else if line.is_empty() {
+            flush(&mut monitors, &mut current_bus, &mut current_connector);
         }
     }
 
+    flush(&mut monitors, &mut current_bus, &mut current_connector);
     monitors
 }
 
@@ -235,6 +244,19 @@ mod tests {
         assert_eq!(parse_brightness_value("10%-", 0.5).unwrap(), 0.4);
         assert_eq!(parse_brightness_value("0.8", 0.5).unwrap(), 0.8);
         assert_eq!(parse_brightness_value("+0.1", 0.5).unwrap(), 0.6);
+    }
+
+    #[test]
+    fn parse_ddcutil_detect_fixture() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/brightness/ddcutil_detect.txt"
+        );
+        let text = std::fs::read_to_string(path).expect("fixture");
+        let monitors = super::parse_ddc_monitors(&text);
+        assert_eq!(monitors.len(), 2);
+        assert_eq!(monitors[0].0, "HDMI-A-1");
+        assert_eq!(monitors[0].1, "7");
     }
 }
 

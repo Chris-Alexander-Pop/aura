@@ -51,7 +51,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|n| n.as_u64())
             .ok_or_else(|| anyhow::anyhow!("missing pid"))? as u32;
 
-        if pid_u <= 1 || pid_u < 100 {
+        if !kill_pid_allowed(pid_u) {
             anyhow::bail!("refusing to kill pid {pid_u}");
         }
 
@@ -67,4 +67,21 @@ pub fn register(registry: &mut ServiceRegistry) {
         }
         Ok(json!({"ok": true}))
     });
+}
+
+pub(crate) fn kill_pid_allowed(pid: u32) -> bool {
+    pid > 1 && pid >= 100
+}
+
+#[cfg(test)]
+mod tests {
+    use super::kill_pid_allowed;
+
+    #[test]
+    fn refuses_low_pids() {
+        assert!(!kill_pid_allowed(1));
+        assert!(!kill_pid_allowed(50));
+        assert!(kill_pid_allowed(100));
+        assert!(kill_pid_allowed(4242));
+    }
 }

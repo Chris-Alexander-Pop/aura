@@ -3,19 +3,27 @@ use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
+/// Human-readable secret-tool label for a VPN credential type.
+pub(crate) fn vpn_credential_label(credential_type: &str) -> &str {
+    match credential_type {
+        "vpn_user" => "Caelestia VPN User",
+        "vpn_password" => "Caelestia VPN Password",
+        "vpn_mfa" => "Caelestia VPN MFA",
+        other => other,
+    }
+}
+
+/// Human-readable secret-tool label for a stored Wi-Fi password.
+pub(crate) fn wifi_credential_label(ssid: &str) -> String {
+    format!("Aura Wi-Fi: {ssid}")
+}
+
 /// Store a VPN credential in the desktop keyring using `secret-tool`, matching the
 /// scheme used by the legacy Caelestia QML implementation.
 ///
 /// - `credential_type` is one of: "vpn_user", "vpn_password", "vpn_mfa"
 pub async fn store_vpn_credential(vpn_id: &str, credential_type: &str, value: &str) -> Result<()> {
-    // Labels chosen to match the existing Caelestia secrets, so existing
-    // credentials remain usable.
-    let label = match credential_type {
-        "vpn_user" => "Caelestia VPN User",
-        "vpn_password" => "Caelestia VPN Password",
-        "vpn_mfa" => "Caelestia VPN MFA",
-        other => other,
-    };
+    let label = vpn_credential_label(credential_type);
 
     // `secret-tool store` reads the secret from stdin.
     let mut cmd = Command::new("secret-tool");
@@ -78,7 +86,7 @@ pub async fn store_wifi_password(ssid: &str, password: &str) -> Result<()> {
     let mut cmd = Command::new("secret-tool");
     cmd.arg("store")
         .arg("--label")
-        .arg(format!("Aura Wi-Fi: {ssid}"))
+        .arg(wifi_credential_label(ssid))
         .arg("application")
         .arg("aura")
         .arg("type")
@@ -125,5 +133,27 @@ pub async fn lookup_wifi_password(ssid: &str) -> Result<Option<String>> {
         Ok(None)
     } else {
         Ok(Some(text))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vpn_credential_labels_match_caelestia() {
+        assert_eq!(vpn_credential_label("vpn_user"), "Caelestia VPN User");
+        assert_eq!(vpn_credential_label("vpn_password"), "Caelestia VPN Password");
+        assert_eq!(vpn_credential_label("vpn_mfa"), "Caelestia VPN MFA");
+    }
+
+    #[test]
+    fn vpn_credential_label_passthrough_unknown_type() {
+        assert_eq!(vpn_credential_label("custom_token"), "custom_token");
+    }
+
+    #[test]
+    fn wifi_credential_label_includes_ssid() {
+        assert_eq!(wifi_credential_label("Cafe-Guest"), "Aura Wi-Fi: Cafe-Guest");
     }
 }

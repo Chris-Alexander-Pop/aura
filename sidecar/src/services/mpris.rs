@@ -9,9 +9,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             .await
         {
             Ok(s) => {
-                let mut parts = s.splitn(2, '\t');
-                let title = parts.next().unwrap_or("").to_string();
-                let artist = parts.next().unwrap_or("").to_string();
+                let (title, artist) = parse_now_playing_line(&s);
                 Ok(json!({
                     "playing": !title.is_empty(),
                     "title": title,
@@ -25,4 +23,25 @@ pub fn register(registry: &mut ServiceRegistry) {
             })),
         }
     });
+}
+
+pub fn parse_now_playing_line(s: &str) -> (String, String) {
+    let mut parts = s.trim().splitn(2, '\t');
+    let title = parts.next().unwrap_or("").to_string();
+    let artist = parts.next().unwrap_or("").to_string();
+    (title, artist)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_now_playing_line;
+
+    #[test]
+    fn parse_playerctl_metadata() {
+        let (title, artist) = parse_now_playing_line("Song\tArtist");
+        assert_eq!(title, "Song");
+        assert_eq!(artist, "Artist");
+        let (empty, _) = parse_now_playing_line("\n");
+        assert!(empty.is_empty());
+    }
 }

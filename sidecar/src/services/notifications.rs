@@ -543,6 +543,32 @@ mod tests {
         assert_eq!(actions[0].key, "default");
     }
 
+    #[test]
+    fn parse_dbus_monitor_string_variants() {
+        assert_eq!(
+            parse_dbus_monitor_string("string \"firefox\""),
+            Some("firefox".into())
+        );
+        assert_eq!(
+            parse_dbus_monitor_string("string brief"),
+            Some("brief".into())
+        );
+        assert!(parse_dbus_monitor_string("uint32 7").is_none());
+    }
+
+    #[test]
+    fn parse_dbus_monitor_uint32_line() {
+        assert_eq!(parse_dbus_monitor_uint32("uint32 42"), Some(42));
+        assert_eq!(parse_dbus_monitor_uint32("  uint32 99  "), Some(99));
+        assert!(parse_dbus_monitor_uint32("string \"x\"").is_none());
+    }
+
+    #[test]
+    fn parse_actions_odd_pair_count() {
+        let actions = parse_action_string_pairs(&["only".into()]);
+        assert!(actions.is_empty());
+    }
+
     #[tokio::test]
     async fn list_empty_without_dbus() {
         use crate::services::ServiceRegistry;
@@ -560,5 +586,37 @@ mod tests {
             .await
             .unwrap();
         assert!(v.as_array().map(|a| a.is_empty()).unwrap_or(false));
+    }
+
+    #[tokio::test]
+    async fn record_notification_visible_in_list() {
+        use crate::services::ServiceRegistry;
+        use crate::types::JsonRpcRequest;
+
+        record_notification(
+            Some(9001),
+            "test-app".into(),
+            0,
+            "Summary".into(),
+            "Body".into(),
+            None,
+            1,
+            parse_action_string_pairs(&["default".into(), "Open".into()]),
+        )
+        .await;
+
+        let mut reg = ServiceRegistry::new();
+        register(&mut reg);
+        let v = reg
+            .handle_request(JsonRpcRequest {
+                jsonrpc: "2.0".into(),
+                method: "Notifications.List".into(),
+                params: Some(json!({ "limit": 5, "app_name": "test-app" })),
+                id: Some(1.into()),
+            })
+            .await
+            .unwrap();
+        let items = v.as_array().expect("array");
+        assert!(items.iter().any(|n| n.get("summary").and_then(|s| s.as_str()) == Some("Summary")));
     }
 }

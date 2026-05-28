@@ -38,7 +38,7 @@ pub fn spawn_stdout_forwarder(mut rx: broadcast::Receiver<String>) {
     });
 }
 
-fn write_stdout_notification(ws_msg: &str) -> io::Result<()> {
+pub(crate) fn write_stdout_notification(ws_msg: &str) -> io::Result<()> {
     let v: Value = serde_json::from_str(ws_msg)?;
     let full = json!({
         "jsonrpc": "2.0",
@@ -51,8 +51,48 @@ fn write_stdout_notification(ws_msg: &str) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    fn ensure_bus() -> broadcast::Sender<String> {
+        INIT.call_once(|| {
+            let _ = init_for_tests();
+        });
+        NOTIFY_TX.get().expect("notify bus").clone()
+    }
+
+    #[test]
+    fn emit_delivers_to_broadcast_subscriber() {
+        let tx = ensure_bus();
+        let mut rx = tx.subscribe();
+        emit("Test.Event", json!({ "n": 1 }));
+        let raw = rx.try_recv().expect("message");
+        let v: Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["method"], "Test.Event");
+        assert_eq!(v["params"]["n"], 1);
+    }
+
+    #[test]
+    fn write_stdout_notification_wraps_json_rpc() {
+        let inner = json!({"method":"Foo.Bar","params":{"x":true}}).to_string();
+        write_stdout_notification(&inner).expect("write");
+        let v: Value = serde_json::from_str(&inner).unwrap();
+        assert_eq!(v["method"], "Foo.Bar");
+        assert_eq!(v["params"]["x"], true);
+    }
+}
+
 /// Initialize a no-op notification bus for integration tests.
-pub fn init_for_tests() {
+pub fn init_for_tests() -> broadcast::Sender<String> {
+    if let Some(tx) = NOTIFY_TX.get() {
+        return tx.clone();
+    }
     let (tx, _rx) = broadcast::channel(8);
-    let _ = NOTIFY_TX.set(tx);
+    let _ = NOTIFY_TX.set(tx.clone());
+    tx
 }

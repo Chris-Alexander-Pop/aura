@@ -271,8 +271,8 @@ async fn check_connection_status() -> Result<()> {
     if let Some(iface) = interface {
         // Check if interface exists
         let output = process::exec_command(&["ip", "-o", "addr", "show"]).await?;
-        let is_connected = output.contains(&iface)
-            || (iface.starts_with("tun") && output.contains("tun") && is_vpn_process_running().await);
+        let is_connected =
+            vpn_interface_connected(&output, &iface, is_vpn_process_running().await);
 
         let mut state = VPN_STATE.write().await;
         if is_connected && state.state != VpnState::Connected {
@@ -287,6 +287,16 @@ async fn check_connection_status() -> Result<()> {
     Ok(())
 }
 
+/// Whether VPN appears up from `ip -o addr` output (unit-tested with fixtures).
+pub(crate) fn vpn_interface_connected(
+    ip_output: &str,
+    iface: &str,
+    vpn_process_running: bool,
+) -> bool {
+    ip_output.contains(iface)
+        || (iface.starts_with("tun") && ip_output.contains("tun") && vpn_process_running)
+}
+
 async fn is_vpn_process_running() -> bool {
     process::exec_command(&["pgrep", "-x", "openconnect"])
         .await
@@ -294,4 +304,29 @@ async fn is_vpn_process_running() -> bool {
         || process::exec_command(&["pgrep", "-x", "openvpn"])
             .await
             .is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::vpn_interface_connected;
+
+    #[test]
+    fn vpn_connected_when_iface_present() {
+        let out = "2: tun0: <POINTOPOINT> inet 10.0.0.2/32\n";
+        assert!(vpn_interface_connected(out, "tun0", false));
+    }
+
+    #[test]
+    fn vpn_tun_fallback_requires_process() {
+        let out = "3: tun1: inet 10.0.0.3/32\n";
+        assert!(!vpn_interface_connected(out, "tun9", false));
+        assert!(vpn_interface_connected(out, "tun9", true));
+    }
+
+    #[test]
+    fn vpn_nmcli_profile_interface_match() {
+        let out = "4: example-exit: <BROADCAST> inet 192.168.1.5/24\n";
+        assert!(vpn_interface_connected(out, "example-exit", false));
+        assert!(!vpn_interface_connected(out, "eth0", false));
+    }
 }

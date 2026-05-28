@@ -40,12 +40,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             .filter_map(|v| serde_json::from_value(v).ok())
             .collect();
 
-        if let Some(start) = start_date {
-            events.retain(|e| e.end >= start);
-        }
-        if let Some(end) = end_date {
-            events.retain(|e| e.start <= end);
-        }
+        filter_events_by_range(&mut events, start_date, end_date);
 
         Ok(serde_json::to_value(events)?)
     });
@@ -210,4 +205,76 @@ pub fn register(registry: &mut ServiceRegistry) {
         // Would export .ics file
         Ok(serde_json::json!({ "success": true }))
     });
+}
+
+pub(crate) fn filter_events_by_range(
+    events: &mut Vec<CalendarEvent>,
+    start_date: Option<i64>,
+    end_date: Option<i64>,
+) {
+    if let Some(start) = start_date {
+        events.retain(|e| e.end >= start);
+    }
+    if let Some(end) = end_date {
+        events.retain(|e| e.start <= end);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_event(id: &str, start: i64, end: i64) -> CalendarEvent {
+        CalendarEvent {
+            id: id.into(),
+            title: "t".into(),
+            start,
+            end,
+            description: String::new(),
+            calendar_id: None,
+            reminder_minutes: None,
+        }
+    }
+
+    #[test]
+    fn filter_events_by_date_range() {
+        let mut events = vec![
+            sample_event("a", 100, 200),
+            sample_event("b", 500, 600),
+            sample_event("c", 250, 350),
+        ];
+        filter_events_by_range(&mut events, Some(150), Some(400));
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().any(|e| e.id == "a"));
+        assert!(events.iter().any(|e| e.id == "c"));
+    }
+
+    #[test]
+    fn filter_events_start_only_excludes_ending_before_window() {
+        let mut events = vec![
+            sample_event("early", 10, 50),
+            sample_event("overlap", 100, 200),
+        ];
+        filter_events_by_range(&mut events, Some(80), None);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].id, "overlap");
+    }
+
+    #[test]
+    fn filter_events_end_only_excludes_starting_after_window() {
+        let mut events = vec![
+            sample_event("late", 500, 600),
+            sample_event("overlap", 100, 200),
+        ];
+        filter_events_by_range(&mut events, None, Some(300));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].id, "overlap");
+    }
+
+    #[test]
+    fn filter_events_boundary_touching_edges_kept() {
+        let mut events = vec![sample_event("touch", 100, 200)];
+        filter_events_by_range(&mut events, Some(200), Some(100));
+        assert_eq!(events.len(), 1);
+    }
 }

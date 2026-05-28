@@ -10,6 +10,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "ags-sidecar"
 path = "src/main.rs"
+test = false
 
 [dependencies]
 anyhow = "1.0"
@@ -37,4 +38,7 @@ tower-http = { version = "0.5", features = ["fs", "cors"] }
 tokio-tungstenite = "0.21"
 
 [dev-dependencies]
+regex = "1.10"
+tempfile = "3"
 tokio-test = "0.4"
+wiremock = "0.6"

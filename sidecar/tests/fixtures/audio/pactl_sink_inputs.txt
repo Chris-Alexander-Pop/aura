@@ -1,6 +1,17 @@
-Sink Input #55
+Sink Input #42
+	Driver: PipeWire
+	Owner Module: n/a
+	Client: 99
 	Sink: 47
+	Sample Specification: float32le 2ch 48000Hz
+	Channel Map: front-left,front-right
+	Format: pcm, format.sample_format = "\"float32le\""  format.rate = "48000"  format.channels = "2"  format.channel_map = "\"front-left,front-right\""
+	Mute: no
 	Volume: front-left: 65536 / 100% / 0.00 dB,   front-right: 65536 / 100% / 0.00 dB
 	        balance 0.00
-	application.name = "Firefox"
-	media.name = "AudioStream"
+	Buffer Latency: 0 usec
+	Sink Latency: 0 usec
+	Resample method: PipeWire
+	Properties:
+		application.name = "Firefox"
+		media.name = "AudioStream"

@@ -85,6 +85,12 @@ fn parse_profile_str(s: &str) -> PowerProfile {
     }
 }
 
+pub fn parse_battery_charging(status: Option<&str>) -> bool {
+    status
+        .map(|s| s == "Charging" || s == "Full")
+        .unwrap_or(false)
+}
+
 fn profile_to_str(profile: &PowerProfile) -> &'static str {
     match profile {
         PowerProfile::Performance => "performance",
@@ -118,17 +124,14 @@ async fn update_battery_state() -> Result<()> {
 
     let capacity = read_sysfs_u8(&format!("{prefix}/capacity")).await;
     let status = read_sysfs_string(&format!("{prefix}/status")).await;
-    let charging = status
-        .as_deref()
-        .map(|s| s == "Charging" || s == "Full")
-        .unwrap_or(false);
+    let charging = parse_battery_charging(status.as_deref());
 
     let time_remaining = compute_time_remaining(&prefix, charging).await;
 
     let mut state = STATE.write().await;
     let prev = state.clone();
     if let Some(cap) = capacity {
-        state.battery_percent = cap;
+        state.battery_percent = cap.min(100);
     }
     state.battery_charging = charging;
     state.time_remaining = time_remaining;
@@ -158,7 +161,7 @@ async fn find_battery_supply() -> Option<String> {
     None
 }
 
-pub(crate) fn format_minutes(minutes: u64) -> String {
+pub fn format_minutes(minutes: u64) -> String {
     if minutes == 0 {
         return "Unknown".to_string();
     }
@@ -175,7 +178,7 @@ pub(crate) fn format_minutes(minutes: u64) -> String {
     }
 }
 
-pub(crate) fn format_time_from_energy(energy_uwh: u64, power_uw: u64) -> String {
+pub fn format_time_from_energy(energy_uwh: u64, power_uw: u64) -> String {
     if power_uw == 0 {
         return "Unknown".to_string();
     }
@@ -183,26 +186,37 @@ pub(crate) fn format_time_from_energy(energy_uwh: u64, power_uw: u64) -> String 
     format_minutes(minutes)
 }
 
-async fn compute_time_remaining(prefix: &str, charging: bool) -> String {
-    // Kernel reports seconds in time_to_*_now.
+pub fn compute_time_remaining_from_sysfs(
+    charging: bool,
+    time_to_full_now: Option<u64>,
+    time_to_empty_now: Option<u64>,
+    energy_now: Option<u64>,
+    power_now: Option<u64>,
+) -> String {
     if charging {
-        if let Some(secs) = read_sysfs_u64(&format!("{prefix}/time_to_full_now")).await {
+        if let Some(secs) = time_to_full_now {
             if secs > 0 && secs < u64::MAX / 2 {
                 return format_minutes(secs / 60);
             }
         }
-    } else if let Some(secs) = read_sysfs_u64(&format!("{prefix}/time_to_empty_now")).await {
+    } else if let Some(secs) = time_to_empty_now {
         if secs > 0 && secs < u64::MAX / 2 {
             return format_minutes(secs / 60);
         }
     }
 
-    let energy = read_sysfs_u64(&format!("{prefix}/energy_now")).await;
-    let power = read_sysfs_u64(&format!("{prefix}/power_now")).await;
-    match (energy, power) {
+    match (energy_now, power_now) {
         (Some(e), Some(p)) if p > 0 => format_time_from_energy(e, p),
         _ => "Unknown".to_string(),
     }
+}
+
+async fn compute_time_remaining(prefix: &str, charging: bool) -> String {
+    let time_to_full = read_sysfs_u64(&format!("{prefix}/time_to_full_now")).await;
+    let time_to_empty = read_sysfs_u64(&format!("{prefix}/time_to_empty_now")).await;
+    let energy = read_sysfs_u64(&format!("{prefix}/energy_now")).await;
+    let power = read_sysfs_u64(&format!("{prefix}/power_now")).await;
+    compute_time_remaining_from_sysfs(charging, time_to_full, time_to_empty, energy, power)
 }
 
 async fn read_sysfs_u8(path: &str) -> Option<u8> {
@@ -249,7 +263,7 @@ async fn sync_profile_from_system() -> Result<()> {
     Ok(())
 }
 
-fn parse_powerprofilesctl_output(out: &str) -> Option<PowerProfile> {
+pub fn parse_powerprofilesctl_output(out: &str) -> Option<PowerProfile> {
     let line = out.lines().next()?.trim().to_lowercase();
     if line.contains("performance") {
         Some(PowerProfile::Performance)
@@ -317,9 +331,11 @@ mod tests {
 
     #[test]
     fn format_minutes_human() {
+        assert_eq!(format_minutes(0), "Unknown");
         assert_eq!(format_minutes(45), "45m");
         assert_eq!(format_minutes(90), "1h 30m");
         assert_eq!(format_minutes(120), "2h");
+        assert_eq!(format_minutes(60), "1h");
     }
 
     #[test]
@@ -327,6 +343,20 @@ mod tests {
         // 30 Wh remaining at 10 W draw ≈ 3 hours
         let s = format_time_from_energy(30_000_000, 10_000_000);
         assert_eq!(s, "3h");
+    }
+
+    #[test]
+    fn format_time_from_energy_zero_power_is_unknown() {
+        assert_eq!(format_time_from_energy(30_000_000, 0), "Unknown");
+    }
+
+    #[test]
+    fn parse_profile_str_aliases() {
+        assert_eq!(parse_profile_str("performance"), PowerProfile::Performance);
+        assert_eq!(parse_profile_str("saver"), PowerProfile::PowerSaver);
+        assert_eq!(parse_profile_str("power-saver"), PowerProfile::PowerSaver);
+        assert_eq!(parse_profile_str("turbo"), PowerProfile::Balanced);
+        assert_eq!(profile_to_str(&PowerProfile::Balanced), "balanced");
     }
 
     #[test]
@@ -339,5 +369,58 @@ mod tests {
             parse_powerprofilesctl_output("power-saver"),
             Some(PowerProfile::PowerSaver)
         );
+        assert_eq!(
+            parse_powerprofilesctl_output(" balanced \n"),
+            Some(PowerProfile::Balanced)
+        );
+        assert_eq!(
+            parse_powerprofilesctl_output("Profile: power_saver"),
+            Some(PowerProfile::PowerSaver)
+        );
+    }
+
+    #[test]
+    fn parse_powerprofilesctl_fixture_first_line() {
+        let fixture = include_str!("../../tests/fixtures/power/powerprofilesctl_get.txt");
+        let first = fixture.lines().next().unwrap_or("");
+        assert_eq!(
+            parse_powerprofilesctl_output(first),
+            Some(PowerProfile::Performance)
+        );
+    }
+
+    #[test]
+    fn powerprofilesctl_mode_round_trip() {
+        assert_eq!(powerprofilesctl_mode(&PowerProfile::PowerSaver), "power-saver");
+        assert_eq!(powerprofilesctl_mode(&PowerProfile::Balanced), "balanced");
+    }
+
+    #[test]
+    fn parse_battery_charging_states() {
+        assert!(parse_battery_charging(Some("Charging")));
+        assert!(parse_battery_charging(Some("Full")));
+        assert!(!parse_battery_charging(Some("Discharging")));
+        assert!(!parse_battery_charging(None));
+    }
+
+    #[test]
+    fn compute_time_remaining_zero_battery_sysfs() {
+        assert_eq!(
+            compute_time_remaining_from_sysfs(false, None, Some(0), None, None),
+            "Unknown"
+        );
+        assert_eq!(
+            compute_time_remaining_from_sysfs(false, None, Some(1800), None, None),
+            "30m"
+        );
+        assert_eq!(
+            compute_time_remaining_from_sysfs(true, Some(3600), None, None, None),
+            "1h"
+        );
+    }
+
+    #[test]
+    fn parse_powerprofilesctl_empty_output() {
+        assert_eq!(parse_powerprofilesctl_output(""), None);
     }
 }

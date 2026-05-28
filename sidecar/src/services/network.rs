@@ -214,7 +214,7 @@ async fn connect_open_or_saved(ssid: &str) -> Result<()> {
     Ok(())
 }
 
-fn parse_saved_connections(output: &str) -> Vec<SavedNetwork> {
+pub fn parse_saved_connections(output: &str) -> Vec<SavedNetwork> {
     let mut list = Vec::new();
     for line in output.lines() {
         let parts: Vec<&str> = line.split(':').collect();
@@ -235,7 +235,7 @@ fn parse_saved_connections(output: &str) -> Vec<SavedNetwork> {
     list
 }
 
-pub(crate) fn parse_networks(output: &str) -> Vec<AccessPoint> {
+pub fn parse_networks(output: &str) -> Vec<AccessPoint> {
     let mut network_map: HashMap<String, AccessPoint> = HashMap::new();
 
     for line in output.lines() {
@@ -283,51 +283,149 @@ pub(crate) fn parse_networks(output: &str) -> Vec<AccessPoint> {
     network_map.into_values().collect()
 }
 
+pub fn parse_wifi_radio_enabled(output: &str) -> bool {
+    output.trim() == "enabled"
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActiveConnectionInfo {
+    pub name: String,
+    pub device: String,
+    pub connection_type: String,
+    pub ethernet_on_link: bool,
+}
+
+pub fn parse_first_active_connection(output: &str) -> Option<ActiveConnectionInfo> {
+    for line in output.lines() {
+        let parts: Vec<&str> = line.split(':').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+        let ctype = parts[2].trim();
+        let (connection_type, ethernet_on_link) = connection_type_from_nmcli(ctype);
+        return Some(ActiveConnectionInfo {
+            name: parts[0].to_string(),
+            device: parts[1].to_string(),
+            connection_type,
+            ethernet_on_link,
+        });
+    }
+    None
+}
+
+pub fn connection_type_from_nmcli(ctype: &str) -> (String, bool) {
+    if ctype.contains("wireless") || ctype == "802-11-wireless" {
+        ("wifi".to_string(), false)
+    } else if ctype.contains("ethernet") || ctype == "802-3-ethernet" {
+        ("ethernet".to_string(), true)
+    } else {
+        ("none".to_string(), false)
+    }
+}
+
+pub fn parse_active_wifi_ssid(output: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        let p: Vec<&str> = line.split(':').collect();
+        if p.len() >= 2 && p[0] == "yes" && p[1] != "--" && !p[1].is_empty() {
+            Some(p[1].to_string())
+        } else {
+            None
+        }
+    })
+}
+
+pub fn parse_ip4_first_address(output: &str) -> Option<String> {
+    output.lines().find_map(|line| {
+        let ip = line.split('/').next()?.trim();
+        let ip = ip.rsplit(':').next().unwrap_or(ip).trim();
+        if ip.is_empty() {
+            None
+        } else {
+            Some(ip.to_string())
+        }
+    })
+}
+
+/// Compose [`NetworkStatus`] from captured `nmcli` outputs (contract / unit tests).
+pub fn build_network_status_from_nmcli(
+    wifi_radio: &str,
+    active_connections: &str,
+    wifi_devices: &str,
+    device_ip: Option<&str>,
+    device_list: &str,
+    public_ip: Option<String>,
+) -> NetworkStatus {
+    let wifi_enabled = parse_wifi_radio_enabled(wifi_radio);
+    let active = parse_first_active_connection(active_connections);
+    let active_connection = active.as_ref().map(|a| a.name.clone());
+    let mut connection_type = active
+        .as_ref()
+        .map(|a| a.connection_type.clone())
+        .unwrap_or_else(|| "none".to_string());
+    let mut ethernet_connected = active.as_ref().map(|a| a.ethernet_on_link).unwrap_or(false);
+
+    let active_ssid = if connection_type == "wifi" {
+        parse_active_wifi_ssid(wifi_devices)
+    } else {
+        None
+    };
+
+    let local_ip = device_ip.and_then(parse_ip4_first_address);
+    merge_ethernet_from_device_list(device_list, &mut connection_type, &mut ethernet_connected);
+
+    NetworkStatus {
+        wifi_enabled,
+        active_connection,
+        active_ssid,
+        connection_type,
+        ethernet_connected,
+        local_ip,
+        public_ip,
+    }
+}
+
+pub fn merge_ethernet_from_device_list(
+    device_list: &str,
+    connection_type: &mut String,
+    ethernet_connected: &mut bool,
+) {
+    for line in device_list.lines() {
+        let p: Vec<&str> = line.split(':').collect();
+        if p.len() >= 3
+            && (p[1].contains("ethernet") || p[1] == "802-3-ethernet")
+            && p[2] == "connected"
+        {
+            *ethernet_connected = true;
+            if connection_type == "none" {
+                *connection_type = "ethernet".to_string();
+            }
+        }
+    }
+}
+
 async fn update_network_state() -> Result<()> {
     let wifi_status = process::exec_command(&["nmcli", "radio", "wifi"]).await?;
-    let wifi_enabled = wifi_status.trim() == "enabled";
+    let wifi_enabled = parse_wifi_radio_enabled(&wifi_status);
 
     let active_output =
         process::exec_command(&["nmcli", "-t", "-f", "NAME,DEVICE,TYPE", "c", "show", "--active"])
             .await
             .unwrap_or_default();
 
-    let mut active_connection = None;
-    let mut active_device = None;
-    let mut connection_type = "none".to_string();
-    let mut ethernet_connected = false;
-
-    for line in active_output.lines() {
-        let parts: Vec<&str> = line.split(':').collect();
-        if parts.len() < 3 {
-            continue;
-        }
-        active_connection = Some(parts[0].to_string());
-        active_device = Some(parts[1].to_string());
-        let ctype = parts[2].trim();
-        if ctype.contains("wireless") || ctype == "802-11-wireless" {
-            connection_type = "wifi".to_string();
-        } else if ctype.contains("ethernet") || ctype == "802-3-ethernet" {
-            connection_type = "ethernet".to_string();
-            ethernet_connected = true;
-        }
-        break;
-    }
+    let active = parse_first_active_connection(&active_output);
+    let active_connection = active.as_ref().map(|a| a.name.clone());
+    let active_device = active.as_ref().map(|a| a.device.clone());
+    let mut connection_type = active
+        .as_ref()
+        .map(|a| a.connection_type.clone())
+        .unwrap_or_else(|| "none".to_string());
+    let mut ethernet_connected = active.as_ref().map(|a| a.ethernet_on_link).unwrap_or(false);
 
     let active_ssid = if connection_type == "wifi" {
         process::exec_command(&["nmcli", "-t", "-f", "ACTIVE,SSID", "dev", "wifi"])
             .await
             .ok()
-            .and_then(|out| {
-                out.lines().find_map(|line| {
-                    let p: Vec<&str> = line.split(':').collect();
-                    if p.len() >= 2 && p[0] == "yes" && p[1] != "--" && !p[1].is_empty() {
-                        Some(p[1].to_string())
-                    } else {
-                        None
-                    }
-                })
-            })
+            .and_then(|out| parse_active_wifi_ssid(&out))
     } else {
         None
     };
@@ -344,16 +442,7 @@ async fn update_network_state() -> Result<()> {
         ])
         .await
         .ok()
-        .and_then(|out| {
-            out.lines().find_map(|line| {
-                let ip = line.split('/').next()?.trim();
-                if ip.is_empty() {
-                    None
-                } else {
-                    Some(ip.to_string())
-                }
-            })
-        })
+        .and_then(|out| parse_ip4_first_address(&out))
     } else {
         None
     };
@@ -361,18 +450,7 @@ async fn update_network_state() -> Result<()> {
     let device_status = process::exec_command(&["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device"])
         .await
         .unwrap_or_default();
-    for line in device_status.lines() {
-        let p: Vec<&str> = line.split(':').collect();
-        if p.len() >= 3
-            && (p[1].contains("ethernet") || p[1] == "802-3-ethernet")
-            && p[2] == "connected"
-        {
-            ethernet_connected = true;
-            if connection_type == "none" {
-                connection_type = "ethernet".to_string();
-            }
-        }
-    }
+    merge_ethernet_from_device_list(&device_status, &mut connection_type, &mut ethernet_connected);
 
     let public_ip = STATE.read().await.status.public_ip.clone();
 
@@ -439,11 +517,103 @@ mod tests {
     }
 
     #[test]
+    fn parse_networks_prefers_active_and_stronger_signal() {
+        let fixture = include_str!("../../tests/fixtures/network/nmcli_wifi_duplicates.txt");
+        let networks = parse_networks(fixture);
+        let test_net = networks
+            .iter()
+            .find(|n| n.ssid == "TestNet")
+            .expect("TestNet");
+        assert!(test_net.active);
+        assert_eq!(test_net.strength, 90);
+
+        let weak_net = networks
+            .iter()
+            .find(|n| n.ssid == "WeakNet")
+            .expect("WeakNet");
+        assert!(!weak_net.active);
+        assert_eq!(weak_net.strength, 80);
+    }
+
+    #[test]
+    fn parse_networks_skips_short_and_hidden_ssids() {
+        let input = "yes:80:5180::AA:BB:CC:DD:EE:FF:WPA2\nbad:line\n";
+        let networks = parse_networks(input);
+        assert!(networks.is_empty());
+    }
+
+    #[test]
+    fn parse_saved_connections_fixture() {
+        let fixture = include_str!("../../tests/fixtures/network/nmcli_saved_connections.txt");
+        let saved = parse_saved_connections(fixture);
+        assert_eq!(saved.len(), 3);
+        assert!(saved.iter().any(|s| s.name == "Home" && s.autoconnect));
+        assert!(saved.iter().any(|s| s.name == "Work" && !s.autoconnect));
+        assert!(saved.iter().any(|s| s.name == "Guest"));
+        assert!(!saved.iter().any(|s| s.name.contains("Ethernet")));
+    }
+
+    #[test]
     fn parse_saved_connections_lines() {
         let input = "Home:uuid-1:802-11-wireless:yes\nWork:uuid-2:802-11-wireless:no\n";
         let saved = parse_saved_connections(input);
         assert_eq!(saved.len(), 2);
         assert_eq!(saved[0].name, "Home");
         assert!(saved[0].autoconnect);
+    }
+
+    #[test]
+    fn parse_wifi_radio_disabled_fixture() {
+        let fixture = include_str!("../../tests/fixtures/network/nmcli_radio_wifi.txt");
+        assert!(!parse_wifi_radio_enabled(fixture));
+    }
+
+    #[test]
+    fn parse_active_wifi_connection_fixture() {
+        let fixture =
+            include_str!("../../tests/fixtures/network/nmcli_active_connections_wifi.txt");
+        let active = parse_first_active_connection(fixture).expect("wifi connection");
+        assert_eq!(active.connection_type, "wifi");
+        assert!(!active.ethernet_on_link);
+        assert_eq!(active.name, "Home");
+    }
+
+    #[test]
+    fn parse_active_ethernet_connection_fixture() {
+        let fixture =
+            include_str!("../../tests/fixtures/network/nmcli_active_connections_ethernet.txt");
+        let active = parse_first_active_connection(fixture).expect("ethernet");
+        assert_eq!(active.connection_type, "ethernet");
+        assert!(active.ethernet_on_link);
+    }
+
+    #[test]
+    fn parse_active_connection_skips_malformed_lines() {
+        let fixture =
+            include_str!("../../tests/fixtures/network/nmcli_active_connections_malformed.txt");
+        let active = parse_first_active_connection(fixture).expect("valid after skip");
+        assert_eq!(active.device, "wlan0");
+    }
+
+    #[test]
+    fn parse_active_wifi_ssid_fixture() {
+        let fixture = include_str!("../../tests/fixtures/network/nmcli_dev_wifi_active.txt");
+        assert_eq!(parse_active_wifi_ssid(fixture).as_deref(), Some("CafeWiFi"));
+    }
+
+    #[test]
+    fn parse_ip4_address_fixture() {
+        let fixture = include_str!("../../tests/fixtures/network/nmcli_device_ip4.txt");
+        assert_eq!(parse_ip4_first_address(fixture).as_deref(), Some("192.168.1.42"));
+    }
+
+    #[test]
+    fn merge_ethernet_when_connection_type_none() {
+        let fixture = include_str!("../../tests/fixtures/network/nmcli_device_list_ethernet.txt");
+        let mut ctype = "none".to_string();
+        let mut eth = false;
+        merge_ethernet_from_device_list(fixture, &mut ctype, &mut eth);
+        assert!(eth);
+        assert_eq!(ctype, "ethernet");
     }
 }

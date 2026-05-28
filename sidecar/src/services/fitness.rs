@@ -74,8 +74,13 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Fitness.GetWorkoutHistory", |_params| async move {
-        // Would get all workouts from storage
-        Ok(serde_json::json!([]))
+        storage::init().await?;
+        let items = storage::scan_namespace("fitness_workouts").await?;
+        let workouts: Vec<Workout> = items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect();
+        Ok(serde_json::to_value(workouts)?)
     });
 
     registry.register("Fitness.SetGoal", |params| async move {
@@ -107,8 +112,13 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Fitness.GetGoals", |_params| async move {
-        // Would get all goals from storage
-        Ok(serde_json::json!([]))
+        storage::init().await?;
+        let items = storage::scan_namespace("fitness_goals").await?;
+        let goals: Vec<Goal> = items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect();
+        Ok(serde_json::to_value(goals)?)
     });
 
     registry.register("Fitness.GetDevices", |_params| async move {

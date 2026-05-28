@@ -304,6 +304,42 @@ mod tests {
             .next()
             .expect("entry");
         assert_eq!(entry.level, "err");
+        assert_eq!(entry.service, "aura-test.service");
         assert!(!entry.message.is_empty());
+        assert!(!entry.timestamp.is_empty());
+    }
+
+    #[test]
+    fn parse_journal_skips_empty_message() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/logs/journal_skip_empty.ndjson"
+        );
+        let text = fs::read_to_string(path).expect("fixture");
+        let entries: Vec<_> = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter_map(|v| parse_journal_json_value(&v))
+            .collect();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].message, "visible line");
+        assert_eq!(entries[0].service, "edge");
+    }
+
+    #[test]
+    fn parse_journal_warn_fixture() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/logs/journal_warn.ndjson"
+        );
+        let text = fs::read_to_string(path).expect("fixture");
+        let entry = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter_map(|v| parse_journal_json_value(&v))
+            .next()
+            .expect("entry");
+        assert_eq!(entry.level, "warn");
+        assert_eq!(entry.service, "kernel");
     }
 }

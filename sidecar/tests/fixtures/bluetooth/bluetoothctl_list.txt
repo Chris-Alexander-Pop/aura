@@ -1,1 +1,1 @@
-Controller AA:BB:CC:DD:EE:FF My-PC [default]
+Controller AA:BB:CC:DD:EE:00 My-PC [default]

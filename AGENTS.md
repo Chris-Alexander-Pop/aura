@@ -68,7 +68,8 @@ The AGS GTK4 shell (`ags run app.ts`, `bun run watch`) cannot run in cloud VMs â
 | React UI (build) | `cd ui && bun run build` | Outputs to `ui/dist` |
 | TailwindCSS (GTK) | `bun run build:css` (from repo root) | Produces `style/style.css` |
 | TypeScript check | `cd ui && bun run tsc --noEmit` | Type-checks the React UI |
-| Sidecar tests | `cd sidecar && cargo test` | Integration tests in `tests/integration_test.rs` |
+| Sidecar tests | `cd sidecar && cargo test` | Integration tests in `tests/integration_test.rs`; safety rules in `sidecar/tests/README.md` |
+| Sidecar coverage | `./scripts/sidecar-coverage.sh` | Needs `cargo-llvm-cov` + `llvm-tools-preview`; HTML under `sidecar/target/coverage/html/` |
 
 ### Running the sidecar + UI together
 

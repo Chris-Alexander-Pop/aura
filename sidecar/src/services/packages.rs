@@ -172,11 +172,15 @@ async fn log_result(action: &str, packages: Vec<String>, result: &Result<String>
     }
 }
 
-pub(crate) fn parse_pacman_qu(output: &str) -> Vec<Package> {
+fn looks_like_pacman_version(version: &str) -> bool {
+    version.contains('-') && version.chars().any(|c| c.is_ascii_digit())
+}
+
+pub fn parse_pacman_qu(output: &str) -> Vec<Package> {
     let mut packages = Vec::new();
     for line in output.lines() {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 2 {
+        if parts.len() >= 2 && looks_like_pacman_version(parts[1]) {
             packages.push(Package {
                 name: parts[0].to_string(),
                 version: parts[1].to_string(),
@@ -188,11 +192,11 @@ pub(crate) fn parse_pacman_qu(output: &str) -> Vec<Package> {
     packages
 }
 
-fn parse_pacman_q(output: &str) -> Vec<Package> {
+pub fn parse_pacman_q(output: &str) -> Vec<Package> {
     parse_pacman_qu(output)
 }
 
-fn parse_pacman_search(output: &str) -> Vec<Package> {
+pub fn parse_pacman_search(output: &str) -> Vec<Package> {
     let mut packages = Vec::new();
     for line in output.lines() {
         if line.starts_with("core/")
@@ -229,5 +233,38 @@ mod tests {
         assert_eq!(pkgs.len(), 2);
         assert_eq!(pkgs[0].name, "linux");
         assert_eq!(pkgs[1].name, "firefox");
+    }
+
+    #[test]
+    fn parse_pacman_q_installed_fixture() {
+        let fixture = include_str!("../../tests/fixtures/packages/pacman_q.txt");
+        let pkgs = parse_pacman_q(fixture);
+        assert_eq!(pkgs.len(), 3);
+        assert_eq!(pkgs[2].name, "vim");
+        assert_eq!(pkgs[2].version, "9.1-1");
+    }
+
+    #[test]
+    fn parse_pacman_search_fixture() {
+        let fixture = include_str!("../../tests/fixtures/packages/pacman_ss.txt");
+        let pkgs = parse_pacman_search(fixture);
+        assert_eq!(pkgs.len(), 2);
+        assert_eq!(pkgs[0].name, "firefox");
+        assert!(!pkgs[0].installed);
+        assert_eq!(pkgs[1].name, "firefox-developer-edition");
+    }
+
+    #[test]
+    fn parse_pacman_qu_skips_malformed_lines() {
+        let fixture = include_str!("../../tests/fixtures/packages/pacman_qu_malformed.txt");
+        let pkgs = parse_pacman_qu(fixture);
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].name, "linux");
+    }
+
+    #[test]
+    fn parse_pacman_search_ignores_non_repo_lines() {
+        let fixture = include_str!("../../tests/fixtures/packages/pacman_ss_malformed.txt");
+        assert!(parse_pacman_search(fixture).is_empty());
     }
 }

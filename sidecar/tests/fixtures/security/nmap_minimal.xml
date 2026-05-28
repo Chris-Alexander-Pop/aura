@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<nmaprun>
+<host>
+<ports>
+<port protocol="tcp" portid="22">
+<state state="open"/>
+<service name="ssh"/>
+</port>
+<port protocol="udp" portid="53">
+<state state="closed"/>
+<service name="domain"/>
+</port>
+</ports>
+</host>
+</nmaprun>

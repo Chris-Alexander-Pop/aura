@@ -58,6 +58,37 @@ cargo test
 ./scripts/check-api-rpc-contract.sh
 ```
 
+Integration tests use an in-process registry; see [`tests/README.md`](tests/README.md) for safety rules on a live machine.
+
+### Coverage (`cargo-llvm-cov`)
+
+Requires LLVM coverage tools and `cargo-llvm-cov`:
+
+```bash
+cargo install cargo-llvm-cov
+rustup component add llvm-tools-preview   # needs rustup; Arch `rust` alone lacks llvm-cov
+```
+
+If you use distro Rust without `rustup`, install [rustup](https://rustup.rs/) or point `LLVM_COV` / `LLVM_PROFDATA` at a matching LLVM toolchain.
+
+From the repo root:
+
+```bash
+chmod +x scripts/sidecar-coverage.sh   # once
+./scripts/sidecar-coverage.sh
+```
+
+Summary only (no HTML):
+
+```bash
+./scripts/sidecar-coverage.sh --summary-only
+```
+
+Outputs:
+
+- HTML report: `sidecar/target/coverage/html/index.html`
+- LCOV: `sidecar/target/coverage/lcov.info`
+
 ## Stack defaults
 
 Arch Linux, NetworkManager, PipeWire, Podman, GNOME Keyring — see [../docs/ARCHITECTURE_DECISIONS.md](../docs/ARCHITECTURE_DECISIONS.md).

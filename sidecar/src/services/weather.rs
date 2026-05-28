@@ -37,16 +37,18 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|p| p.get("city").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
 
-        // Check cache (15 minute TTL)
-        let last_update = LAST_UPDATE.read().await;
-        if let Some(instant) = *last_update {
-            if instant.elapsed().as_secs() < 900 {
-                if let Some(cached) = CACHED_WEATHER.read().await.as_ref() {
-                    return Ok(cached.clone());
+        // Check cache (15 minute TTL); tests set AURA_WEATHER_SKIP_CACHE=1
+        if !weather_skip_cache() {
+            let last_update = LAST_UPDATE.read().await;
+            if let Some(instant) = *last_update {
+                if instant.elapsed().as_secs() < 900 {
+                    if let Some(cached) = CACHED_WEATHER.read().await.as_ref() {
+                        return Ok(cached.clone());
+                    }
                 }
             }
+            drop(last_update);
         }
-        drop(last_update);
 
         // Determine city
         let city_name = if let Some(c) = city {
@@ -69,19 +71,9 @@ pub fn register(registry: &mut ServiceRegistry) {
             }
         };
 
-        // Fetch weather
-        let url = format!("https://wttr.in/{}?format=j1", city_name);
-        let response = reqwest::get(&url).await?;
-        let weather_data: WttrResponse = response.json().await?;
+        let weather_data = fetch_wttr_json(&city_name).await?;
 
-        let cc = &weather_data.current_condition[0];
-        let weather_json = serde_json::json!({
-            "temp": format!("{}°C", cc.temp_C),
-            "feels_like": format!("{}°C", cc.FeelsLikeC),
-            "humidity": cc.humidity.parse::<i32>().unwrap_or(0),
-            "description": cc.weatherDesc.get(0).map(|d| d.value.clone()).unwrap_or_else(|| "Unknown".to_string()),
-            "icon": get_weather_icon(&cc.weatherCode),
-        });
+        let weather_json = current_weather_json(&weather_data.current_condition[0]);
 
         // Update cache
         *CACHED_WEATHER.write().await = Some(weather_json.clone());
@@ -108,9 +100,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         } else {
             get_default_city().await
         };
-        let url = format!("https://wttr.in/{}?format=j1", city_name);
-        let response = reqwest::get(&url).await?;
-        let weather_data: WttrResponse = response.json().await?;
+        let weather_data = fetch_wttr_json(&city_name).await?;
 
         // Extract forecast data
         let forecast = weather_data.weather.iter().take(days as usize).collect::<Vec<_>>();
@@ -119,9 +109,7 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     registry.register("Weather.GetHourly", |_params| async move {
         let city = get_default_city().await;
-        let url = format!("https://wttr.in/{}?format=j1", city);
-        let response = reqwest::get(&url).await?;
-        let weather_data: WttrResponse = response.json().await?;
+        let weather_data = fetch_wttr_json(&city).await?;
 
         // Extract hourly data from weather array
         Ok(serde_json::to_value(&weather_data.weather)?)
@@ -210,6 +198,18 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 }
 
+fn weather_skip_cache() -> bool {
+    std::env::var("AURA_WEATHER_SKIP_CACHE").ok().as_deref() == Some("1")
+}
+
+/// wttr JSON fetch; integration tests set `AURA_WEATHER_WTTR_URL` to a mock HTTP endpoint.
+async fn fetch_wttr_json(city_name: &str) -> anyhow::Result<WttrResponse> {
+    let url = std::env::var("AURA_WEATHER_WTTR_URL")
+        .unwrap_or_else(|_| format!("https://wttr.in/{}?format=j1", city_name));
+    let response = reqwest::get(&url).await?;
+    Ok(response.json().await?)
+}
+
 async fn get_default_city() -> String {
     storage::init().await.ok();
     if let Ok(Some(city)) = storage::get_kv("weather", "location").await {
@@ -230,7 +230,25 @@ async fn get_default_city() -> String {
     "London".to_string()
 }
 
-fn get_weather_icon(code: &str) -> String {
+pub(crate) fn current_weather_json(cond: &CurrentCondition) -> serde_json::Value {
+    let description = cond
+        .weatherDesc
+        .first()
+        .map(|d| d.value.as_str())
+        .unwrap_or("");
+    let humidity = cond.humidity.parse::<i64>().unwrap_or(0);
+    serde_json::json!({
+        "temp": cond.temp_C,
+        "temp_f": cond.temp_F,
+        "feels_like": cond.FeelsLikeC,
+        "description": description,
+        "icon": get_weather_icon(&cond.weatherCode),
+        "humidity": humidity,
+        "code": cond.weatherCode,
+    })
+}
+
+pub(crate) fn get_weather_icon(code: &str) -> String {
     // Simple mapping - can be enhanced
     match code {
         "113" => "sunny".to_string(),
@@ -240,5 +258,31 @@ fn get_weather_icon(code: &str) -> String {
         "176" | "263" | "266" | "281" | "284" | "293" | "296" | "299" | "302" | "305" | "308" | "311" | "314" | "317" | "320" | "323" | "326" | "329" | "332" | "335" | "338" | "350" | "353" | "356" | "359" | "362" | "365" | "368" | "371" | "374" | "377" | "386" | "389" | "392" | "395" => "rainy".to_string(),
         "200" | "227" | "230" => "snowy".to_string(),
         _ => "cloud_alert".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn weather_icon_codes() {
+        assert_eq!(get_weather_icon("113"), "sunny");
+        assert_eq!(get_weather_icon("116"), "partly_cloudy");
+        assert_eq!(get_weather_icon("999"), "cloud_alert");
+    }
+
+    #[test]
+    fn parse_wttr_fixture() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/weather/wttr_current.json"
+        );
+        let text = std::fs::read_to_string(path).expect("fixture");
+        let data: WttrResponse = serde_json::from_str(&text).expect("json");
+        let json = current_weather_json(&data.current_condition[0]);
+        assert_eq!(json["icon"], "partly_cloudy");
+        assert_eq!(json["humidity"], 72);
+        assert!(json["temp"].as_str().unwrap().contains("18"));
     }
 }
