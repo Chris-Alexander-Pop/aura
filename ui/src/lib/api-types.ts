@@ -199,3 +199,86 @@ export function adaptPackageUpdates(data: unknown): PackageUpdateView[] {
   if (!Array.isArray(data)) return []
   return data.map(adaptPackageUpdate)
 }
+
+// ── Notifications (matches notifications.rs) ───────────────────────────────
+
+export interface NotificationActionView {
+  key: string
+  label: string
+}
+
+export interface NotificationItemView {
+  id: number
+  server_id?: number
+  app_name: string
+  summary: string
+  body: string
+  icon?: string
+  urgency: number
+  timestamp: number
+  actions: NotificationActionView[]
+  closed?: boolean
+}
+
+export interface DndPrefsView {
+  enabled: boolean
+  schedule_enabled: boolean
+  start_time: string
+  end_time: string
+  weekdays_only: boolean
+}
+
+export interface AppNotificationRulesView {
+  muted_apps: string[]
+}
+
+function adaptNotificationItem(item: unknown): NotificationItemView | null {
+  if (!isRecord(item)) return null
+  const id = item.id
+  if (typeof id !== "number" || !Number.isFinite(id)) return null
+  const actions: NotificationActionView[] = []
+  if (Array.isArray(item.actions)) {
+    for (const a of item.actions) {
+      if (!isRecord(a)) continue
+      const key = optionalString(a.key)
+      const label = optionalString(a.label)
+      if (key && label) actions.push({ key, label })
+    }
+  }
+  return {
+    id,
+    server_id: optionalFiniteInt(item.server_id),
+    app_name: optionalString(item.app_name) ?? "unknown",
+    summary: optionalString(item.summary) ?? "",
+    body: optionalString(item.body) ?? "",
+    icon: optionalString(item.icon),
+    urgency: typeof item.urgency === "number" ? item.urgency : 1,
+    timestamp: typeof item.timestamp === "number" ? item.timestamp : 0,
+    actions,
+    closed: item.closed === true,
+  }
+}
+
+export function adaptNotificationList(data: unknown): NotificationItemView[] {
+  if (!Array.isArray(data)) return []
+  return data.map(adaptNotificationItem).filter((x): x is NotificationItemView => x != null)
+}
+
+export function adaptDndPrefs(data: unknown): DndPrefsView {
+  if (!isRecord(data)) {
+    return {
+      enabled: false,
+      schedule_enabled: false,
+      start_time: "22:00",
+      end_time: "07:00",
+      weekdays_only: true,
+    }
+  }
+  return {
+    enabled: data.enabled === true,
+    schedule_enabled: data.schedule_enabled === true,
+    start_time: optionalString(data.start_time) ?? "22:00",
+    end_time: optionalString(data.end_time) ?? "07:00",
+    weekdays_only: data.weekdays_only !== false,
+  }
+}

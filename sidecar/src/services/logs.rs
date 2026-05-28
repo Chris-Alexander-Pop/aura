@@ -1,7 +1,7 @@
 use crate::services::ServiceRegistry;
 use crate::utils::process;
 use serde::{Deserialize, Serialize};
-use serde_json;
+use serde_json::{json, Value};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
@@ -11,44 +11,69 @@ pub struct LogEntry {
     pub service: String,
 }
 
-fn parse_journal_line(line: &str) -> LogEntry {
-    let trimmed = line.trim();
-    if trimmed.is_empty() {
-        return LogEntry {
-            timestamp: String::new(),
-            level: String::new(),
-            message: String::new(),
-            service: String::new(),
-        };
+/// Map journal PRIORITY (0=emerg … 7=debug) to UI bucket.
+pub fn priority_to_level(priority: i64) -> String {
+    match priority {
+        0..=3 => "err".to_string(),
+        4 => "warn".to_string(),
+        5 | 6 => "info".to_string(),
+        _ => "debug".to_string(),
     }
+}
 
-    // journalctl -o short-iso: "2024-01-01T12:00:00+00:00 host unit[pid]: message"
-    let (timestamp, rest) = if let Some(sp) = trimmed.find(' ') {
-        (trimmed[..sp].to_string(), trimmed[sp + 1..].trim())
-    } else {
-        (String::new(), trimmed)
-    };
+/// Minimum journal priority number for a filter level name.
+fn min_priority_for_filter(level: &str) -> Option<&'static str> {
+    match level.to_lowercase().as_str() {
+        "err" | "error" => Some("err"),
+        "warn" | "warning" => Some("warning"),
+        "info" | "notice" => Some("info"),
+        "debug" => Some("debug"),
+        _ => None,
+    }
+}
 
-    let (service, message) = if let Some(colon) = rest.rfind(": ") {
-        let head = &rest[..colon];
-        let msg = rest[colon + 2..].to_string();
-        let svc = head
-            .split_whitespace()
-            .last()
-            .unwrap_or("journal")
-            .trim_matches(|c: char| c == '[' || c == ']')
-            .to_string();
-        (svc, msg)
-    } else {
-        ("journal".to_string(), rest.to_string())
-    };
-
-    LogEntry {
+pub fn parse_journal_json_value(v: &Value) -> Option<LogEntry> {
+    let obj = v.as_object()?;
+    let message = obj
+        .get("MESSAGE")
+        .and_then(|m| m.as_str())
+        .unwrap_or("")
+        .to_string();
+    if message.is_empty() {
+        return None;
+    }
+    let priority = obj
+        .get("PRIORITY")
+        .and_then(|p| p.as_str())
+        .and_then(|s| s.parse::<i64>().ok())
+        .unwrap_or(6);
+    let level = priority_to_level(priority);
+    let service = obj
+        .get("_SYSTEMD_UNIT")
+        .or_else(|| obj.get("SYSLOG_IDENTIFIER"))
+        .and_then(|u| u.as_str())
+        .unwrap_or("journal")
+        .to_string();
+    let timestamp = obj
+        .get("__REALTIME_TIMESTAMP")
+        .and_then(|t| t.as_str())
+        .map(|micros| {
+            if let Ok(us) = micros.parse::<i64>() {
+                let secs = us / 1_000_000;
+                chrono::DateTime::from_timestamp(secs, 0)
+                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S%z").to_string())
+                    .unwrap_or_else(|| micros.to_string())
+            } else {
+                micros.to_string()
+            }
+        })
+        .unwrap_or_default();
+    Some(LogEntry {
         timestamp,
-        level: String::new(),
+        level,
         message,
         service,
-    }
+    })
 }
 
 pub fn register(registry: &mut ServiceRegistry) {
@@ -59,18 +84,52 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or(100);
 
-        let lines_str = lines.to_string();
-        let output =
-            process::exec_command(&["journalctl", "-n", &lines_str, "--no-pager", "-o", "short-iso"])
-                .await
-                .unwrap_or_default();
+        let priority: Option<String> = params
+            .as_ref()
+            .and_then(|p| p.get("priority").cloned())
+            .and_then(|v| serde_json::from_value(v).ok());
 
-        let entries: Vec<LogEntry> = output
+        let unit: Option<String> = params
+            .as_ref()
+            .and_then(|p| p.get("unit").cloned())
+            .and_then(|v| serde_json::from_value(v).ok());
+
+        let grep: Option<String> = params
+            .as_ref()
+            .and_then(|p| p.get("grep").cloned())
+            .and_then(|v| serde_json::from_value(v).ok());
+
+        let lines_str = lines.to_string();
+        let mut cmd = vec![
+            "journalctl",
+            "-n",
+            &lines_str,
+            "--no-pager",
+            "-o",
+            "json",
+        ];
+        if let Some(ref u) = unit {
+            cmd.extend_from_slice(&["-u", u]);
+        }
+        if let Some(ref g) = grep {
+            cmd.extend_from_slice(&["--grep", g]);
+        }
+        if let Some(ref lvl) = priority {
+            if let Some(p) = min_priority_for_filter(lvl) {
+                cmd.extend_from_slice(&["-p", p]);
+            }
+        }
+
+        let output = process::exec_command(&cmd).await.unwrap_or_default();
+
+        let mut entries: Vec<LogEntry> = output
             .lines()
             .filter(|l| !l.trim().is_empty())
-            .map(parse_journal_line)
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter_map(|v| parse_journal_json_value(&v))
             .collect();
 
+        entries.reverse();
         Ok(serde_json::to_value(&entries)?)
     });
 
@@ -93,7 +152,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         }
 
         let output = process::exec_command(&cmd).await?;
-        Ok(serde_json::json!({ "logs": output }))
+        Ok(json!({ "logs": output }))
     });
 
     registry.register("Logs.GetApplicationLogs", |params| async move {
@@ -113,7 +172,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         let lines_str = lines.to_string();
         let comm_filter = format!("_COMM={}", app_name);
         let output = process::exec_command(&["journalctl", "-n", &lines_str, "--no-pager", &comm_filter]).await?;
-        Ok(serde_json::json!({ "logs": output }))
+        Ok(json!({ "logs": output }))
     });
 
     registry.register("Logs.SearchLogs", |params| async move {
@@ -135,25 +194,11 @@ pub fn register(registry: &mut ServiceRegistry) {
         }
 
         let output = process::exec_command(&cmd).await?;
-        Ok(serde_json::json!({ "logs": output }))
+        Ok(json!({ "logs": output }))
     });
 
-    registry.register("Logs.FollowLogs", |params| async move {
-        let service: Option<String> = params
-            .as_ref()
-            .and_then(|p| p.get("service").cloned())
-            .and_then(|v| serde_json::from_value(v).ok());
-
-        // This would need to stream logs via notifications
-        // For now, just return recent logs
-        let mut cmd = vec!["journalctl", "-n", "50", "--no-pager", "-f"];
-        if let Some(ref svc) = service {
-            cmd.extend_from_slice(&["-u", svc]);
-        }
-
-        // Note: -f follows, but we can't easily stream this via JSON-RPC
-        // Would need notification-based approach
-        Ok(serde_json::json!({ "message": "Following logs (use notifications for updates)" }))
+    registry.register("Logs.FollowLogs", |_params| async move {
+        Ok(json!({ "message": "Following logs (use notifications for updates)" }))
     });
 
     registry.register("Logs.GetLogServices", |_params| async move {
@@ -181,7 +226,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             process::exec_command(&["journalctl", "--vacuum-time=1s"]).await?;
         }
 
-        Ok(serde_json::json!({ "success": true }))
+        Ok(json!({ "success": true }))
     });
 
     registry.register("Logs.ExportLogs", |params| async move {
@@ -204,11 +249,11 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         let output = process::exec_command(&cmd).await?;
         tokio::fs::write(&file_path, output).await?;
-        Ok(serde_json::json!({ "success": true }))
+        Ok(json!({ "success": true }))
     });
 
     registry.register("Logs.GetLogLevels", |_params| async move {
-        Ok(serde_json::json!(["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"]))
+        Ok(json!(["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"]))
     });
 
     registry.register("Logs.FilterLogs", |params| async move {
@@ -231,6 +276,34 @@ pub fn register(registry: &mut ServiceRegistry) {
         }
 
         let output = process::exec_command(&cmd).await?;
-        Ok(serde_json::json!({ "logs": output }))
+        Ok(json!({ "logs": output }))
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn priority_mapping() {
+        assert_eq!(priority_to_level(3), "err");
+        assert_eq!(priority_to_level(4), "warn");
+        assert_eq!(priority_to_level(6), "info");
+        assert_eq!(priority_to_level(7), "debug");
+    }
+
+    #[test]
+    fn parse_journal_json_fixture() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/logs/journal_json.ndjson");
+        let text = fs::read_to_string(path).expect("fixture");
+        let entry = text
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter_map(|v| parse_journal_json_value(&v))
+            .next()
+            .expect("entry");
+        assert_eq!(entry.level, "err");
+        assert!(!entry.message.is_empty());
+    }
 }

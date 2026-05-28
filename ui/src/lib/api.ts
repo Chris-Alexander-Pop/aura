@@ -1,11 +1,15 @@
 // Typed fetch wrappers for the sidecar REST API at localhost:9080
 import {
+  adaptDndPrefs,
   adaptLogEntries,
+  adaptNotificationList,
   adaptPackageUpdates,
   adaptPerformanceMetrics,
   adaptSecurityStatus,
   parseCalendarEvents,
+  type DndPrefsView,
   type LogEntryView,
+  type NotificationItemView,
   type PackageUpdateView,
   type PerformanceMetricsView,
   type SecurityStatusView,
@@ -57,7 +61,9 @@ export type PowerProfile = "performance" | "balanced" | "saver"
 
 export type {
   CalendarEvent,
+  DndPrefsView,
   LogEntryView,
+  NotificationItemView,
   PackageUpdateView,
   PerformanceMetricsView,
   SecurityStatusView,
@@ -140,8 +146,22 @@ export const api = {
   // Packages
   getPackageUpdates: () => callData("Packages.GetUpgradable").then(adaptPackageUpdates),
 
+  // Notifications
+  listNotifications: (limit = 50) =>
+    callData("Notifications.List", { limit }).then(adaptNotificationList),
+  dismissNotification: (id: number) => call("Notifications.Dismiss", { id }),
+  clearAllNotifications: () => call("Notifications.ClearAll"),
+  getNotificationDnd: () => callData("Notifications.GetDnd").then(adaptDndPrefs),
+  setNotificationDnd: (dnd: DndPrefsView) => call("Notifications.SetDnd", { dnd }),
+
+  // Keybinds
+  listKeybinds: (category?: string) =>
+    callData("Keybinds.List", category ? { category } : undefined),
+  validateKeybinds: () => call<{ duplicates: string[]; unknown_dispatches: string[] }>("Keybinds.Validate"),
+
   // Logs
-  getLogs: () => callData("Logs.Get").then(adaptLogEntries),
+  getLogs: (opts?: { lines?: number; priority?: string; unit?: string }) =>
+    callData("Logs.Get", opts ?? {}).then(adaptLogEntries),
 
   // Security
   getSecurityStatus: () => callData("Security.GetStatus").then(adaptSecurityStatus),

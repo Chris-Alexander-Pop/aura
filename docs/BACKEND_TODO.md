@@ -263,18 +263,19 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ### 2.16 Logs (`logs.rs`) — P2
 
-- [ ] **`Logs.Get`** returning `LogEntry[]` for Control Center (journalctl structured)
-- [ ] Map journal priority to `level` field
+- [x] **`Logs.Get`** returning `LogEntry[]` for Control Center (journalctl structured)
+- [x] Map journal priority to `level` field (`journalctl -o json`, `PRIORITY` → level)
 - [ ] `FollowLogs` → WebSocket stream (optional)
+- [x] `Logs.Get` filters: `lines`, `priority`, `unit`, `grep`
 - [ ] Filter/search/export methods — implement or remove dead RPCs
-- [ ] Unit tests: journal line parser
+- [x] Unit tests: journal JSON parser fixture
 - [ ] Roadmap: Logs pane
 
 ### 2.17 Security (`security.rs`) — P2
 
 **Defensive (daily use)**
 
-- [ ] **`Security.GetStatus`** aggregate for UI (firewall, ssh, encryption, keyring)
+- [x] **`Security.GetStatus`** aggregate for UI (firewall, ssh, encryption + fail2ban/clamav/fprintd probes)
 - [ ] Firewall enable/disable — verify ufw/nftables
 - [ ] SSH status, failed logins, sudo logs
 - [ ] Port scan (local only) — safety caps
@@ -298,7 +299,8 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ### 2.18 Performance (`performance.rs`) — P2
 
-- [ ] **`Performance.GetMetrics`** aggregate for UI
+- [x] **`Performance.GetMetrics`** aggregate for UI
+- [x] `Performance.MetricsChanged` WS push (30s poll, debounced)
 - [ ] CPU/GPU/memory/disk/network stats — real data paths
 - [ ] `SetCpuGovernor` / frequency — polkit + safety caps
 - [ ] Process list + priority — align with `processes.rs`
@@ -380,29 +382,29 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ## 3. New services to create
 
-### 3.1 Keybinds (`keybinds.rs`) — P1 — **no service today**
+### 3.1 Keybinds (`keybinds.rs`) — P1
 
-- [ ] `Keybinds.List` — parse `~/.config/hypr/hyprland.conf` + conf.d
-- [ ] `Keybinds.GetCategories` — window/workspace/media/etc.
-- [ ] `Keybinds.Set` / `Unset` — safe write with backup file
-- [ ] `Keybinds.Validate` — conflict detection
-- [ ] `Keybinds.Export` / `Import`
-- [ ] `Keybinds.Reload` — `hyprctl reload`
+- [x] `Keybinds.List` — parse `~/.config/hypr/hyprland.conf` + conf.d (`source =`, depth cap)
+- [x] `Keybinds.GetCategories` — window/workspace/media/etc.
+- [x] `Keybinds.Set` / `Unset` — safe write to `~/.config/ags/hypr/aura-binds.conf` + backup
+- [x] `Keybinds.Validate` — conflict detection + dispatch allowlist hints
+- [x] `Keybinds.Export` / `Import`
+- [x] `Keybinds.Reload` — `hyprctl reload`
 - [ ] Optional: global shortcuts via `keyd` integration
-- [ ] Unit tests: parse/bind conflict fixtures (see `hyprlandKeybindReference.ts` in UI)
-- [ ] Register in `main.rs`, `api.ts`, `sidecar.ts`
-- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) keybinds pane
+- [x] Unit tests: parse/bind conflict fixtures
+- [x] Register in `build_registry()`, `api.ts` (GTK `sidecar.ts` deferred)
+- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) keybinds pane (live load in UI v1)
 
 ### 3.2 Notifications (`notifications.rs`) — P1
 
-- [ ] Subscribe to **mako/dunst/swaync** or freedesktop Notification spec (D-Bus)
-- [ ] `Notifications.List` — history with filters
-- [ ] `Notifications.Clear` / `ClearAll`
-- [ ] `Notifications.GetDnd` / `SetDnd` + schedule
-- [ ] `Notifications.GetRules` / `SetRules` per app
-- [ ] Action invocation (reply, dismiss)
-- [ ] Mirror to WebSocket for Control Center + top dropdown
-- [ ] Unit tests: parse notification payloads
+- [x] Subscribe to Freedesktop Notification spec (D-Bus: `dbus-monitor` + `NotificationClosed` signals)
+- [x] `Notifications.List` — history with filters
+- [x] `Notifications.Dismiss` / `ClearAll`
+- [x] `Notifications.GetDnd` / `SetDnd` + schedule (SQLite)
+- [x] `Notifications.GetRules` / `SetRules` per app
+- [x] `Notifications.InvokeAction` (best-effort)
+- [x] Mirror to WebSocket (`Notifications.Changed`) + Control Center pane
+- [x] Unit tests: parse notification payloads
 - [ ] Roadmap: [system-and-input-foundation.md](roadmap/system-and-input-foundation.md), [control-panel.md](roadmap/control-panel.md)
 
 ### 3.3 Launcher / Vicinae (`launcher.rs`) — P2

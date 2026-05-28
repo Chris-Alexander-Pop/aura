@@ -181,3 +181,41 @@ async fn notify_emit_does_not_panic() {
     ags_sidecar::notify::init_for_tests();
     ags_sidecar::notify::emit("Test.Ping", serde_json::json!({ "ok": true }));
 }
+
+#[tokio::test]
+async fn notifications_list_returns_array() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Notifications.List", Some(json!({ "limit": 10 })))
+        .await
+        .expect("Notifications.List");
+    assert!(value.is_array());
+}
+
+#[tokio::test]
+async fn notifications_get_dnd_returns_object() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Notifications.GetDnd", None)
+        .await
+        .expect("Notifications.GetDnd");
+    assert!(value.get("schedule_enabled").is_some());
+}
+
+#[tokio::test]
+async fn keybinds_list_returns_array() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Keybinds.List", None)
+        .await
+        .expect("Keybinds.List");
+    assert!(value.is_array());
+}
+
+#[tokio::test]
+async fn security_get_status_extended_fields() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Security.GetStatus", None)
+        .await
+        .expect("Security.GetStatus");
+    assert!(value.get("fail2ban_active").is_some());
+    assert!(value.get("clamav_installed").is_some());
+    assert!(value.get("fprintd_available").is_some());
+}

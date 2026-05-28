@@ -22,6 +22,8 @@ pub mod hyprland;
 pub mod shell;
 pub mod mpris;
 pub mod processes;
+pub mod notifications;
+pub mod keybinds;
 
 use crate::types::JsonRpcRequest;
 use anyhow::Result;

@@ -33,6 +33,7 @@ async fn run_server() -> Result<()> {
     let (notify_tx, notify_rx) = broadcast::channel::<String>(256);
     notify::init(notify_tx.clone());
     notify::spawn_stdout_forwarder(notify_rx);
+    ags_sidecar::services::notifications::spawn_dbus_listener();
 
     let registry = Arc::new(Mutex::new(build_registry()));
 

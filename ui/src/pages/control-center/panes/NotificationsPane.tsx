@@ -1,26 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import api, { type DndPrefsView } from "@/lib/api"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import { getNavItem } from "../navigation"
 
 const STORAGE_KEY = "aura.control-center.notifications.dndSchedule.v1"
 
+/** @deprecated Use DndPrefsView from api — kept for Dropdown.tsx localStorage shape */
 export type DndSchedulePrefs = {
-  /** Master switch for automatic quiet hours (stored locally). */
   scheduleEnabled: boolean
-  /** Local `HH:mm` — inclusive start of the quiet window. */
   startTime: string
-  /** Local `HH:mm` — exclusive end when the window does not cross midnight; see overnight note below. */
   endTime: string
-  /** When true, Monday–Friday only (Saturday/Sunday never enter quiet hours). */
   weekdaysOnly: boolean
 }
 
-const DEFAULT_PREFS: DndSchedulePrefs = {
-  scheduleEnabled: false,
-  startTime: "22:00",
-  endTime: "07:00",
-  weekdaysOnly: true,
+const DEFAULT_DND: DndPrefsView = {
+  enabled: false,
+  schedule_enabled: false,
+  start_time: "22:00",
+  end_time: "07:00",
+  weekdays_only: true,
 }
 
 function parseHm(value: string): { h: number; m: number } | null {
@@ -41,13 +42,24 @@ function isWeekday(d: Date): boolean {
   return day >= 1 && day <= 5
 }
 
-/** Whether `now` falls inside the configured window (local clock). Overnight windows supported. */
-export function isWithinScheduledQuietHours(prefs: DndSchedulePrefs, now = new Date()): boolean {
-  if (!prefs.scheduleEnabled) return false
-  if (prefs.weekdaysOnly && !isWeekday(now)) return false
+function normalizeDndPrefs(prefs: DndPrefsView | DndSchedulePrefs): DndPrefsView {
+  if ("schedule_enabled" in prefs) return prefs
+  return {
+    enabled: prefs.scheduleEnabled,
+    schedule_enabled: prefs.scheduleEnabled,
+    start_time: prefs.startTime,
+    end_time: prefs.endTime,
+    weekdays_only: prefs.weekdaysOnly,
+  }
+}
 
-  const start = parseHm(prefs.startTime)
-  const end = parseHm(prefs.endTime)
+export function isWithinScheduledQuietHours(prefs: DndPrefsView | DndSchedulePrefs, now = new Date()): boolean {
+  const p = normalizeDndPrefs(prefs)
+  if (!p.schedule_enabled) return false
+  if (p.weekdays_only && !isWeekday(now)) return false
+
+  const start = parseHm(p.start_time)
+  const end = parseHm(p.end_time)
   if (!start || !end) return false
 
   const cur = toMinutes({ h: now.getHours(), m: now.getMinutes() })
@@ -55,32 +67,30 @@ export function isWithinScheduledQuietHours(prefs: DndSchedulePrefs, now = new D
   const em = toMinutes(end)
 
   if (sm === em) return false
-
   if (sm < em) return cur >= sm && cur < em
   return cur >= sm || cur < em
 }
 
-function loadPrefs(): DndSchedulePrefs {
+function loadLocalDndFallback(): DndPrefsView {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { ...DEFAULT_PREFS }
-    const parsed = JSON.parse(raw) as Partial<DndSchedulePrefs>
+    if (!raw) return { ...DEFAULT_DND }
+    const parsed = JSON.parse(raw) as Record<string, unknown>
     return {
-      scheduleEnabled: typeof parsed.scheduleEnabled === "boolean" ? parsed.scheduleEnabled : DEFAULT_PREFS.scheduleEnabled,
-      startTime: typeof parsed.startTime === "string" && parseHm(parsed.startTime) ? parsed.startTime : DEFAULT_PREFS.startTime,
-      endTime: typeof parsed.endTime === "string" && parseHm(parsed.endTime) ? parsed.endTime : DEFAULT_PREFS.endTime,
-      weekdaysOnly: typeof parsed.weekdaysOnly === "boolean" ? parsed.weekdaysOnly : DEFAULT_PREFS.weekdaysOnly,
+      enabled: parsed.scheduleEnabled === true,
+      schedule_enabled: parsed.scheduleEnabled === true,
+      start_time:
+        typeof parsed.startTime === "string" && parseHm(parsed.startTime)
+          ? parsed.startTime
+          : DEFAULT_DND.start_time,
+      end_time:
+        typeof parsed.endTime === "string" && parseHm(parsed.endTime)
+          ? parsed.endTime
+          : DEFAULT_DND.end_time,
+      weekdays_only: parsed.weekdaysOnly !== false,
     }
   } catch {
-    return { ...DEFAULT_PREFS }
-  }
-}
-
-function savePrefs(prefs: DndSchedulePrefs) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs))
-  } catch {
-    /* quota / privacy mode — prefs stay in memory for the session */
+    return { ...DEFAULT_DND }
   }
 }
 
@@ -116,30 +126,100 @@ function ScheduleToggleRow({
   )
 }
 
+function formatTime(ts: number): string {
+  if (!ts) return ""
+  const d = new Date(ts * 1000)
+  return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+}
+
 export function NotificationsPane() {
   const { icon, label } = getNavItem("notifications")
-  const [prefs, setPrefs] = useState<DndSchedulePrefs>(() => loadPrefs())
+  const qc = useQueryClient()
   const [tick, setTick] = useState(0)
+  const [dndLocal, setDndLocal] = useState<DndPrefsView | null>(null)
 
   useEffect(() => {
-    savePrefs(prefs)
-  }, [prefs])
-
-  const updatePrefs = useCallback((patch: Partial<DndSchedulePrefs>) => {
-    setPrefs((prev) => ({ ...prev, ...patch }))
-  }, [])
+    connectWs()
+    const off = useWsStore.getState().on("Notifications.Changed", () => {
+      void qc.invalidateQueries({ queryKey: ["notifications-list"] })
+    })
+    return off
+  }, [qc])
 
   useEffect(() => {
     const id = window.setInterval(() => setTick((t) => t + 1), 60_000)
     return () => window.clearInterval(id)
   }, [])
 
+  const listQuery = useQuery({
+    queryKey: ["notifications-list"],
+    queryFn: () => api.listNotifications(80),
+    refetchInterval: 15_000,
+  })
+
+  const dndQuery = useQuery({
+    queryKey: ["notifications-dnd"],
+    queryFn: async () => {
+      try {
+        return await api.getNotificationDnd()
+      } catch {
+        return loadLocalDndFallback()
+      }
+    },
+  })
+
+  const prefs = dndLocal ?? dndQuery.data ?? DEFAULT_DND
+
+  const saveDnd = useMutation({
+    mutationFn: (next: DndPrefsView) => api.setNotificationDnd(next),
+    onSuccess: (_data, next) => {
+      qc.setQueryData(["notifications-dnd"], next)
+      setDndLocal(null)
+    },
+    onError: () => {
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            scheduleEnabled: prefs.schedule_enabled,
+            startTime: prefs.start_time,
+            endTime: prefs.end_time,
+            weekdaysOnly: prefs.weekdays_only,
+          })
+        )
+      } catch {
+        /* ignore */
+      }
+    },
+  })
+
+  const updatePrefs = useCallback(
+    (patch: Partial<DndPrefsView>) => {
+      const next = { ...prefs, ...patch }
+      setDndLocal(next)
+      saveDnd.mutate(next)
+    },
+    [prefs, saveDnd]
+  )
+
+  const dismissMut = useMutation({
+    mutationFn: (id: number) => api.dismissNotification(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["notifications-list"] }),
+  })
+
+  const clearMut = useMutation({
+    mutationFn: () => api.clearAllNotifications(),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["notifications-list"] }),
+  })
+
   const inQuietHours = useMemo(() => isWithinScheduledQuietHours(prefs), [prefs, tick])
 
   const overnight =
-    parseHm(prefs.startTime) &&
-    parseHm(prefs.endTime) &&
-    toMinutes(parseHm(prefs.startTime)!) > toMinutes(parseHm(prefs.endTime)!)
+    parseHm(prefs.start_time) &&
+    parseHm(prefs.end_time) &&
+    toMinutes(parseHm(prefs.start_time)!) > toMinutes(parseHm(prefs.end_time)!)
+
+  const items = listQuery.data ?? []
 
   return (
     <motion.div
@@ -155,52 +235,105 @@ export function NotificationsPane() {
           <h2 className="text-xl font-semibold text-text">{label}</h2>
         </div>
         <p className="text-sm text-subtext0 leading-relaxed max-w-prose">
-          Decide when your session should prefer silence. These controls only persist preferences in this browser&apos;s{" "}
-          <code className="text-subtext1 text-xs">localStorage</code>
-          — they do not talk to mako, dunst, GNOME notifications, or the Aura sidecar yet. Wiring real mute behavior belongs in the compositor stack later;
-          here you are shaping the schedule Aura can respect once that bridge exists.
+          Inbox history from the Freedesktop notification bus (any compliant daemon). Quiet-hour preferences sync to
+          the sidecar; if the sidecar is offline, schedule falls back to browser storage.
         </p>
       </header>
+
+      <section className="glass-card p-5 flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-text">Inbox</h3>
+          <button
+            type="button"
+            className="text-xs text-subtext1 hover:text-text px-2 py-1 rounded-lg border border-surface1/60"
+            disabled={items.length === 0 || clearMut.isPending}
+            onClick={() => clearMut.mutate()}
+          >
+            Clear all
+          </button>
+        </div>
+        {listQuery.isLoading && <p className="text-xs text-subtext0">Loading…</p>}
+        {listQuery.isError && (
+          <p className="text-xs text-peach">Could not load notifications — is ags-sidecar running?</p>
+        )}
+        {!listQuery.isLoading && items.length === 0 && (
+          <p className="text-xs text-subtext0">No notifications captured yet. Try `notify-send` with a daemon running.</p>
+        )}
+        <ul className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+          {items.map((n) => (
+            <li
+              key={n.id}
+              className="flex items-start justify-between gap-3 rounded-xl border border-surface0/70 bg-base/50 px-3 py-2.5"
+            >
+              <div className="min-w-0">
+                <p className="text-xs text-mauve font-medium truncate">{n.app_name}</p>
+                <p className="text-sm text-text font-medium truncate">{n.summary || "(no title)"}</p>
+                {n.body ? <p className="text-xs text-subtext0 line-clamp-2 mt-0.5">{n.body}</p> : null}
+                <p className="text-[10px] text-subtext1 mt-1">{formatTime(n.timestamp)}</p>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 icon text-subtext0 hover:text-text text-lg"
+                aria-label="Dismiss"
+                onClick={() => dismissMut.mutate(n.id)}
+              >
+                close
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <section className="glass-card p-5 flex flex-col gap-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-text">Quiet hours schedule</h3>
             <p className="text-xs text-subtext0 mt-1 max-w-prose">
-              Pick a daily window using local time. If the end is earlier than the start (for example 22:00 → 07:00), the window crosses midnight.
+              Aura preference (stored in sidecar). Does not force OS DND on all apps until daemon integration lands.
             </p>
           </div>
           <div
             className={cn(
               "shrink-0 rounded-full px-3 py-1 text-[11px] font-medium border",
-              prefs.scheduleEnabled && inQuietHours
+              prefs.schedule_enabled && inQuietHours
                 ? "border-peach/40 text-peach bg-peach/10"
-                : prefs.scheduleEnabled
+                : prefs.schedule_enabled
                   ? "border-surface1 text-subtext1 bg-surface0/80"
                   : "border-surface1/60 text-subtext0 bg-surface0/40"
             )}
-            title="Based on this device's clock and the fields below"
           >
-            {prefs.scheduleEnabled ? (inQuietHours ? "Inside window now" : "Outside window now") : "Schedule off"}
+            {prefs.schedule_enabled ? (inQuietHours ? "Inside window now" : "Outside window now") : "Schedule off"}
           </div>
         </div>
 
         <ScheduleToggleRow
-          label="Enable scheduled quiet hours"
-          description="When on, Aura UI can treat this interval as “prefer Do Not Disturb.” Other apps will ignore it until integrated."
-          active={prefs.scheduleEnabled}
-          onToggle={() => updatePrefs({ scheduleEnabled: !prefs.scheduleEnabled })}
+          label="Do not disturb (manual)"
+          description="When on, Aura treats notifications as suppressed in UI."
+          active={prefs.enabled}
+          onToggle={() => updatePrefs({ enabled: !prefs.enabled })}
         />
 
-        <div className={cn("flex flex-col gap-4 pt-1 border-t border-surface1/30", !prefs.scheduleEnabled && "opacity-45 pointer-events-none")}>
+        <ScheduleToggleRow
+          label="Enable scheduled quiet hours"
+          description="Prefer silence during the configured local-time window."
+          active={prefs.schedule_enabled}
+          onToggle={() => updatePrefs({ schedule_enabled: !prefs.schedule_enabled })}
+        />
+
+        <div
+          className={cn(
+            "flex flex-col gap-4 pt-1 border-t border-surface1/30",
+            !prefs.schedule_enabled && "opacity-45 pointer-events-none"
+          )}
+        >
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-subtext1">Start</span>
               <input
                 type="time"
                 className="input"
-                value={prefs.startTime}
-                onChange={(e) => updatePrefs({ startTime: e.target.value })}
+                value={prefs.start_time}
+                onChange={(e) => updatePrefs({ start_time: e.target.value })}
               />
             </label>
             <label className="flex flex-col gap-1.5">
@@ -208,8 +341,8 @@ export function NotificationsPane() {
               <input
                 type="time"
                 className="input"
-                value={prefs.endTime}
-                onChange={(e) => updatePrefs({ endTime: e.target.value })}
+                value={prefs.end_time}
+                onChange={(e) => updatePrefs({ end_time: e.target.value })}
               />
             </label>
           </div>
@@ -217,32 +350,18 @@ export function NotificationsPane() {
           {overnight && (
             <p className="text-xs text-subtext1 leading-relaxed flex gap-2">
               <span className="icon text-peach shrink-0 text-lg">schedule</span>
-              <span>
-                Overnight window: quiet hours stay active after midnight until the end time. Weekend skips apply to entire calendar days (see below).
-              </span>
+              <span>Overnight window crosses midnight until the end time.</span>
             </p>
           )}
 
           <ScheduleToggleRow
             label="Weekdays only"
-            description="Monday through Friday. Saturdays and Sundays never enter this quiet window, even if times would overlap."
-            active={prefs.weekdaysOnly}
-            onToggle={() => updatePrefs({ weekdaysOnly: !prefs.weekdaysOnly })}
-            disabled={!prefs.scheduleEnabled}
+            description="Monday through Friday only."
+            active={prefs.weekdays_only}
+            onToggle={() => updatePrefs({ weekdays_only: !prefs.weekdays_only })}
+            disabled={!prefs.schedule_enabled}
           />
         </div>
-      </section>
-
-      <section className="glass-card p-5 flex flex-col gap-3">
-        <h3 className="text-sm font-semibold text-text flex items-center gap-2">
-          <span className="icon text-subtext1 text-lg">info</span>
-          What&apos;s next
-        </h3>
-        <ul className="text-xs text-subtext0 space-y-2 list-disc pl-4 max-w-prose leading-relaxed">
-          <li>Inbox, per-app rules, and history still need a trusted notification feed from the shell.</li>
-          <li>This pane intentionally avoids RPC until those streams are stable—no phantom toggles.</li>
-          <li>Clearing site data for this origin removes saved quiet-hour prefs.</li>
-        </ul>
       </section>
     </motion.div>
   )

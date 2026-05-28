@@ -1,10 +1,13 @@
+use crate::notify;
 use crate::services::ServiceRegistry;
 use crate::utils::process;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json;
-use sysinfo::{System, SystemExt, CpuExt, PidExt, ProcessExt};
+use serde_json::{json, Value};
+use std::sync::atomic::{AtomicU64, Ordering};
+use sysinfo::{CpuExt, PidExt, ProcessExt, System, SystemExt};
 use tokio::sync::RwLock;
+use tokio::time::{interval, Duration};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CpuCoreStats {
@@ -70,9 +73,25 @@ pub struct SystemdService {
 
 lazy_static::lazy_static! {
     static ref SYSTEM: RwLock<System> = RwLock::new(System::new_all());
+    static ref LAST_METRICS: RwLock<Option<Value>> = RwLock::new(None);
 }
 
+static METRICS_EMIT_GEN: AtomicU64 = AtomicU64::new(0);
+
 pub fn register(registry: &mut ServiceRegistry) {
+    tokio::spawn(async {
+        let mut tick = interval(Duration::from_secs(30));
+        loop {
+            tick.tick().await;
+            if let Ok(m) = collect_metrics_json().await {
+                if metrics_changed(&m).await {
+                    schedule_metrics_emit().await;
+                }
+                *LAST_METRICS.write().await = Some(m);
+            }
+        }
+    });
+
     registry.register("Performance.GetCpuStats", |_params| async move {
         let mut sys = SYSTEM.write().await;
         sys.refresh_cpu();
@@ -305,50 +324,81 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Performance.GetMetrics", |_params| async move {
-        let mut sys = SYSTEM.write().await;
-        sys.refresh_cpu();
-        sys.refresh_memory();
+        Ok(collect_metrics_json().await?)
+    });
+}
 
-        let cpu_count = sys.cpus().len().max(1);
-        let cpu_usage: f32 = sys.cpus().iter().map(|c| c.cpu_usage()).sum::<f32>() / cpu_count as f32;
+async fn collect_metrics_json() -> Result<Value> {
+    let mut sys = SYSTEM.write().await;
+    sys.refresh_cpu();
+    sys.refresh_memory();
 
-        let mem_total = sys.total_memory();
-        let mem_used = sys.used_memory();
-        let memory_percent = if mem_total > 0 {
-            (mem_used as f64 / mem_total as f64) * 100.0
-        } else {
-            0.0
-        };
+    let cpu_count = sys.cpus().len().max(1);
+    let cpu_usage: f32 = sys.cpus().iter().map(|c| c.cpu_usage()).sum::<f32>() / cpu_count as f32;
 
-        let disk_percent = get_disk_stats()
-            .await
-            .ok()
-            .and_then(|disks| {
-                disks.first().map(|d| {
-                    if d.total_gb > 0.0 {
-                        (d.used_gb / d.total_gb) * 100.0
-                    } else {
-                        0.0
-                    }
-                })
+    let mem_total = sys.total_memory();
+    let mem_used = sys.used_memory();
+    let memory_percent = if mem_total > 0 {
+        (mem_used as f64 / mem_total as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    let disk_percent = get_disk_stats()
+        .await
+        .ok()
+        .and_then(|disks| {
+            disks.first().map(|d| {
+                if d.total_gb > 0.0 {
+                    (d.used_gb / d.total_gb) * 100.0
+                } else {
+                    0.0
+                }
             })
-            .unwrap_or(0.0);
+        })
+        .unwrap_or(0.0);
 
-        let gpu_percent = get_gpu_stats()
-            .await
-            .ok()
-            .and_then(|gpus| gpus.first().map(|g| g.utilization_percent))
-            .unwrap_or(0.0);
+    let gpu_percent = get_gpu_stats()
+        .await
+        .ok()
+        .and_then(|gpus| gpus.first().map(|g| g.utilization_percent))
+        .unwrap_or(0.0);
 
-        let temperature_c = read_cpu_temp_c().await.unwrap_or(0.0);
+    let temperature_c = read_cpu_temp_c().await.unwrap_or(0.0);
 
-        Ok(serde_json::json!({
-            "cpu_percent": cpu_usage as f64,
-            "memory_percent": memory_percent,
-            "disk_percent": disk_percent,
-            "gpu_percent": gpu_percent,
-            "temperature_c": temperature_c,
-        }))
+    Ok(json!({
+        "cpu_percent": cpu_usage as f64,
+        "memory_percent": memory_percent,
+        "disk_percent": disk_percent,
+        "gpu_percent": gpu_percent,
+        "temperature_c": temperature_c,
+    }))
+}
+
+async fn metrics_changed(current: &Value) -> bool {
+    let prev = LAST_METRICS.read().await;
+    let Some(p) = prev.as_ref() else {
+        return true;
+    };
+    let threshold = 2.0_f64;
+    for key in ["cpu_percent", "memory_percent", "disk_percent"] {
+        let prev_v = p.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let cur_v = current.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+        if (prev_v - cur_v).abs() >= threshold {
+            return true;
+        }
+    }
+    false
+}
+
+async fn schedule_metrics_emit() {
+    let gen = METRICS_EMIT_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        if METRICS_EMIT_GEN.load(Ordering::SeqCst) != gen {
+            return;
+        }
+        notify::emit("Performance.MetricsChanged", json!({}));
     });
 }
 

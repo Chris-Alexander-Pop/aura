@@ -57,6 +57,27 @@ async fn probe_encryption_enabled() -> bool {
     false
 }
 
+pub(crate) async fn probe_fail2ban_active() -> bool {
+    if let Ok(output) = process::exec_command(&["systemctl", "is-active", "fail2ban"]).await {
+        return output.trim() == "active";
+    }
+    false
+}
+
+pub(crate) async fn probe_clamav_installed() -> bool {
+    process::exec_command(&["command", "-v", "clamscan"])
+        .await
+        .map(|o| !o.trim().is_empty())
+        .unwrap_or(false)
+}
+
+pub(crate) async fn probe_fprintd_available() -> bool {
+    process::exec_command(&["command", "-v", "fprintd-list"])
+        .await
+        .map(|o| !o.trim().is_empty())
+        .unwrap_or(false)
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Security.GetFirewallStatus", |_params| async move {
         // Try ufw first
@@ -337,6 +358,9 @@ pub fn register(registry: &mut ServiceRegistry) {
             "firewall_enabled": probe_firewall_enabled().await,
             "ssh_enabled": probe_ssh_enabled().await,
             "encryption_enabled": probe_encryption_enabled().await,
+            "fail2ban_active": probe_fail2ban_active().await,
+            "clamav_installed": probe_clamav_installed().await,
+            "fprintd_available": probe_fprintd_available().await,
         }))
     });
 

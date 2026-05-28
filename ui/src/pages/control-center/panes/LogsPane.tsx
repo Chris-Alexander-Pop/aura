@@ -117,7 +117,7 @@ export function LogsPane() {
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["logs"],
-    queryFn: api.getLogs,
+    queryFn: () => api.getLogs({ lines: 200 }),
     refetchInterval: 30_000,
   })
 

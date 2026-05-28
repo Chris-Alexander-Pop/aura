@@ -36,7 +36,19 @@ Message shape:
 { "method": "Power.BatteryState", "params": { "percent": 80, "charging": false, "time_remaining": "2h" } }
 ```
 
-Examples: `Power.BatteryState`, `Power.Profile`, `Network.StateChanged`, `Bluetooth.StateChanged`, `Audio.StateChanged`.
+Examples: `Power.BatteryState`, `Power.Profile`, `Network.StateChanged`, `Bluetooth.StateChanged`, `Audio.StateChanged`, `Notifications.Changed`, `Performance.MetricsChanged`.
+
+## Notifications
+
+- Listens on the session bus via `dbus-monitor` (Notify) and zbus signals (`NotificationClosed`).
+- RPC: `Notifications.List`, `Notifications.GetDnd` / `SetDnd`, `Notifications.ClearAll`, etc.
+- DND/quiet-hours prefs persist in SQLite (`notifications` namespace).
+
+## Keybinds
+
+- Reads Hyprland config (`HYPRLAND_CONFIG` or `~/.config/hypr/hyprland.conf`) and `source =` includes.
+- Writes **only** to `~/.config/ags/hypr/aura-binds.conf` (backup on change).
+- RPC: `Keybinds.List`, `Keybinds.Validate`, `Keybinds.Set` / `Unset`, `Keybinds.Reload`.
 
 ## Tests
 
