@@ -9,7 +9,12 @@ const P0_METHODS: &[&str] = &[
     "Network.GetStatus",
     "Network.ScanNetworks",
     "Network.ListSaved",
+    "Bluetooth.GetAdapters",
+    "Bluetooth.GetDevices",
+    "Audio.GetDevices",
+    "Audio.GetStreams",
     "Packages.GetUpgradable",
+    "Packages.GetTransactionHistory",
     "Logs.Get",
     "Security.GetStatus",
     "Performance.GetMetrics",
@@ -137,4 +142,42 @@ async fn power_get_battery_state_shape() {
     assert!(value.get("percent").is_some());
     assert!(value.get("charging").is_some());
     assert!(value.get("time_remaining").is_some());
+}
+
+#[tokio::test]
+async fn bluetooth_get_adapters_returns_array() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Bluetooth.GetAdapters", None)
+        .await
+        .expect("Bluetooth.GetAdapters");
+    assert!(value.is_array());
+}
+
+#[tokio::test]
+async fn audio_get_devices_has_sinks_and_sources() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Audio.GetDevices", None)
+        .await
+        .expect("Audio.GetDevices");
+    assert!(value.get("sinks").is_some());
+    assert!(value.get("sources").is_some());
+}
+
+#[tokio::test]
+async fn packages_get_transaction_history_returns_array() {
+    let registry = test_registry();
+    let value = call_method(
+        &registry,
+        "Packages.GetTransactionHistory",
+        Some(json!({ "limit": 5 })),
+    )
+    .await
+    .expect("Packages.GetTransactionHistory");
+    assert!(value.is_array());
+}
+
+#[tokio::test]
+async fn notify_emit_does_not_panic() {
+    ags_sidecar::notify::init_for_tests();
+    ags_sidecar::notify::emit("Test.Ping", serde_json::json!({ "ok": true }));
 }

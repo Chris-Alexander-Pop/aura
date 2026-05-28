@@ -26,6 +26,18 @@ cargo build --release
 
 Symlink or copy builds into `~/.config/ags/sidecar/target/` when using `~/.config/ags/aura`.
 
+## Real-time push (WebSocket + GTK)
+
+Services emit JSON events on `ws://127.0.0.1:9080/ws` and on **stdout** for the GTK sidecar (wrapped as JSON-RPC notifications).
+
+Message shape:
+
+```json
+{ "method": "Power.BatteryState", "params": { "percent": 80, "charging": false, "time_remaining": "2h" } }
+```
+
+Examples: `Power.BatteryState`, `Power.Profile`, `Network.StateChanged`, `Bluetooth.StateChanged`, `Audio.StateChanged`.
+
 ## Tests
 
 ```bash

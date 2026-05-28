@@ -1,0 +1,6 @@
+Sink Input #55
+	Sink: 47
+	Volume: front-left: 65536 / 100% / 0.00 dB,   front-right: 65536 / 100% / 0.00 dB
+	        balance 0.00
+	application.name = "Firefox"
+	media.name = "AudioStream"

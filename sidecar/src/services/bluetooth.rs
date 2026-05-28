@@ -1,14 +1,18 @@
+use crate::notify;
 use crate::services::ServiceRegistry;
 use crate::utils::process;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
+
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BluetoothAdapter {
+    /// D-Bus-style path for UI compatibility (e.g. `/org/bluez/hci0`).
     pub path: String,
+    pub address: String,
     pub name: String,
     pub alias: String,
     pub powered: bool,
@@ -17,7 +21,7 @@ pub struct BluetoothAdapter {
     pub discovering: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BluetoothDevice {
     pub address: String,
     pub path: String,
@@ -32,24 +36,22 @@ pub struct BluetoothDevice {
     pub services: Vec<String>,
 }
 
-lazy_static::lazy_static! {
-    static ref BLUETOOTH_STATE: RwLock<BluetoothState> = RwLock::new(BluetoothState::default());
-}
-
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 struct BluetoothState {
     adapters: Vec<BluetoothAdapter>,
     devices: Vec<BluetoothDevice>,
 }
 
+lazy_static::lazy_static! {
+    static ref BLUETOOTH_STATE: RwLock<BluetoothState> = RwLock::new(BluetoothState::default());
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
-    // Start Bluetooth monitoring
     tokio::spawn(async {
-        let mut interval = interval(Duration::from_secs(2));
+        let mut tick = interval(Duration::from_secs(2));
         loop {
-            interval.tick().await;
-            refresh_adapters().await.ok();
-            refresh_devices().await.ok();
+            tick.tick().await;
+            let _ = refresh_all(false).await;
         }
     });
 
@@ -64,191 +66,53 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Bluetooth.Scan", |_params| async move {
-        // Start discovery on all adapters
-        let state = BLUETOOTH_STATE.read().await;
-        for adapter in &state.adapters {
-            if adapter.powered {
-                let _ = process::exec_command(&[
-                    "dbus-send",
-                    "--system",
-                    "--print-reply",
-                    "--dest=org.bluez",
-                    &adapter.path,
-                    "org.freedesktop.DBus.Properties.Set",
-                    "string:org.bluez.Adapter1",
-                    "string:Discoverable",
-                    "variant:boolean:true",
-                ])
-                .await;
-
-                let _ = process::exec_command(&[
-                    "dbus-send",
-                    "--system",
-                    "--print-reply",
-                    "--dest=org.bluez",
-                    &adapter.path,
-                    "org.bluez.Adapter1.StartDiscovery",
-                ])
-                .await;
-            }
+        let macs = default_adapter_macs().await;
+        let empty = macs.is_empty();
+        for mac in &macs {
+            let _ = bluetoothctl_on_adapter(mac, &["scan", "on"]).await;
         }
+        if empty {
+            let _ = process::exec_command(&["bluetoothctl", "--timeout", "5", "scan", "on"]).await;
+        }
+        refresh_all(true).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Bluetooth.StopScan", |_params| async move {
-        // Stop discovery on all adapters
-        let state = BLUETOOTH_STATE.read().await;
-        for adapter in &state.adapters {
-            if adapter.discovering {
-                let _ = process::exec_command(&[
-                    "dbus-send",
-                    "--system",
-                    "--print-reply",
-                    "--dest=org.bluez",
-                    &adapter.path,
-                    "org.bluez.Adapter1.StopDiscovery",
-                ])
-                .await;
-            }
+        let macs = default_adapter_macs().await;
+        for mac in macs {
+            let _ = bluetoothctl_on_adapter(&mac, &["scan", "off"]).await;
         }
+        let _ = process::exec_command(&["bluetoothctl", "scan", "off"]).await;
+        refresh_all(true).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Bluetooth.Pair", |params| async move {
-        let device_address: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("device_address").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing device_address"))?,
-        )?;
-
-        // Find device path
-        let state = BLUETOOTH_STATE.read().await;
-        let device = state
-            .devices
-            .iter()
-            .find(|d| d.address == device_address)
-            .ok_or_else(|| anyhow::anyhow!("Device not found"))?;
-
-        let device_path = device.path.clone();
-        drop(state);
-
-        // Pair device
-        let _ = process::exec_command(&[
-            "dbus-send",
-            "--system",
-            "--print-reply",
-            "--dest=org.bluez",
-            &device_path,
-            "org.bluez.Device1.Pair",
-        ])
-        .await;
-
+        let device_address = device_address_from_params(params)?;
+        run_device_cmd(&device_address, &["pair"]).await?;
+        refresh_all(true).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Bluetooth.Connect", |params| async move {
-        let device_address: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("device_address").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing device_address"))?,
-        )?;
-
-        // Find device path
-        let state = BLUETOOTH_STATE.read().await;
-        let device = state
-            .devices
-            .iter()
-            .find(|d| d.address == device_address)
-            .ok_or_else(|| anyhow::anyhow!("Device not found"))?;
-
-        let device_path = device.path.clone();
-        drop(state);
-
-        // Connect device
-        let _ = process::exec_command(&[
-            "dbus-send",
-            "--system",
-            "--print-reply",
-            "--dest=org.bluez",
-            &device_path,
-            "org.bluez.Device1.Connect",
-        ])
-        .await;
-
+        let device_address = device_address_from_params(params)?;
+        run_device_cmd(&device_address, &["connect"]).await?;
+        refresh_all(true).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Bluetooth.Disconnect", |params| async move {
-        let device_address: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("device_address").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing device_address"))?,
-        )?;
-
-        // Find device path
-        let state = BLUETOOTH_STATE.read().await;
-        let device = state
-            .devices
-            .iter()
-            .find(|d| d.address == device_address)
-            .ok_or_else(|| anyhow::anyhow!("Device not found"))?;
-
-        let device_path = device.path.clone();
-        drop(state);
-
-        // Disconnect device
-        let _ = process::exec_command(&[
-            "dbus-send",
-            "--system",
-            "--print-reply",
-            "--dest=org.bluez",
-            &device_path,
-            "org.bluez.Device1.Disconnect",
-        ])
-        .await;
-
+        let device_address = device_address_from_params(params)?;
+        run_device_cmd(&device_address, &["disconnect"]).await?;
+        refresh_all(true).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Bluetooth.Remove", |params| async move {
-        let device_address: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("device_address").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing device_address"))?,
-        )?;
-
-        // Find device and adapter
-        let state = BLUETOOTH_STATE.read().await;
-        let device = state
-            .devices
-            .iter()
-            .find(|d| d.address == device_address)
-            .ok_or_else(|| anyhow::anyhow!("Device not found"))?;
-
-        let device_path = device.path.clone();
-        let adapter_path = device_path
-            .rsplit('/')
-            .nth(1)
-            .map(|s| format!("/{}", s))
-            .unwrap_or_default();
-        drop(state);
-
-        // Remove device
-        let _ = process::exec_command(&[
-            "dbus-send",
-            "--system",
-            "--print-reply",
-            "--dest=org.bluez",
-            &adapter_path,
-            "org.bluez.Adapter1.RemoveDevice",
-            &format!("objectpath:\"{}\"", device_path),
-        ])
-        .await;
-
+        let device_address = device_address_from_params(params)?;
+        run_device_cmd(&device_address, &["remove"]).await?;
+        refresh_all(true).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -259,7 +123,6 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .and_then(|p| p.get("adapter_path").cloned())
                 .ok_or_else(|| anyhow::anyhow!("Missing adapter_path"))?,
         )?;
-
         let powered: bool = serde_json::from_value(
             params
                 .as_ref()
@@ -267,19 +130,14 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .ok_or_else(|| anyhow::anyhow!("Missing powered"))?,
         )?;
 
-        let _ = process::exec_command(&[
-            "dbus-send",
-            "--system",
-            "--print-reply",
-            "--dest=org.bluez",
-            &adapter_path,
-            "org.freedesktop.DBus.Properties.Set",
-            "string:org.bluez.Adapter1",
-            "string:Powered",
-            &format!("variant:boolean:{}", powered),
-        ])
-        .await;
-
+        let mac = resolve_adapter_mac(&adapter_path).await?;
+        let cmd = if powered { "on" } else { "off" };
+        if let Some(ref m) = mac {
+            bluetoothctl_on_adapter(m, &["power", cmd]).await?;
+        } else {
+            process::exec_command(&["bluetoothctl", "power", cmd]).await?;
+        }
+        refresh_all(true).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -290,7 +148,6 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .and_then(|p| p.get("adapter_path").cloned())
                 .ok_or_else(|| anyhow::anyhow!("Missing adapter_path"))?,
         )?;
-
         let discoverable: bool = serde_json::from_value(
             params
                 .as_ref()
@@ -298,30 +155,27 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .ok_or_else(|| anyhow::anyhow!("Missing discoverable"))?,
         )?;
 
-        let _ = process::exec_command(&[
-            "dbus-send",
-            "--system",
-            "--print-reply",
-            "--dest=org.bluez",
-            &adapter_path,
-            "org.freedesktop.DBus.Properties.Set",
-            "string:org.bluez.Adapter1",
-            "string:Discoverable",
-            &format!("variant:boolean:{}", discoverable),
-        ])
-        .await;
-
+        let mac = resolve_adapter_mac(&adapter_path).await?;
+        if discoverable {
+            if let Some(ref m) = mac {
+                bluetoothctl_on_adapter(m, &["discoverable", "on"]).await?;
+            } else {
+                process::exec_command(&["bluetoothctl", "discoverable", "on"]).await?;
+            }
+        } else if let Some(ref m) = mac {
+            bluetoothctl_on_adapter(m, &["discoverable", "off"]).await?;
+        } else {
+            process::exec_command(&["bluetoothctl", "discoverable", "off"]).await?;
+        }
+        refresh_all(true).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Bluetooth.GetDeviceInfo", |params| async move {
-        let device_address: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("device_address").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing device_address"))?,
-        )?;
-
+        let device_address = device_address_from_params(params)?;
+        if let Ok(device) = fetch_device_info(&device_address).await {
+            return Ok(serde_json::to_value(&device)?);
+        }
         let state = BLUETOOTH_STATE.read().await;
         let device = state
             .devices
@@ -329,169 +183,207 @@ pub fn register(registry: &mut ServiceRegistry) {
             .find(|d| d.address == device_address)
             .ok_or_else(|| anyhow::anyhow!("Device not found"))?
             .clone();
-
         Ok(serde_json::to_value(&device)?)
     });
 }
 
-async fn refresh_adapters() -> Result<()> {
-    // Use bluetoothctl to list adapters
-    let output = process::exec_command(&["bluetoothctl", "list"]).await?;
+fn device_address_from_params(
+    params: Option<serde_json::Value>,
+) -> Result<String> {
+    Ok(serde_json::from_value(
+        params
+            .and_then(|p| p.get("device_address").cloned())
+            .ok_or_else(|| anyhow::anyhow!("Missing device_address"))?,
+    )?)
+}
 
-    let mut adapters = Vec::new();
-    for line in output.lines() {
-        if line.starts_with("Controller") {
-            // Parse: Controller 00:11:22:33:44:55 Name [default]
-            if let Some(parts) = line.split_whitespace().nth(1) {
-                let address = parts.to_string();
-                // Get adapter properties via D-Bus
-                if let Ok(adapter) = get_adapter_properties(&address).await {
-                    adapters.push(adapter);
-                }
-            }
-        }
+async fn run_device_cmd(address: &str, args: &[&str]) -> Result<()> {
+    let mut cmd = vec!["bluetoothctl"];
+    cmd.push(address);
+    cmd.extend_from_slice(args);
+    process::exec_command(&cmd).await?;
+    Ok(())
+}
+
+async fn bluetoothctl_on_adapter(mac: &str, args: &[&str]) -> Result<()> {
+    let mut cmd = vec!["bluetoothctl", "-a", mac];
+    cmd.extend_from_slice(args);
+    process::exec_command(&cmd).await?;
+    Ok(())
+}
+
+async fn default_adapter_macs() -> Vec<String> {
+    BLUETOOTH_STATE
+        .read()
+        .await
+        .adapters
+        .iter()
+        .map(|a| a.address.clone())
+        .collect()
+}
+
+async fn resolve_adapter_mac(adapter_path: &str) -> Result<Option<String>> {
+    if adapter_path.contains(':') && adapter_path.len() >= 17 {
+        return Ok(Some(adapter_path.to_string()));
     }
+    let state = BLUETOOTH_STATE.read().await;
+    Ok(state
+        .adapters
+        .iter()
+        .find(|a| a.path == adapter_path)
+        .map(|a| a.address.clone()))
+}
+
+async fn refresh_all(force_emit: bool) -> Result<()> {
+    let adapters = fetch_adapters().await.unwrap_or_default();
+    let devices = fetch_devices().await.unwrap_or_default();
 
     let mut state = BLUETOOTH_STATE.write().await;
+    let changed = state.adapters != adapters || state.devices != devices;
     state.adapters = adapters;
+    state.devices = devices.clone();
+
+    if changed || force_emit {
+        notify::emit(
+            "Bluetooth.StateChanged",
+            serde_json::json!({
+                "adapters": state.adapters,
+                "devices": state.devices,
+            }),
+        );
+    }
     Ok(())
 }
 
-async fn get_adapter_properties(_address: &str) -> Result<BluetoothAdapter> {
-    // Find adapter path
-    let _output = process::exec_command(&[
-        "dbus-send",
-        "--system",
-        "--print-reply",
-        "--dest=org.bluez",
-        "/",
-        "org.freedesktop.DBus.ObjectManager.GetManagedObjects",
-    ])
-    .await?;
+async fn fetch_adapters() -> Result<Vec<BluetoothAdapter>> {
+    let output = process::exec_command(&["bluetoothctl", "list"]).await?;
+    let mut adapters = Vec::new();
+    let mut idx = 0u32;
 
-    // Parse output to find adapter path
-    let adapter_path = format!("/org/bluez/hci0"); // Simplified, should parse from output
+    for line in output.lines() {
+        let line = line.trim();
+        if !line.starts_with("Controller ") {
+            continue;
+        }
+        let rest = line.strip_prefix("Controller ").unwrap_or(line);
+        let mut parts = rest.split_whitespace();
+        let address = parts.next().unwrap_or("").to_string();
+        if address.is_empty() || !address.contains(':') {
+            continue;
+        }
+        let name = parts.collect::<Vec<_>>().join(" ");
+        let name = name.trim_end_matches("[default]").trim().to_string();
 
-    // Get properties
-    let name_output = process::exec_command(&[
-        "dbus-send",
-        "--system",
-        "--print-reply",
-        "--dest=org.bluez",
-        &adapter_path,
-        "org.freedesktop.DBus.Properties.Get",
-        "string:org.bluez.Adapter1",
-        "string:Name",
-    ])
-    .await
-    .ok()
-    .and_then(|o| parse_dbus_variant(&o));
+        let details = fetch_adapter_show(&address).await;
+        let path = format!("/org/bluez/hci{idx}");
+        idx += 1;
 
-    let alias_output = process::exec_command(&[
-        "dbus-send",
-        "--system",
-        "--print-reply",
-        "--dest=org.bluez",
-        &adapter_path,
-        "org.freedesktop.DBus.Properties.Get",
-        "string:org.bluez.Adapter1",
-        "string:Alias",
-    ])
-    .await
-    .ok()
-    .and_then(|o| parse_dbus_variant(&o));
+        adapters.push(BluetoothAdapter {
+            path,
+            address: address.clone(),
+            name: details.name.unwrap_or_else(|| name.clone()),
+            alias: details.alias.unwrap_or(name),
+            powered: details.powered.unwrap_or(false),
+            discoverable: details.discoverable.unwrap_or(false),
+            pairable: details.pairable.unwrap_or(true),
+            discovering: details.discovering.unwrap_or(false),
+        });
+    }
 
-    let powered_output = process::exec_command(&[
-        "dbus-send",
-        "--system",
-        "--print-reply",
-        "--dest=org.bluez",
-        &adapter_path,
-        "org.freedesktop.DBus.Properties.Get",
-        "string:org.bluez.Adapter1",
-        "string:Powered",
-    ])
-    .await
-    .ok()
-    .and_then(|o| parse_dbus_variant(&o));
-
-    let discoverable_output = process::exec_command(&[
-        "dbus-send",
-        "--system",
-        "--print-reply",
-        "--dest=org.bluez",
-        &adapter_path,
-        "org.freedesktop.DBus.Properties.Get",
-        "string:org.bluez.Adapter1",
-        "string:Discoverable",
-    ])
-    .await
-    .ok()
-    .and_then(|o| parse_dbus_variant(&o));
-
-    Ok(BluetoothAdapter {
-        path: adapter_path,
-        name: name_output.unwrap_or_else(|| "Unknown".to_string()),
-        alias: alias_output.unwrap_or_else(|| "Unknown".to_string()),
-        powered: powered_output.and_then(|s| s.parse().ok()).unwrap_or(false),
-        discoverable: discoverable_output
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(false),
-        pairable: false, // Would need another D-Bus call
-        discovering: false, // Would need another D-Bus call
-    })
+    Ok(adapters)
 }
 
-fn parse_dbus_variant(output: &str) -> Option<String> {
-    // Simple parser for D-Bus variant output
-    // Format: variant string "value"
+struct AdapterShowDetails {
+    name: Option<String>,
+    alias: Option<String>,
+    powered: Option<bool>,
+    discoverable: Option<bool>,
+    pairable: Option<bool>,
+    discovering: Option<bool>,
+}
+
+async fn fetch_adapter_show(address: &str) -> AdapterShowDetails {
+    let output = process::exec_command(&["bluetoothctl", "show", address])
+        .await
+        .unwrap_or_default();
+    parse_show_block(&output)
+}
+
+fn parse_show_block(output: &str) -> AdapterShowDetails {
+    let mut details = AdapterShowDetails {
+        name: None,
+        alias: None,
+        powered: None,
+        discoverable: None,
+        pairable: None,
+        discovering: None,
+    };
+
     for line in output.lines() {
-        if line.contains("variant") && line.contains("string") {
-            if let Some(start) = line.find('"') {
-                if let Some(end) = line[start + 1..].find('"') {
-                    return Some(line[start + 1..start + 1 + end].to_string());
-                }
-            }
+        let line = line.trim();
+        if let Some(v) = line.strip_prefix("Name:") {
+            details.name = Some(v.trim().to_string());
+        } else if let Some(v) = line.strip_prefix("Alias:") {
+            details.alias = Some(v.trim().to_string());
+        } else if line.starts_with("Powered:") {
+            details.powered = Some(line.contains("yes"));
+        } else if line.starts_with("Discoverable:") {
+            details.discoverable = Some(line.contains("yes"));
+        } else if line.starts_with("Pairable:") {
+            details.pairable = Some(line.contains("yes"));
+        } else if line.starts_with("Discovering:") {
+            details.discovering = Some(line.contains("yes"));
         }
     }
-    None
+    details
 }
 
-async fn refresh_devices() -> Result<()> {
-    // Use bluetoothctl to list devices
+async fn fetch_devices() -> Result<Vec<BluetoothDevice>> {
     let output = process::exec_command(&["bluetoothctl", "devices"]).await?;
-
     let mut devices = Vec::new();
-    for line in output.lines() {
-        if line.starts_with("Device") {
-            // Parse: Device 00:11:22:33:44:55 Name
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 3 {
-                let address = parts[1].to_string();
-                let name = parts[2..].join(" ");
 
-                // Get device properties
-                if let Ok(device) = get_device_properties(&address, &name).await {
-                    devices.push(device);
-                }
-            }
+    for line in output.lines() {
+        let line = line.trim();
+        if !line.starts_with("Device ") {
+            continue;
+        }
+        let rest = line.strip_prefix("Device ").unwrap_or(line);
+        let mut parts = rest.splitn(2, ' ');
+        let address = parts.next().unwrap_or("").to_string();
+        if !address.contains(':') {
+            continue;
+        }
+        let name = parts.next().unwrap_or("").trim().to_string();
+        if let Ok(device) = fetch_device_info(&address).await {
+            devices.push(device);
+        } else {
+            devices.push(BluetoothDevice {
+                path: device_path_for_address(&address),
+                address,
+                name: name.clone(),
+                alias: name,
+                connected: false,
+                paired: false,
+                trusted: false,
+                rssi: None,
+                battery_percentage: None,
+                device_type: String::new(),
+                services: Vec::new(),
+            });
         }
     }
 
-    let mut state = BLUETOOTH_STATE.write().await;
-    state.devices = devices;
-    Ok(())
+    Ok(devices)
 }
 
-async fn get_device_properties(address: &str, name: &str) -> Result<BluetoothDevice> {
-    // Get device info via bluetoothctl
-    let info_output = process::exec_command(&[
-        "bluetoothctl",
-        "info",
-        address,
-    ])
-    .await?;
+async fn fetch_device_info(address: &str) -> Result<BluetoothDevice> {
+    let output = process::exec_command(&["bluetoothctl", "info", address]).await?;
+    Ok(parse_device_info(address, &output))
+}
 
+pub(crate) fn parse_device_info(address: &str, output: &str) -> BluetoothDevice {
+    let mut name = address.to_string();
+    let mut alias = String::new();
     let mut connected = false;
     let mut paired = false;
     let mut trusted = false;
@@ -499,44 +391,97 @@ async fn get_device_properties(address: &str, name: &str) -> Result<BluetoothDev
     let mut battery: Option<u8> = None;
     let mut device_type = String::new();
 
-    for line in info_output.lines() {
-        if line.contains("Connected: yes") {
-            connected = true;
-        }
-        if line.contains("Paired: yes") {
-            paired = true;
-        }
-        if line.contains("Trusted: yes") {
-            trusted = true;
-        }
-        if line.contains("RSSI:") {
-            if let Some(rssi_str) = line.split_whitespace().nth(1) {
-                rssi = rssi_str.parse().ok();
+    for line in output.lines() {
+        let line = line.trim();
+        if let Some(v) = line.strip_prefix("Name:") {
+            name = v.trim().to_string();
+        } else if let Some(v) = line.strip_prefix("Alias:") {
+            alias = v.trim().to_string();
+        } else if line.starts_with("Connected:") {
+            connected = line.contains("yes");
+        } else if line.starts_with("Paired:") {
+            paired = line.contains("yes");
+        } else if line.starts_with("Trusted:") {
+            trusted = line.contains("yes");
+        } else if let Some(v) = line.strip_prefix("RSSI:") {
+            rssi = v.trim().parse().ok();
+        } else if let Some(v) = line.strip_prefix("Battery Percentage:") {
+            let t = v.trim();
+            if let Some(open) = t.rfind('(') {
+                if let Some(close) = t.rfind(')') {
+                    battery = t[open + 1..close].trim().parse().ok();
+                }
             }
-        }
-        if line.contains("Battery Percentage:") {
-            if let Some(bat_str) = line.split_whitespace().nth(2) {
-                battery = bat_str.parse().ok();
+            if battery.is_none() {
+                let num = t.trim_end_matches('%');
+                battery = num.parse().ok();
             }
-        }
-        if line.contains("Icon:") {
-            if let Some(icon) = line.split_whitespace().nth(1) {
-                device_type = icon.to_string();
-            }
+        } else if let Some(v) = line.strip_prefix("Icon:") {
+            device_type = v.trim().to_string();
         }
     }
 
-    Ok(BluetoothDevice {
+    if alias.is_empty() {
+        alias = name.clone();
+    }
+
+    BluetoothDevice {
         address: address.to_string(),
-        path: format!("/org/bluez/hci0/dev_{}", address.replace(':', "_")),
-        name: name.to_string(),
-        alias: name.to_string(),
+        path: device_path_for_address(address),
+        name,
+        alias,
         connected,
         paired,
         trusted,
         rssi,
         battery_percentage: battery,
         device_type,
-        services: Vec::new(), // Would need additional parsing
-    })
+        services: Vec::new(),
+    }
+}
+
+fn device_path_for_address(address: &str) -> String {
+    format!("/org/bluez/hci0/dev_{}", address.replace(':', "_"))
+}
+
+pub(crate) fn parse_controller_list_line(line: &str) -> Option<(String, String)> {
+    let line = line.trim();
+    if !line.starts_with("Controller ") {
+        return None;
+    }
+    let rest = line.strip_prefix("Controller ")?;
+    let mut parts = rest.split_whitespace();
+    let address = parts.next()?.to_string();
+    let name = parts.collect::<Vec<_>>().join(" ");
+    let name = name.trim_end_matches("[default]").trim().to_string();
+    Some((address, name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_controller_list_fixture() {
+        let fixture = include_str!("../../tests/fixtures/bluetooth/bluetoothctl_list.txt");
+        let mut count = 0;
+        for line in fixture.lines() {
+            if let Some((addr, name)) = parse_controller_list_line(line) {
+                count += 1;
+                assert!(addr.contains(':'));
+                assert!(!name.is_empty());
+            }
+        }
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn parse_device_info_fixture() {
+        let fixture = include_str!("../../tests/fixtures/bluetooth/bluetoothctl_info.txt");
+        let dev = parse_device_info("AA:BB:CC:DD:EE:FF", fixture);
+        assert_eq!(dev.name, "Test Headphones");
+        assert!(dev.paired);
+        assert!(dev.connected);
+        assert_eq!(dev.battery_percentage, Some(85));
+    }
 }

@@ -1,6 +1,7 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
 import { cn } from "@/lib/utils"
 
@@ -17,6 +18,15 @@ function adapterSummary(
 export default function BluetoothFlyout() {
   const qc = useQueryClient()
   const [busyAddr, setBusyAddr] = useState<string | null>(null)
+
+  useEffect(() => {
+    connectWs()
+    const off = useWsStore.getState().on("Bluetooth.StateChanged", () => {
+      void qc.invalidateQueries({ queryKey: ["bt-ad"] })
+      void qc.invalidateQueries({ queryKey: ["bt-dev"] })
+    })
+    return off
+  }, [qc])
 
   const { data: adapters, isPending: adPending } = useQuery({
     queryKey: ["bt-ad"],

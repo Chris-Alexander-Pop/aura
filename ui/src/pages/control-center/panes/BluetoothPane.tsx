@@ -1,7 +1,8 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 
 type Adapter = Awaited<ReturnType<typeof api.getBluetoothAdapters>>[number]
@@ -50,6 +51,15 @@ export function BluetoothPane() {
   const qc = useQueryClient()
   const [busyAddr, setBusyAddr] = useState<string | null>(null)
   const [scanBusy, setScanBusy] = useState(false)
+
+  useEffect(() => {
+    connectWs()
+    const off = useWsStore.getState().on("Bluetooth.StateChanged", () => {
+      void qc.invalidateQueries({ queryKey: ["bt-ad"] })
+      void qc.invalidateQueries({ queryKey: ["bt-dev"] })
+    })
+    return off
+  }, [qc])
 
   const adaptersQuery = useQuery({
     queryKey: ["bt-ad"],

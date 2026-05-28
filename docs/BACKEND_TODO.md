@@ -79,7 +79,7 @@
 ### 0.6 Real-time events
 
 - [ ] Define notification schema: `{ method, params }` for WebSocket + future stdin notify
-- [x] Emit on: battery change, network connect/disconnect (partial — power + network done; VPN/audio/BT pending)
+- [x] Emit on: battery change, network connect/disconnect, Bluetooth, Audio (partial — VPN pending)
 - [x] GTK `sidecar.ts` already listens for `Power.BatteryState` / `Power.Profile` — **implement emitters** in `power.rs`
 - [ ] Integration test: connect WS client, trigger change, assert message
 
@@ -149,23 +149,23 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ### 2.3 Bluetooth (`bluetooth.rs`) — P0
 
-- [ ] Adapter power/discoverable (methods exist — verify bluez)
-- [ ] Pairing flow + agent handling
-- [ ] Device battery % when available
+- [x] Adapter power/discoverable (`bluetoothctl`, `SetAdapterPower` / `SetAdapterDiscoverable`)
+- [ ] Pairing flow + agent handling (PIN UI deferred)
+- [x] Device battery % when available (`bluetoothctl info` parse)
 - [ ] Audio profile selection (A2DP/HSP)
-- [ ] `Bluetooth.GetDeviceInfo` used by UI
-- [ ] Stop scan, remove device — wire to React pane
-- [ ] Unit tests: `bluetoothctl` output fixtures
-- [ ] Integration tests: scan/connect mocked
+- [x] `Bluetooth.GetDeviceInfo` used by UI
+- [x] Stop scan, remove device — `bluetoothctl` + React pane wired
+- [x] Unit tests: `bluetoothctl` output fixtures
+- [x] Integration tests: `GetAdapters` / `GetDevices` smoke
 
 ### 2.4 Audio (`audio.rs`) — P0
 
-- [ ] `Audio.GetDevices` / `GetStreams` — PipeWire via `wpctl` or wireplumber D-Bus
-- [ ] Default sink/source set + **mute state sync** (fix “mute BS” in todo)
-- [ ] Per-stream volume/mute (already in API — verify)
-- [ ] `Audio.SetDefaultDevice` — GTK bar needs this
-- [ ] **Fallback path**: detect failure → `Audio.Refresh`, restart pipewire (confirm dialog from UI)
-- [ ] Sink volume for default output (not only per-app streams)
+- [x] `Audio.GetDevices` / `GetStreams` — PipeWire via `wpctl` / `pactl`
+- [x] Default sink/source set + **mute state sync** (`SetSinkMute` / `SetSourceMute`, parse MUTED)
+- [x] Per-stream volume/mute (verified + refresh after set)
+- [x] `Audio.SetDefaultDevice` — GTK bar needs this
+- [x] **Fallback path**: `Audio.Refresh` with optional `restart_wireplumber` param
+- [x] Sink volume for default output (`Audio.SetSinkVolume` / `SetSourceVolume`)
 - [ ] Effects submodule: verify EasyEffects/wireplumber links or gate behind “advanced”
 - [ ] Profiles/scenarios: list/load/apply — test with real configs
 - [ ] Media controls: prefer `mpris.rs` or consolidate `Audio.Media.*`
@@ -250,11 +250,11 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ### 2.15 Packages (`packages.rs`) — P2
 
-- [ ] `Packages.GetUpgradable` — implement fully (pacman -Qu, apt, yay check)
-- [ ] **`Packages.GetUpdates` alias** for UI
-- [ ] Install/remove/update with polkit
+- [x] `Packages.GetUpgradable` — pacman `-Qu` (Arch only)
+- [x] **`Packages.GetUpdates` alias** for UI (client uses `GetUpgradable`)
+- [x] Install/remove/update with `pkexec`/`sudo` helper
 - [ ] Dependency graph: `GetPackageDependencies` + reverse deps (“why installed”)
-- [ ] **Transaction history** append-only log in `~/.local/share/ags-sidecar/transactions.log`
+- [x] **Transaction history** append-only log in `~/.local/share/ags-sidecar/transactions.jsonl`
 - [ ] AUR/Flatpak/Snap methods — verify or gate behind optional tools
 - [ ] Auto-update policy RPC (schedule, security-only)
 - [ ] Unit tests: parse pacman output fixtures

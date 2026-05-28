@@ -1,5 +1,6 @@
 use crate::services::ServiceRegistry;
-use crate::utils::process;
+use crate::utils::{privileged, process, transactions};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
@@ -13,37 +14,8 @@ pub struct Package {
 
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Packages.GetInstalled", |_params| async move {
-        let mut packages = Vec::new();
-
-        // Try pacman (Arch Linux)
-        if let Ok(output) = process::exec_command(&["pacman", "-Q"]).await {
-            for line in output.lines() {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    packages.push(Package {
-                        name: parts[0].to_string(),
-                        version: parts[1].to_string(),
-                        description: String::new(),
-                        installed: true,
-                    });
-                }
-            }
-        } else if let Ok(output) = process::exec_command(&["dpkg", "-l"]).await {
-            // Try dpkg (Debian/Ubuntu)
-            for line in output.lines().skip(5) {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 3 {
-                    packages.push(Package {
-                        name: parts[1].to_string(),
-                        version: parts[2].to_string(),
-                        description: parts.get(4).map(|s| s.to_string()).unwrap_or_default(),
-                        installed: parts[0] == "ii",
-                    });
-                }
-            }
-        }
-
-        Ok(serde_json::to_value(&packages)?)
+        let output = process::exec_command(&["pacman", "-Q"]).await?;
+        Ok(serde_json::to_value(parse_pacman_q(&output))?)
     });
 
     registry.register("Packages.Search", |params| async move {
@@ -54,41 +26,8 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .ok_or_else(|| anyhow::anyhow!("Missing query"))?,
         )?;
 
-        let mut packages = Vec::new();
-
-        // Try pacman
-        if let Ok(output) = process::exec_command(&["pacman", "-Ss", &query]).await {
-            for line in output.lines() {
-                if line.starts_with("core/") || line.starts_with("extra/") || line.starts_with("community/") {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if !parts.is_empty() {
-                        let name_version: Vec<&str> = parts[0].split('/').collect();
-                        if name_version.len() >= 2 {
-                            packages.push(Package {
-                                name: name_version[1].to_string(),
-                                version: String::new(),
-                                description: parts.get(1).map(|s| s.to_string()).unwrap_or_default(),
-                                installed: false,
-                            });
-                        }
-                    }
-                }
-            }
-        } else if let Ok(output) = process::exec_command(&["apt", "search", &query]).await {
-            // Try apt
-            for line in output.lines().skip(1) {
-                if let Some(name_part) = line.split_whitespace().next() {
-                    packages.push(Package {
-                        name: name_part.to_string(),
-                        version: String::new(),
-                        description: line.to_string(),
-                        installed: false,
-                    });
-                }
-            }
-        }
-
-        Ok(serde_json::to_value(&packages)?)
+        let output = process::exec_command(&["pacman", "-Ss", &query]).await?;
+        Ok(serde_json::to_value(parse_pacman_search(&output))?)
     });
 
     registry.register("Packages.GetPackageInfo", |params| async move {
@@ -99,213 +38,196 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
         )?;
 
-        // Try pacman
-        if let Ok(output) = process::exec_command(&["pacman", "-Qi", &name]).await {
-            Ok(serde_json::json!({ "info": output }))
-        } else if let Ok(output) = process::exec_command(&["dpkg", "-s", &name]).await {
-            Ok(serde_json::json!({ "info": output }))
-        } else {
-            anyhow::bail!("Package not found")
-        }
+        let output = process::exec_command(&["pacman", "-Qi", &name]).await?;
+        Ok(serde_json::json!({ "info": output }))
     });
 
     registry.register("Packages.Install", |params| async move {
-        let name: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("name").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
-        )?;
-
-        // Try pacman
-        if process::exec_command(&["sudo", "pacman", "-S", "--noconfirm", &name]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else if process::exec_command(&["sudo", "apt", "install", "-y", &name]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else {
-            anyhow::bail!("Failed to install package")
-        }
+        let name: String = package_name_from_params(params)?;
+        let result = privileged::run_privileged(&["pacman", "-S", "--noconfirm", &name]).await;
+        log_result("install", vec![name.clone()], &result).await;
+        result?;
+        Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Packages.Remove", |params| async move {
-        let name: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("name").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
-        )?;
-
-        if process::exec_command(&["sudo", "pacman", "-R", "--noconfirm", &name]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else if process::exec_command(&["sudo", "apt", "remove", "-y", &name]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else {
-            anyhow::bail!("Failed to remove package")
-        }
+        let name: String = package_name_from_params(params)?;
+        let result = privileged::run_privileged(&["pacman", "-R", "--noconfirm", &name]).await;
+        log_result("remove", vec![name.clone()], &result).await;
+        result?;
+        Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Packages.Update", |_params| async move {
-        if process::exec_command(&["sudo", "pacman", "-Sy"]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else if process::exec_command(&["sudo", "apt", "update"]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else {
-            anyhow::bail!("Failed to update package lists")
-        }
+        let result = privileged::run_privileged(&["pacman", "-Sy"]).await;
+        log_result("update", vec![], &result).await;
+        result?;
+        Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Packages.Upgrade", |_params| async move {
-        if process::exec_command(&["sudo", "pacman", "-Syu", "--noconfirm"]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else if process::exec_command(&["sudo", "apt", "upgrade", "-y"]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else {
-            anyhow::bail!("Failed to upgrade packages")
-        }
+        let result = privileged::run_privileged(&["pacman", "-Syu", "--noconfirm"]).await;
+        log_result("upgrade", vec![], &result).await;
+        result?;
+        Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Packages.GetUpgradable", |_params| async move {
-        let mut packages = Vec::new();
+        let output = process::exec_command(&["pacman", "-Qu"])
+            .await
+            .unwrap_or_default();
+        Ok(serde_json::to_value(parse_pacman_qu(&output))?)
+    });
 
-        if let Ok(output) = process::exec_command(&["pacman", "-Qu"]).await {
-            for line in output.lines() {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    packages.push(Package {
-                        name: parts[0].to_string(),
-                        version: parts[1].to_string(),
-                        description: String::new(),
-                        installed: true,
-                    });
-                }
-            }
-        } else if let Ok(output) = process::exec_command(&["apt", "list", "--upgradable"]).await {
-            for line in output.lines().skip(1) {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if !parts.is_empty() {
-                    packages.push(Package {
-                        name: parts[0].split('/').next().unwrap().to_string(),
-                        version: String::new(),
-                        description: String::new(),
-                        installed: true,
-                    });
-                }
-            }
-        }
-
-        Ok(serde_json::to_value(&packages)?)
+    registry.register("Packages.GetTransactionHistory", |params| async move {
+        let limit: usize = params
+            .as_ref()
+            .and_then(|p| p.get("limit").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(50);
+        let rows = transactions::read_package_transactions(limit).await?;
+        Ok(serde_json::to_value(rows)?)
     });
 
     registry.register("Packages.GetPackageFiles", |params| async move {
-        let name: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("name").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
-        )?;
-
-        if let Ok(output) = process::exec_command(&["pacman", "-Ql", &name]).await {
-            Ok(serde_json::json!({ "files": output }))
-        } else if let Ok(output) = process::exec_command(&["dpkg", "-L", &name]).await {
-            Ok(serde_json::json!({ "files": output }))
-        } else {
-            anyhow::bail!("Package not found")
-        }
+        let name: String = package_name_from_params(params)?;
+        let output = process::exec_command(&["pacman", "-Ql", &name]).await?;
+        Ok(serde_json::json!({ "files": output }))
     });
 
     registry.register("Packages.GetPackageDependencies", |params| async move {
-        let name: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("name").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
-        )?;
-
-        if let Ok(output) = process::exec_command(&["pacman", "-Qi", &name]).await {
-            // Parse dependencies from pacman output
-            Ok(serde_json::json!({ "dependencies": output }))
-        } else if let Ok(output) = process::exec_command(&["apt-cache", "depends", &name]).await {
-            Ok(serde_json::json!({ "dependencies": output }))
-        } else {
-            anyhow::bail!("Package not found")
-        }
+        let name: String = package_name_from_params(params)?;
+        let output = process::exec_command(&["pacman", "-Qi", &name]).await?;
+        Ok(serde_json::json!({ "dependencies": output }))
     });
 
     registry.register("Packages.GetAurPackages", |_params| async move {
-        // Check if yay or paru is available
         if let Ok(output) = process::exec_command(&["yay", "-Qm"]).await {
-            let mut packages = Vec::new();
-            for line in output.lines() {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    packages.push(Package {
-                        name: parts[0].to_string(),
-                        version: parts[1].to_string(),
-                        description: String::new(),
-                        installed: true,
-                    });
-                }
-            }
-            Ok(serde_json::to_value(&packages)?)
+            Ok(serde_json::to_value(parse_pacman_q(&output))?)
+        } else if let Ok(output) = process::exec_command(&["paru", "-Qm"]).await {
+            Ok(serde_json::to_value(parse_pacman_q(&output))?)
         } else {
             Ok(serde_json::json!([]))
         }
     });
 
     registry.register("Packages.InstallAur", |params| async move {
-        let name: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("name").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
-        )?;
-
-        if process::exec_command(&["yay", "-S", "--noconfirm", &name]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else if process::exec_command(&["paru", "-S", "--noconfirm", &name]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
+        let name: String = package_name_from_params(params)?;
+        let result = if process::exec_command(&["which", "yay"]).await.is_ok() {
+            process::exec_command(&["yay", "-S", "--noconfirm", &name]).await
         } else {
-            anyhow::bail!("Failed to install AUR package")
-        }
+            process::exec_command(&["paru", "-S", "--noconfirm", &name]).await
+        };
+        log_result("install_aur", vec![name.clone()], &result).await;
+        result?;
+        Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Packages.GetSnapPackages", |_params| async move {
-        if let Ok(output) = process::exec_command(&["snap", "list"]).await {
-            let mut packages = Vec::new();
-            for line in output.lines().skip(1) {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    packages.push(Package {
-                        name: parts[0].to_string(),
-                        version: parts[1].to_string(),
-                        description: String::new(),
-                        installed: true,
-                    });
-                }
-            }
-            Ok(serde_json::to_value(&packages)?)
-        } else {
-            Ok(serde_json::json!([]))
-        }
+        Ok(serde_json::json!([]))
     });
 
     registry.register("Packages.GetFlatpakPackages", |_params| async move {
-        if let Ok(output) = process::exec_command(&["flatpak", "list"]).await {
-            let mut packages = Vec::new();
-            for line in output.lines().skip(1) {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if !parts.is_empty() {
-                    packages.push(Package {
-                        name: parts[0].to_string(),
-                        version: String::new(),
-                        description: String::new(),
-                        installed: true,
-                    });
-                }
-            }
-            Ok(serde_json::to_value(&packages)?)
+        if let Ok(output) = process::exec_command(&["flatpak", "list", "--columns=application"]).await {
+            let apps: Vec<Package> = output
+                .lines()
+                .skip(1)
+                .filter(|l| !l.trim().is_empty())
+                .map(|l| Package {
+                    name: l.trim().to_string(),
+                    version: String::new(),
+                    description: String::new(),
+                    installed: true,
+                })
+                .collect();
+            Ok(serde_json::to_value(apps)?)
         } else {
             Ok(serde_json::json!([]))
         }
     });
+}
+
+fn package_name_from_params(params: Option<serde_json::Value>) -> Result<String> {
+    Ok(serde_json::from_value(
+        params
+            .and_then(|p| p.get("name").cloned())
+            .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
+    )?)
+}
+
+async fn log_result(action: &str, packages: Vec<String>, result: &Result<String>) {
+    match result {
+        Ok(_) => {
+            transactions::log_package_transaction(action, packages, true, None).await;
+        }
+        Err(e) => {
+            transactions::log_package_transaction(
+                action,
+                packages,
+                false,
+                Some(e.to_string()),
+            )
+            .await;
+        }
+    }
+}
+
+pub(crate) fn parse_pacman_qu(output: &str) -> Vec<Package> {
+    let mut packages = Vec::new();
+    for line in output.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            packages.push(Package {
+                name: parts[0].to_string(),
+                version: parts[1].to_string(),
+                description: String::new(),
+                installed: true,
+            });
+        }
+    }
+    packages
+}
+
+fn parse_pacman_q(output: &str) -> Vec<Package> {
+    parse_pacman_qu(output)
+}
+
+fn parse_pacman_search(output: &str) -> Vec<Package> {
+    let mut packages = Vec::new();
+    for line in output.lines() {
+        if line.starts_with("core/")
+            || line.starts_with("extra/")
+            || line.starts_with("community/")
+            || line.contains('/')
+        {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.is_empty() {
+                continue;
+            }
+            let name_version: Vec<&str> = parts[0].split('/').collect();
+            if name_version.len() >= 2 {
+                packages.push(Package {
+                    name: name_version[1].to_string(),
+                    version: parts.get(1).unwrap_or(&"").to_string(),
+                    description: parts.get(2).map(|s| s.to_string()).unwrap_or_default(),
+                    installed: false,
+                });
+            }
+        }
+    }
+    packages
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_pacman_qu_fixture() {
+        let fixture = include_str!("../../tests/fixtures/packages/pacman_qu.txt");
+        let pkgs = parse_pacman_qu(fixture);
+        assert_eq!(pkgs.len(), 2);
+        assert_eq!(pkgs[0].name, "linux");
+        assert_eq!(pkgs[1].name, "firefox");
+    }
 }

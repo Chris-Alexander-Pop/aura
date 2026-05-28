@@ -1,22 +1,26 @@
+use crate::notify;
 use crate::services::ServiceRegistry;
 use crate::utils::{process, storage};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AudioDevice {
     pub id: i32,
     pub name: String,
     pub info: String,
     pub volume: f64,
     pub is_default: bool,
+    #[serde(default)]
+    pub muted: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AudioStream {
     pub id: i32,
     pub name: String,
@@ -35,9 +39,12 @@ pub struct AudioProfile {
     pub loopbacks: Vec<serde_json::Value>,
 }
 
+static AUDIO_EMIT_GEN: AtomicU64 = AtomicU64::new(0);
+
 lazy_static::lazy_static! {
     static ref PIPEWIRE_STATE: RwLock<PipeWireState> = RwLock::new(PipeWireState::default());
     static ref EASYEFFECTS_STATE: RwLock<EasyEffectsState> = RwLock::new(EasyEffectsState::default());
+    static ref LAST_AUDIO_SNAPSHOT: RwLock<Option<serde_json::Value>> = RwLock::new(None);
 }
 
 #[derive(Debug, Clone, Default)]
@@ -114,6 +121,78 @@ pub fn register(registry: &mut ServiceRegistry) {
         )?;
 
         process::exec_command(&["wpctl", "set-default", &device_id.to_string()]).await?;
+        refresh_devices().await?;
+        schedule_audio_state_emit().await;
+        Ok(serde_json::json!({ "success": true }))
+    });
+
+    registry.register("Audio.SetSinkVolume", |params| async move {
+        let device_id: i32 = device_id_from_params(&params)?;
+        let volume: f64 = volume_from_params(&params)?;
+        process::exec_command(&[
+            "wpctl",
+            "set-volume",
+            &device_id.to_string(),
+            &format!("{:.2}", volume.clamp(0.0, 1.5)),
+        ])
+        .await?;
+        refresh_devices().await?;
+        schedule_audio_state_emit().await;
+        Ok(serde_json::json!({ "success": true }))
+    });
+
+    registry.register("Audio.SetSourceVolume", |params| async move {
+        let device_id: i32 = device_id_from_params(&params)?;
+        let volume: f64 = volume_from_params(&params)?;
+        process::exec_command(&[
+            "wpctl",
+            "set-volume",
+            &device_id.to_string(),
+            &format!("{:.2}", volume.clamp(0.0, 1.5)),
+        ])
+        .await?;
+        refresh_devices().await?;
+        schedule_audio_state_emit().await;
+        Ok(serde_json::json!({ "success": true }))
+    });
+
+    registry.register("Audio.SetSinkMute", |params| async move {
+        let device_id: i32 = device_id_from_params(&params)?;
+        let muted: bool = serde_json::from_value(
+            params
+                .as_ref()
+                .and_then(|p| p.get("muted").cloned())
+                .ok_or_else(|| anyhow::anyhow!("Missing muted"))?,
+        )?;
+        process::exec_command(&[
+            "wpctl",
+            "set-mute",
+            &device_id.to_string(),
+            if muted { "1" } else { "0" },
+        ])
+        .await?;
+        refresh_devices().await?;
+        schedule_audio_state_emit().await;
+        Ok(serde_json::json!({ "success": true }))
+    });
+
+    registry.register("Audio.SetSourceMute", |params| async move {
+        let device_id: i32 = device_id_from_params(&params)?;
+        let muted: bool = serde_json::from_value(
+            params
+                .as_ref()
+                .and_then(|p| p.get("muted").cloned())
+                .ok_or_else(|| anyhow::anyhow!("Missing muted"))?,
+        )?;
+        process::exec_command(&[
+            "wpctl",
+            "set-mute",
+            &device_id.to_string(),
+            if muted { "1" } else { "0" },
+        ])
+        .await?;
+        refresh_devices().await?;
+        schedule_audio_state_emit().await;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -146,6 +225,8 @@ pub fn register(registry: &mut ServiceRegistry) {
         ])
         .await?;
 
+        refresh_streams().await?;
+        schedule_audio_state_emit().await;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -172,6 +253,8 @@ pub fn register(registry: &mut ServiceRegistry) {
         ])
         .await?;
 
+        refresh_streams().await?;
+        schedule_audio_state_emit().await;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -267,10 +350,28 @@ pub fn register(registry: &mut ServiceRegistry) {
         Ok(serde_json::json!({ "success": true }))
     });
 
-    registry.register("Audio.Refresh", |_params| async move {
+    registry.register("Audio.Refresh", |params| async move {
+        let restart_wireplumber: bool = params
+            .as_ref()
+            .and_then(|p| p.get("restart_wireplumber").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(false);
+
+        if restart_wireplumber {
+            let _ = process::exec_command(&[
+                "systemctl",
+                "--user",
+                "restart",
+                "wireplumber",
+            ])
+            .await;
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+
         refresh_devices().await?;
         refresh_streams().await?;
         refresh_nodes().await?;
+        emit_audio_state_now().await;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -710,17 +811,69 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 }
 
+fn device_id_from_params(params: &Option<serde_json::Value>) -> Result<i32> {
+    Ok(serde_json::from_value(
+        params
+            .as_ref()
+            .and_then(|p| p.get("device_id").cloned())
+            .ok_or_else(|| anyhow::anyhow!("Missing device_id"))?,
+    )?)
+}
+
+fn volume_from_params(params: &Option<serde_json::Value>) -> Result<f64> {
+    Ok(serde_json::from_value(
+        params
+            .as_ref()
+            .and_then(|p| p.get("volume").cloned())
+            .ok_or_else(|| anyhow::anyhow!("Missing volume"))?,
+    )?)
+}
+
+async fn schedule_audio_state_emit() {
+    let gen = AUDIO_EMIT_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        if AUDIO_EMIT_GEN.load(Ordering::SeqCst) != gen {
+            return;
+        }
+        let _ = emit_audio_state_now().await;
+    });
+}
+
+async fn emit_audio_state_now() -> Result<()> {
+    let state = PIPEWIRE_STATE.read().await;
+    let snapshot = serde_json::json!({
+        "sinks": state.sinks,
+        "sources": state.sources,
+        "streams": state.streams,
+    });
+    drop(state);
+
+    let mut last = LAST_AUDIO_SNAPSHOT.write().await;
+    if last.as_ref() == Some(&snapshot) {
+        return Ok(());
+    }
+    *last = Some(snapshot.clone());
+    notify::emit("Audio.StateChanged", snapshot);
+    Ok(())
+}
+
 async fn refresh_devices() -> Result<()> {
     let output = process::exec_command(&["wpctl", "status"]).await?;
     let (sinks, sources) = parse_devices(&output);
 
     let mut state = PIPEWIRE_STATE.write().await;
+    let changed = state.sinks != sinks || state.sources != sources;
     state.sinks = sinks;
     state.sources = sources;
+    drop(state);
+    if changed {
+        schedule_audio_state_emit().await;
+    }
     Ok(())
 }
 
-fn parse_devices(output: &str) -> (Vec<AudioDevice>, Vec<AudioDevice>) {
+pub(crate) fn parse_devices(output: &str) -> (Vec<AudioDevice>, Vec<AudioDevice>) {
     let mut sinks = Vec::new();
     let mut sources = Vec::new();
     let mut in_audio_section = false;
@@ -740,7 +893,7 @@ fn parse_devices(output: &str) -> (Vec<AudioDevice>, Vec<AudioDevice>) {
         }
 
         if in_audio_section {
-            if line.contains("Sinks:") {
+            if line.contains("Sinks:") && !line.contains("Sink Inputs") {
                 in_sinks = true;
                 in_sources = false;
                 continue;
@@ -750,7 +903,10 @@ fn parse_devices(output: &str) -> (Vec<AudioDevice>, Vec<AudioDevice>) {
                 in_sinks = false;
                 continue;
             }
-            if line.contains("Devices:") || line.contains("Streams:") {
+            if line.contains("Devices:")
+                || line.contains("Streams:")
+                || line.contains("Sink Inputs")
+            {
                 in_sinks = false;
                 in_sources = false;
                 continue;
@@ -791,6 +947,7 @@ fn parse_device_line(line: &str) -> Option<AudioDevice> {
     };
 
     let mut volume = 0.0;
+    let mut muted = false;
     if info.contains("vol:") {
         if let Some(vol_cap) = regex::Regex::new(r"vol:\s*(\d+\.\d+)")
             .ok()?
@@ -799,6 +956,9 @@ fn parse_device_line(line: &str) -> Option<AudioDevice> {
             volume = vol_cap.get(1)?.as_str().parse().ok().unwrap_or(0.0);
         }
     }
+    if info.to_uppercase().contains("MUTED") {
+        muted = true;
+    }
 
     Some(AudioDevice {
         id,
@@ -806,6 +966,7 @@ fn parse_device_line(line: &str) -> Option<AudioDevice> {
         info,
         volume,
         is_default: marker == "●" || marker == "*",
+        muted,
     })
 }
 
@@ -814,11 +975,16 @@ async fn refresh_streams() -> Result<()> {
     let streams = parse_streams(&output);
 
     let mut state = PIPEWIRE_STATE.write().await;
+    let changed = state.streams != streams;
     state.streams = streams;
+    drop(state);
+    if changed {
+        schedule_audio_state_emit().await;
+    }
     Ok(())
 }
 
-fn parse_streams(output: &str) -> Vec<AudioStream> {
+pub(crate) fn parse_streams(output: &str) -> Vec<AudioStream> {
     let mut streams = Vec::new();
     let mut current_stream: Option<AudioStream> = None;
 
@@ -1023,4 +1189,28 @@ async fn apply_profile(profile: &AudioProfile) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_wpctl_status_fixture() {
+        let fixture = include_str!("../../tests/fixtures/audio/wpctl_status.txt");
+        let (sinks, sources) = parse_devices(fixture);
+        assert_eq!(sinks.len(), 1);
+        assert!(sinks[0].muted);
+        assert!(sinks[0].is_default);
+        assert_eq!(sources.len(), 1);
+    }
+
+    #[test]
+    fn parse_pactl_streams_fixture() {
+        let fixture = include_str!("../../tests/fixtures/audio/pactl_sink_inputs.txt");
+        let streams = parse_streams(fixture);
+        assert_eq!(streams.len(), 1);
+        assert_eq!(streams[0].app, "Firefox");
+        assert_eq!(streams[0].volume, 100);
+    }
 }

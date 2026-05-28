@@ -1,0 +1,12 @@
+Audio
+ ├─ Devices:
+ │     50. Built-in Audio Analog Stereo
+ │  
+ ├─ Sinks:
+ │  *   47. Headphones [vol: 0.50 MUTED]
+ │  
+ ├─ Sources:
+ │  *   48. Microphone [vol: 0.80]
+ │  
+ ├─ Sink Inputs:
+ │     55. Firefox

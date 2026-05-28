@@ -2,6 +2,7 @@ import { motion } from "framer-motion"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import api from "@/lib/api"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import { getNavItem } from "../navigation"
 
@@ -158,6 +159,15 @@ export function AudioPane() {
   const queryClient = useQueryClient()
   const { icon, label } = getNavItem("audio")
   const [mutedStreams, setMutedStreams] = useState<Record<number, boolean>>({})
+
+  useEffect(() => {
+    connectWs()
+    const off = useWsStore.getState().on("Audio.StateChanged", () => {
+      void queryClient.invalidateQueries({ queryKey: ["audio-devices"] })
+      void queryClient.invalidateQueries({ queryKey: ["audio-streams"] })
+    })
+    return off
+  }, [queryClient])
 
   const devicesQuery = useQuery({
     queryKey: ["audio-devices"],
