@@ -97,7 +97,7 @@ fn find_monitor<'a>(monitors: &'a HashMap<String, Monitor>, query: &str) -> Opti
     }
 }
 
-fn parse_brightness_value(value: &str, current: f64) -> Result<f64> {
+pub(crate) fn parse_brightness_value(value: &str, current: f64) -> Result<f64> {
     let value = value.trim();
     
     if value.ends_with("%-") {
@@ -222,6 +222,20 @@ fn parse_ddc_monitors(output: &str) -> Vec<(String, String)> {
     }
 
     monitors
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_brightness_value;
+
+    #[test]
+    fn parse_brightness_relative_and_absolute() {
+        assert_eq!(parse_brightness_value("50%", 0.5).unwrap(), 0.5);
+        assert_eq!(parse_brightness_value("+10%", 0.5).unwrap(), 0.6);
+        assert_eq!(parse_brightness_value("10%-", 0.5).unwrap(), 0.4);
+        assert_eq!(parse_brightness_value("0.8", 0.5).unwrap(), 0.8);
+        assert_eq!(parse_brightness_value("+0.1", 0.5).unwrap(), 0.6);
+    }
 }
 
 async fn get_ddc_brightness(bus_num: &str) -> Result<f64> {

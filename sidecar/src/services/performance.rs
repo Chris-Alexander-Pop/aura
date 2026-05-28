@@ -303,6 +303,62 @@ pub fn register(registry: &mut ServiceRegistry) {
         process::exec_command(&["systemctl", "restart", &name]).await?;
         Ok(serde_json::json!({ "success": true }))
     });
+
+    registry.register("Performance.GetMetrics", |_params| async move {
+        let mut sys = SYSTEM.write().await;
+        sys.refresh_cpu();
+        sys.refresh_memory();
+
+        let cpu_count = sys.cpus().len().max(1);
+        let cpu_usage: f32 = sys.cpus().iter().map(|c| c.cpu_usage()).sum::<f32>() / cpu_count as f32;
+
+        let mem_total = sys.total_memory();
+        let mem_used = sys.used_memory();
+        let memory_percent = if mem_total > 0 {
+            (mem_used as f64 / mem_total as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        let disk_percent = get_disk_stats()
+            .await
+            .ok()
+            .and_then(|disks| {
+                disks.first().map(|d| {
+                    if d.total_gb > 0.0 {
+                        (d.used_gb / d.total_gb) * 100.0
+                    } else {
+                        0.0
+                    }
+                })
+            })
+            .unwrap_or(0.0);
+
+        let gpu_percent = get_gpu_stats()
+            .await
+            .ok()
+            .and_then(|gpus| gpus.first().map(|g| g.utilization_percent))
+            .unwrap_or(0.0);
+
+        let temperature_c = read_cpu_temp_c().await.unwrap_or(0.0);
+
+        Ok(serde_json::json!({
+            "cpu_percent": cpu_usage as f64,
+            "memory_percent": memory_percent,
+            "disk_percent": disk_percent,
+            "gpu_percent": gpu_percent,
+            "temperature_c": temperature_c,
+        }))
+    });
+}
+
+async fn read_cpu_temp_c() -> Result<f64> {
+    if let Ok(content) = tokio::fs::read_to_string("/sys/class/thermal/thermal_zone0/temp").await {
+        if let Ok(milli) = content.trim().parse::<f64>() {
+            return Ok(milli / 1000.0);
+        }
+    }
+    Ok(0.0)
 }
 
 async fn get_cpu_frequency(core: usize) -> Result<u64> {

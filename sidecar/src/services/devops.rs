@@ -286,6 +286,37 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         Ok(serde_json::to_value(&jobs)?)
     });
+
+    registry.register("DevOps.GetStatus", |_params| async move {
+        let podman_available = process::exec_command(&["which", "podman"]).await.is_ok();
+        let docker_available = process::exec_command(&["which", "docker"]).await.is_ok();
+        let kubectl_available = process::exec_command(&["which", "kubectl"]).await.is_ok();
+
+        let mut container_count: u64 = 0;
+        if podman_available {
+            if let Ok(output) = process::exec_command(&["podman", "ps", "-q"]).await {
+                container_count = output.lines().filter(|l| !l.trim().is_empty()).count() as u64;
+            }
+        } else if docker_available {
+            if let Ok(output) = process::exec_command(&["docker", "ps", "-q"]).await {
+                container_count = output.lines().filter(|l| !l.trim().is_empty()).count() as u64;
+            }
+        }
+
+        let home = std::env::var("HOME").unwrap_or_default();
+        let mut git_dirty_hint = false;
+        if let Ok(output) = process::exec_command(&["git", "-C", &home, "status", "--porcelain"]).await {
+            git_dirty_hint = !output.trim().is_empty();
+        }
+
+        Ok(serde_json::json!({
+            "podman_available": podman_available,
+            "docker_available": docker_available,
+            "kubectl_available": kubectl_available,
+            "container_count": container_count,
+            "git_dirty_hint": git_dirty_hint,
+        }))
+    });
 }
 
 async fn scan_git_repos(path: PathBuf, repos: &mut Vec<GitRepo>) -> Result<()> {

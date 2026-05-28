@@ -138,7 +138,7 @@ export const api = {
   getCalendarEvents: () => callData("Calendar.GetEvents").then(parseCalendarEvents),
 
   // Packages
-  getPackageUpdates: () => callData("Packages.GetUpdates").then(adaptPackageUpdates),
+  getPackageUpdates: () => callData("Packages.GetUpgradable").then(adaptPackageUpdates),
 
   // Logs
   getLogs: () => callData("Logs.Get").then(adaptLogEntries),
@@ -148,9 +148,9 @@ export const api = {
 
   // Performance / Devops / Productivity / Automation / Communication / Fitness
   getPerformanceMetrics: () => callData("Performance.GetMetrics").then(adaptPerformanceMetrics),
-  getDevopsStatus:       () => call<Record<string, unknown>>("Devops.GetStatus"),
+  getDevopsStatus:       () => call<Record<string, unknown>>("DevOps.GetStatus"),
   getProductivityStats:  () => call<Record<string, unknown>>("Productivity.GetStats"),
-  getAutomationRules:    () => call<unknown[]>("Automation.ListRules"),
+  getAutomationRules:    () => call<unknown[]>("Automation.GetWorkflows"),
   getUnreadMessages:     () => call<Record<string, number>>("Communication.GetUnread"),
   getFitnessStats:       () => call<Record<string, unknown>>("Fitness.GetGoals"),
 

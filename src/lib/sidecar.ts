@@ -38,19 +38,37 @@ class SidecarService extends GObject.Object {
         this._spawn()
     }
 
+    private _resolveSidecarPath(): string | null {
+        const fromEnv = GLib.getenv('AURA_SIDECAR')
+        if (fromEnv && GLib.file_test(fromEnv, GLib.FileTest.EXISTS)) {
+            return fromEnv
+        }
+
+        const home = GLib.get_home_dir()
+        const xdgConfig = GLib.getenv('XDG_CONFIG_HOME') || `${home}/.config`
+        const candidates = [
+            `${xdgConfig}/ags/sidecar/target/debug/ags-sidecar`,
+            `${xdgConfig}/ags/sidecar/target/release/ags-sidecar`,
+            `${home}/Engineering/Productivity/ags/sidecar/target/debug/ags-sidecar`,
+            `${home}/Engineering/Productivity/ags/sidecar/target/release/ags-sidecar`,
+        ]
+
+        for (const path of candidates) {
+            if (GLib.file_test(path, GLib.FileTest.EXISTS)) {
+                return path
+            }
+        }
+        return null
+    }
+
     private _spawn() {
         try {
-            // Locate sidecar binary
-            const home = GLib.get_home_dir()
-            // Prefer debug build for development
-            let path = `${home}/.config/ags/sidecar/target/debug/ags-sidecar`
-            if (!GLib.file_test(path, GLib.FileTest.EXISTS)) {
-                // Fallback to release or system path if needed
-                path = `${home}/.config/ags/sidecar/target/release/ags-sidecar`
-            }
-            
-            if (!GLib.file_test(path, GLib.FileTest.EXISTS)) {
-                console.error('Sidecar binary not found at ' + path)
+            const path = this._resolveSidecarPath()
+            if (!path) {
+                console.error(
+                    'Sidecar binary not found. Set AURA_SIDECAR or build to ' +
+                    '~/.config/ags/sidecar/target/{debug,release}/ags-sidecar'
+                )
                 return
             }
 
@@ -219,10 +237,12 @@ class SidecarService extends GObject.Object {
     public async setAdapterDiscoverable(adapter_path: string, discoverable: boolean) { return this.send('Bluetooth.SetAdapterDiscoverable', { adapter_path, discoverable }) }
 
     // Gamemode
-    public async getGamemodeStatus() { return this.send('Gamemode.GetStatus') }
+    public async getGamemodeStatus() { return this.send('GameMode.IsEnabled') }
     
     // Storage
-    public async getStorageConfig() { return this.send('Storage.GetConfig') }
+    public async getStorageConfig() {
+        return this.send('Storage.Get', { namespace: 'aura', key: 'config' })
+    }
 
     // Performance
     public async getPerformanceMetrics() { return this.send('Performance.GetMetrics') }
@@ -231,7 +251,7 @@ class SidecarService extends GObject.Object {
     public async getSecurityStatus() { return this.send('Security.GetStatus') }
 
     // Devops
-    public async getDevopsStatus() { return this.send('Devops.GetStatus') }
+    public async getDevopsStatus() { return this.send('DevOps.GetStatus') }
 
     // Productivity
     public async getProductivityStats() { return this.send('Productivity.GetStats') }
@@ -243,10 +263,12 @@ class SidecarService extends GObject.Object {
     public async getLogs() { return this.send('Logs.Get') }
 
     // Packages
-    public async getPackageUpdates() { return this.send('Packages.GetUpdates') }
+    public async getPackageUpdates() { return this.send('Packages.GetUpgradable') }
 
     // Automation
-    public async triggerAutomation(id: string) { return this.send('Automation.Trigger', { id }) }
+    public async triggerAutomation(workflow_id: string) {
+        return this.send('Automation.RunWorkflow', { workflow_id })
+    }
 
     // Communication
     public async getUnreadMessages() { return this.send('Communication.GetUnread') }

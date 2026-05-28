@@ -8,6 +8,8 @@ The current interface inherits a **Caelestia-style** layout and information arch
 
 For a **shallow** technical snapshot and doc flow, see [../feature_matrix.md](../feature_matrix.md). For **legacy** Quickshell → AGS path mapping, see [../MIGRATION_STRATEGY.md](../MIGRATION_STRATEGY.md) and [../COMPONENT_MAPPING.md](../COMPONENT_MAPPING.md). Product scope stays in `todo.md` and this `docs/roadmap/` set.
 
+**Implementation:** resolved backend/stack choices in [../ARCHITECTURE_DECISIONS.md](../ARCHITECTURE_DECISIONS.md); sidecar task checklist in [../BACKEND_TODO.md](../BACKEND_TODO.md).
+
 ## Index
 
 | Document | Focus |

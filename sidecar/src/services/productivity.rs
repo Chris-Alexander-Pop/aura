@@ -289,4 +289,26 @@ pub fn register(registry: &mut ServiceRegistry) {
         // App usage tracking would require additional tooling
         Ok(serde_json::json!([]))
     });
+
+    registry.register("Productivity.GetStats", |_params| async move {
+        let timers = TIMERS.read().await;
+        let active_timers = timers.iter().filter(|t| t.active).count();
+        let pomodoro = POMODORO.read().await.clone();
+
+        storage::init().await?;
+        let focus_mode_enabled = storage::get_kv("productivity", "focus_mode")
+            .await?
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        Ok(serde_json::json!({
+            "active_timers": active_timers,
+            "total_timers": timers.len(),
+            "pomodoro_active": pomodoro.as_ref().map(|p| p.active).unwrap_or(false),
+            "pomodoro_phase": pomodoro.as_ref().map(|p| p.current_phase.clone()),
+            "focus_mode_enabled": focus_mode_enabled,
+            "screen_time_minutes": 0,
+            "task_count": 0,
+        }))
+    });
 }

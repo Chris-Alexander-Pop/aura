@@ -32,6 +32,4 @@ Not a dedicated row in [../feature_matrix.md](../feature_matrix.md); may align w
 
 ## Open questions
 
-1. Is **Matrix** the mandatory first backend?
-2. Will comms data stay **100% local** or allow optional **cloud sync**?
-3. Voice/video: in scope for this panel or a separate app?
+**Resolved (2026-05-28):** Unified comms hub is **out of scope** for Aura sidecar v1 — separate app/project with integration later. See [../ARCHITECTURE_DECISIONS.md](../ARCHITECTURE_DECISIONS.md) §13.

@@ -1,54 +1,57 @@
-// Basic integration tests for the sidecar
-// These tests require the sidecar to be running or can test individual components
+mod common;
 
-#[cfg(test)]
-mod tests {
-    use serde_json;
+use common::{call_method, test_registry};
 
-    #[tokio::test]
-    async fn test_jsonrpc_request_format() {
-        let request = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "Power.GetBatteryState",
-            "params": {},
-            "id": 1
-        });
+const P0_METHODS: &[&str] = &[
+    "Power.GetBatteryState",
+    "Packages.GetUpgradable",
+    "Logs.Get",
+    "Security.GetStatus",
+    "Performance.GetMetrics",
+    "DevOps.GetStatus",
+    "Productivity.GetStats",
+    "Automation.GetWorkflows",
+    "Communication.GetUnread",
+    "GameMode.IsEnabled",
+    "System.GetStats",
+    "Sidecar.GetVersion",
+];
 
-        assert_eq!(request["jsonrpc"], "2.0");
-        assert_eq!(request["method"], "Power.GetBatteryState");
+#[tokio::test]
+async fn p0_methods_resolve_without_panic() {
+    let registry = test_registry();
+    for method in P0_METHODS {
+        let result = call_method(&registry, method, None).await;
+        assert!(
+            result.is_ok(),
+            "method {} failed: {:?}",
+            method,
+            result.err()
+        );
     }
+}
 
-    #[tokio::test]
-    async fn test_brightness_parsing() {
-        // Test brightness value parsing logic
-        fn parse_brightness_value(value: &str, current: f64) -> Result<f64, String> {
-            let value = value.trim();
-            
-            if value.ends_with("%-") {
-                let percent = value[..value.len() - 2].parse::<f64>().map_err(|e| e.to_string())? / 100.0;
-                Ok((current - percent).max(0.0).min(1.0))
-            } else if value.starts_with("+") && value.ends_with("%") {
-                let percent = value[1..value.len() - 1].parse::<f64>().map_err(|e| e.to_string())? / 100.0;
-                Ok((current + percent).max(0.0).min(1.0))
-            } else if value.ends_with("%") {
-                let percent = value[..value.len() - 1].parse::<f64>().map_err(|e| e.to_string())? / 100.0;
-                Ok(percent.max(0.0).min(1.0))
-            } else if value.starts_with("+") {
-                let increment = value[1..].parse::<f64>().map_err(|e| e.to_string())?;
-                Ok((current + increment).max(0.0).min(1.0))
-            } else if value.ends_with("-") {
-                let decrement = value[..value.len() - 1].parse::<f64>().map_err(|e| e.to_string())?;
-                Ok((current - decrement).max(0.0).min(1.0))
-            } else {
-                let absolute = value.parse::<f64>().map_err(|e| e.to_string())?;
-                Ok(absolute.max(0.0).min(1.0))
-            }
-        }
+#[tokio::test]
+async fn logs_get_returns_array() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Logs.Get", None).await.expect("Logs.Get");
+    assert!(value.is_array(), "Logs.Get should return a JSON array");
+}
 
-        assert_eq!(parse_brightness_value("50%", 0.5).unwrap(), 0.5);
-        assert_eq!(parse_brightness_value("+10%", 0.5).unwrap(), 0.6);
-        assert_eq!(parse_brightness_value("10%-", 0.5).unwrap(), 0.4);
-        assert_eq!(parse_brightness_value("0.8", 0.5).unwrap(), 0.8);
-        assert_eq!(parse_brightness_value("+0.1", 0.5).unwrap(), 0.6);
-    }
+#[tokio::test]
+async fn devops_get_status_has_podman_field() {
+    let registry = test_registry();
+    let value = call_method(&registry, "DevOps.GetStatus", None)
+        .await
+        .expect("DevOps.GetStatus");
+    assert!(value.get("podman_available").is_some());
+}
+
+#[tokio::test]
+async fn communication_get_unread_returns_object() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Communication.GetUnread", None)
+        .await
+        .expect("Communication.GetUnread");
+    assert!(value.is_object());
 }

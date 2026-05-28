@@ -45,6 +45,8 @@ Link calendar to **workouts**, **sleep blocks**, or **fasting** windows—pullin
 
 ## Open questions
 
-1. **Offline-first** cache strategy (how many months local)?
-2. Which **task providers** are P1 vs “later plugin”?
-3. Reclaim-like features: **shipped in Aura** vs optional **sidecar plugin** binary?
+**Resolved (2026-05-28):** see [../ARCHITECTURE_DECISIONS.md](../ARCHITECTURE_DECISIONS.md).
+
+1. **Google Calendar + CalDAV** in v1 backend.
+2. Reclaim-style scheduling: **out of scope** (separate app later).
+3. Offline cache depth: **TBD** at implementation (default: local SQLite + sync).

@@ -14,6 +14,11 @@ pub struct Message {
 }
 
 pub fn register(registry: &mut ServiceRegistry) {
+    registry.register("Communication.GetUnread", |_params| async move {
+        // Comms hub deferred — empty map until bridge integrations land.
+        Ok(serde_json::json!({}))
+    });
+
     registry.register("Communication.GetMessages", |_params| async move {
         // Would aggregate from various sources
         Ok(serde_json::json!([]))

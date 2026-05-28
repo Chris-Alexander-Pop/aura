@@ -11,7 +11,7 @@ Concise operating manual for humans and AI assistants working in this repository
 | React panels | `ui/` (Vite) | Built to `ui/dist`, loaded in WebKit overlay windows |
 | Backend | `sidecar/` | `ags-sidecar` — JSON-RPC, services under `src/services/` |
 
-Docs: `docs/MIGRATION_STRATEGY.md`, `docs/COMPONENT_MAPPING.md` (legacy mapping); `todo.md` and `docs/roadmap/` (product); `docs/feature_matrix.md` (shallow planning + implementation snapshot).
+Docs: `docs/MIGRATION_STRATEGY.md`, `docs/COMPONENT_MAPPING.md` (legacy mapping); `todo.md` and `docs/roadmap/` (product); `docs/feature_matrix.md` (shallow planning + implementation snapshot); **`docs/ARCHITECTURE_DECISIONS.md`** (resolved stack/product choices); **`docs/BACKEND_TODO.md`** (sidecar implementation checklist).
 
 ## Launch and verify
 
@@ -23,11 +23,15 @@ Smoke IPC (with AGS running): `ags msg toggle control-center` (also `sidebar`, `
 
 ## Critical: sidecar binary path
 
-`src/lib/sidecar.ts` spawns the binary only from:
+Resolution order (see `docs/ARCHITECTURE_DECISIONS.md`):
 
-`$HOME/.config/ags/sidecar/target/debug/ags-sidecar` (then release fallback).
+1. `AURA_SIDECAR` env var (absolute path)
+2. `$XDG_CONFIG_HOME/ags/sidecar/target/{debug,release}/ags-sidecar`
+3. *(planned)* repo-relative discovery from AGS config dir
 
-If this repo is checked out elsewhere, either mirror that path (symlink or copy build outputs) or plan a code change to resolve the binary relative to the active AGS config directory.
+Today `src/lib/sidecar.ts` only implements (2). Dev: symlink builds into `~/.config/ags/sidecar/target/` or set `AURA_SIDECAR`.
+
+**Stack defaults (Arch):** NetworkManager, PipeWire+WirePlumber, GNOME Keyring, hyprlock, Podman (not Docker by default), Freedesktop notifications D-Bus.
 
 ## Task tool playbook (subagents)
 

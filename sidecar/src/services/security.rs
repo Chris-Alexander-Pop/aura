@@ -33,6 +33,30 @@ pub struct SecurityLog {
     pub source: String,
 }
 
+async fn probe_firewall_enabled() -> bool {
+    if let Ok(output) = process::exec_command(&["ufw", "status"]).await {
+        return output.contains("Status: active");
+    }
+    if let Ok(output) = process::exec_command(&["firewall-cmd", "--state"]).await {
+        return output.trim() == "running";
+    }
+    false
+}
+
+async fn probe_ssh_enabled() -> bool {
+    if let Ok(output) = process::exec_command(&["systemctl", "is-active", "sshd"]).await {
+        return output.trim() == "active";
+    }
+    false
+}
+
+async fn probe_encryption_enabled() -> bool {
+    if let Ok(output) = process::exec_command(&["lsblk", "-f"]).await {
+        return output.lines().any(|l| l.contains("crypto_LUKS"));
+    }
+    false
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Security.GetFirewallStatus", |_params| async move {
         // Try ufw first
@@ -306,6 +330,14 @@ pub fn register(registry: &mut ServiceRegistry) {
         }
 
         Ok(serde_json::to_value(&connections)?)
+    });
+
+    registry.register("Security.GetStatus", |_params| async move {
+        Ok(serde_json::json!({
+            "firewall_enabled": probe_firewall_enabled().await,
+            "ssh_enabled": probe_ssh_enabled().await,
+            "encryption_enabled": probe_encryption_enabled().await,
+        }))
     });
 
     // ========================================================================

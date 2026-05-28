@@ -10,6 +10,7 @@ alwaysApply: false
 - **Types**: `src/types.rs` — serde shapes must stay in sync with `src/lib/types.ts` (and any `ui/` API types that mirror them).
 - **Services**: `src/services/mod.rs` + individual modules; keep IO and subprocess logic contained and testable.
 - **Tests**: `cargo test` in `sidecar/`; integration coverage in `tests/integration_test.rs` when behavior is RPC-visible.
-- **Build**: debug vs release used by the TS client’s binary path under `~/.config/ags/sidecar/target/...` — see architecture rule.
+- **Build**: debug vs release; resolution order in `docs/ARCHITECTURE_DECISIONS.md` (`AURA_SIDECAR` → XDG config path → planned repo walk).
+- **Stack**: Arch, NetworkManager, PipeWire, Podman, Freedesktop notifications D-Bus — see `docs/ARCHITECTURE_DECISIONS.md`.
 
 After changing RPC contracts, update the TypeScript client and any React consumers before considering the change done.

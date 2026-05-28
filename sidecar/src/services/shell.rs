@@ -28,6 +28,12 @@ lazy_static::lazy_static! {
 }
 
 pub fn register(registry: &mut ServiceRegistry) {
+    registry.register("Sidecar.GetVersion", |_p| async move {
+        Ok(json!({
+            "version": env!("CARGO_PKG_VERSION"),
+        }))
+    });
+
     registry.register("Session.Lock", |_p| async move {
         process::exec_command_detached(&["loginctl", "lock-session"]).await?;
         Ok(json!({"ok": true}))

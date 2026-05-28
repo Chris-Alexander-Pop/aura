@@ -82,7 +82,7 @@ export function DevopsPane() {
           <p className="text-sm font-medium text-text">Could not load DevOps status</p>
           <p className="text-xs text-subtext0 mt-2">{error instanceof Error ? error.message : "Unknown error"}</p>
           <p className="text-xs text-subtext1 mt-3 max-w-prose">
-            Ensure the sidecar is running and exposes <code className="text-subtext0">Devops.GetStatus</code>.
+            Ensure the sidecar is running and exposes <code className="text-subtext0">DevOps.GetStatus</code>.
           </p>
         </div>
       ) : showDashboard ? (

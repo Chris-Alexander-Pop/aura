@@ -1,12 +1,6 @@
-mod rpc;
-mod server;
-mod services;
-mod types;
-mod utils;
-
-use crate::rpc::{create_error_response, create_success_response, RpcServer};
-use crate::services::ServiceRegistry;
-use crate::types::{error_codes, JsonRpcRequest, JsonRpcResponse, JsonRpcNotification};
+use ags_sidecar::build_registry;
+use ags_sidecar::rpc::{create_error_response, create_success_response, RpcServer};
+use ags_sidecar::types::{error_codes, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse};
 use anyhow::Result;
 use serde_json;
 use std::env;
@@ -38,36 +32,8 @@ async fn run_server() -> Result<()> {
     let (notification_tx, _notification_rx) =
         mpsc::unbounded_channel::<JsonRpcNotification>();
 
-    // Build service registry
-    let mut registry = ServiceRegistry::new();
-    services::power::register(&mut registry);
-    services::network::register(&mut registry);
-    services::system::register(&mut registry);
-    services::brightness::register(&mut registry);
-    services::vpn::register(&mut registry);
-    services::weather::register(&mut registry);
-    services::gamemode::register(&mut registry);
-    services::storage::register(&mut registry);
-    services::audio::register(&mut registry);
-    services::bluetooth::register(&mut registry);
-    services::performance::register(&mut registry);
-    services::security::register(&mut registry);
-    services::devops::register(&mut registry);
-    services::productivity::register(&mut registry);
-    services::calendar::register(&mut registry);
-    services::logs::register(&mut registry);
-    services::packages::register(&mut registry);
-    services::automation::register(&mut registry);
-    services::communication::register(&mut registry);
-    services::fitness::register(&mut registry);
-    services::hyprland::register(&mut registry);
-    services::shell::register(&mut registry);
-    services::mpris::register(&mut registry);
-    services::processes::register(&mut registry);
+    let registry = Arc::new(Mutex::new(build_registry()));
 
-    let registry = Arc::new(Mutex::new(registry));
-
-    // Spawn stdin JSON-RPC handler (used by GTK bar / OSD via sidecar.ts)
     let registry_rpc = registry.clone();
     tokio::spawn(async move {
         while let Some((request, response_tx)) = request_rx.recv().await {
@@ -86,15 +52,13 @@ async fn run_server() -> Result<()> {
         }
     });
 
-    // Spawn HTTP + WebSocket server (used by ui/ React app)
     let registry_http = registry.clone();
     tokio::spawn(async move {
-        if let Err(e) = server::run(registry_http).await {
+        if let Err(e) = ags_sidecar::server::run(registry_http).await {
             tracing::error!("HTTP server error: {}", e);
         }
     });
 
-    // Run stdin RPC server (blocks until EOF)
     let rpc_server = RpcServer::new(request_tx, notification_tx);
     rpc_server.run().await?;
 

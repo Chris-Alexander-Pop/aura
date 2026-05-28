@@ -68,7 +68,10 @@ Hardware/firmware often expose **Fn-lock** or awkward media-key defaults. Docume
 
 ## Open questions
 
-1. Which greet/display manager and keyring (GNOME Keyring, etc.) are canonical for this install?
-2. For Vicinae, is the contract “shell calls `vicinae` binary” or a long-lived RPC channel?
-3. Should voice be entirely opt-in with a physical or on-screen “armed” state?
-4. Screenshot/recording: single tool (e.g. `wf-recorder` + `grim`/`slurp`) or a unified custom binary?
+**Resolved (2026-05-28):** see [../ARCHITECTURE_DECISIONS.md](../ARCHITECTURE_DECISIONS.md).
+
+1. **SDDM**; **GNOME Keyring** (`org.freedesktop.secrets`).
+2. **Vicinae:** long-lived socket/RPC; subprocess fallback.
+3. **Voice:** push-to-talk; local STT default, cloud opt-in; GPU when available.
+4. **Capture:** `grim` + `slurp` + `wf-recorder` (install `wf-recorder` if missing).
+5. **Notifications:** Freedesktop D-Bus listener; recommend **swaync** autostart on Hyprland (see ADR §1).

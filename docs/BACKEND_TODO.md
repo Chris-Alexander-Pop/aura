@@ -2,7 +2,7 @@
 
 > **Purpose:** Exhaustive backlog for `ags-sidecar` (`sidecar/`) so each item can be picked up, implemented, and verified with unit + integration tests before wiring the React/GTK UI.
 >
-> **Sources:** [todo.md](../todo.md), [docs/roadmap/](roadmap/), [feature_matrix.md](feature_matrix.md), [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md), current `sidecar/src/services/*`, `ui/src/lib/api.ts`, `src/lib/sidecar.ts`.
+> **Sources:** [todo.md](../todo.md), [docs/roadmap/](roadmap/), [feature_matrix.md](feature_matrix.md), [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md), **[ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)** (resolved product/stack choices), current `sidecar/src/services/*`, `ui/src/lib/api.ts`, `src/lib/sidecar.ts`.
 >
 > **How to use:** Check `[x]` when done. Prefer **one vertical slice** per PR (e.g. “Network saved networks + tests + api.ts”), not half a service. Run `cd sidecar && cargo test` after each slice.
 
@@ -43,7 +43,7 @@
 - [ ] Add `sidecar/README.md` with: build, `ags-sidecar client`, HTTP `:9080`, env vars, polkit/sudo expectations
 - [ ] Resolve **binary path** story: `src/lib/sidecar.ts` hardcodes `~/.config/ags/sidecar/target/...` — document or fix for dev clones under `Engineering/Productivity/ags`
 - [ ] Add **OpenAPI or machine-readable RPC manifest** generated from `registry.register` calls (script in CI) to prevent contract drift
-- [ ] Standardize method naming: **`DevOps` vs `Devops`**, prefer one casing everywhere
+- [ ] Standardize method naming: **`DevOps`** everywhere (rename TS clients from `Devops`) — see [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)
 
 ### 0.2 Shared types (`sidecar/src/types.rs`)
 
@@ -74,7 +74,7 @@
 - [ ] Unknown method: structured error code (not generic bail)
 - [ ] Request logging behind `RUST_LOG` with **redaction**
 - [ ] Optional **method groups** for pentest (`Security.Offensive.*`) behind feature flag `offensive-security`
-- [ ] Register **alias handlers** for legacy client names (see §1) until clients updated
+- [ ] ~~Register alias handlers~~ — **decided:** rename clients to match Rust, no aliases (see ADR)
 
 ### 0.6 Real-time events
 
@@ -578,7 +578,7 @@ Manual (hardware):
 | Logs | `Logs.Get` | journal fixture |
 | Security | `Security.GetStatus` | ufw fixture |
 | Performance | `Performance.GetMetrics` | proc fixture |
-| Devops | `Devops.GetStatus` | docker fixture |
+| DevOps | `DevOps.GetStatus` | podman fixture |
 | Automations | `Automation.ListRules` | workflow CRUD |
 | Communication | `Communication.GetUnread` | mock counts |
 | Calendar nav | `Calendar.GetEvents` | sqlite populate |
@@ -593,32 +593,35 @@ Manual (hardware):
 ## 7. Suggested implementation order (for agents)
 
 1. **§0.7 + §1** — test harness + contract fixes (unblocks all UI panes)
-2. **§0.3 storage list/delete** — unblocks Calendar, Automation, Productivity
-3. **§2.1–2.4** — Power, Network, Bluetooth, Audio (daily use)
-4. **§3.2 Notifications** + **§3.1 Keybinds**
-5. **§2.15–2.18** — Packages, Logs, Security aggregate, Performance
-6. **§2.19–2.22** — DevOps, Productivity, Automation, Communication
-7. **§2.23 Calendar** + **§3.6 Todos**
-8. **§3.4–3.5 Capture + Settings**
-9. **§3.7+** — Vault, IDE, voice, stub panels
-10. **§2.17 offensive security** — only if pentest panel active; feature-gated
+2. **§0.1 sidecar binary resolver** — `AURA_SIDECAR` + repo walk (see ADR)
+3. **§0.3 storage list/delete** — unblocks Calendar, Automation, Productivity
+4. **§2.1–2.4** — Power, Network, Bluetooth, Audio (daily use)
+5. **§3.2 Notifications** + **§3.1 Keybinds**
+6. **§2.15–2.18** — Packages, Logs, Security aggregate, Performance
+7. **§2.19–2.21** — DevOps (Podman), Productivity, Automation — **skip Communication** (separate app)
+8. **§2.23 Calendar** (Google/CalDAV) + **§3.6 Todos**
+9. **§3.4–3.5 Capture + Settings** (install `wf-recorder` on host)
+10. **§3.7+** — Vault, voice
+11. **§2.17 offensive security** — `offensive-security` feature; pentest panel when enabled
 
 ---
 
-## 8. Open decisions (resolve before large work)
+## 8. Resolved decisions (2026-05-28)
 
-Record answers here as you decide:
+Full rationale, host probe results, and notification guidance: **[ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)**.
 
-| # | Question | Notes |
-|---|----------|-------|
-| 1 | Arch-only vs multi-distro package backend? | pacman + apt code paths exist |
-| 2 | Transaction history: local append-only vs journal-only? | control-panel roadmap |
-| 3 | Per-app VPN: NM vs nftables vs mihomo? | control-panel roadmap |
-| 4 | Keybind source: Hyprland only or also keyd/GTK? | control-panel roadmap |
-| 5 | Notification daemon: mako vs swaync vs built-in? | system foundation |
-| 6 | Vicinae: subprocess vs RPC? | system foundation |
-| 7 | Voice: local STT only or cloud opt-in? | privacy |
-| 8 | DevOps: local docker.sock acceptable? | devops roadmap |
+| # | Question | **Decision** |
+|---|----------|----------------|
+| 1 | Package backend | **Arch only** (`pacman` / optional AUR helper) |
+| 2 | Transaction history | **Local append-only log** in `~/.local/share/ags-sidecar/` (+ optional journal correlation) |
+| 3 | Per-app VPN | **All phases:** NM split → nftables → optional mihomo/clash profile type |
+| 4 | Keybinds | **Hyprland** + Aura-managed include file; **keyd** optional for FN row |
+| 5 | Notifications | **Freedesktop D-Bus listener** (any daemon); **recommend swaync** autostart on Hyprland |
+| 6 | Vicinae | **Long-lived socket/RPC**; subprocess fallback |
+| 7 | Voice | **Local default**, cloud opt-in, **GPU** when available, **push-to-talk** |
+| 8 | DevOps | **Podman** socket/API; RW with allowlist + confirmations (not assumed Docker) |
+
+**Also resolved (see ADR):** SDDM; GNOME Keyring; NetworkManager; PipeWire+WirePlumber; hyprlock; `DevOps` naming; rename clients not aliases; `offensive-security` feature flag; sidecar path via `AURA_SIDECAR` + XDG + repo walk; CI RPC manifest; WS push all domains; ClamAV scans; fprintd; grim/slurp/wf-recorder; Google/CalDAV; comms/Reclaim out of scope; vault deferred; hyprlock clock-only; React webview pattern for sidebar; dropdown DnD; workspace thumbnails icon-only default; pentest yes with feature flag; IDE/stub panels deferred/ignore.
 
 ---
 

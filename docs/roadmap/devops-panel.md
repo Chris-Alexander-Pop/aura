@@ -31,6 +31,8 @@ A **DevOps** surface in Aura to **view and manage** deployments and infrastructu
 
 ## Open questions
 
-1. Is **Docker socket** access on the workstation acceptable, or should the panel use a **remote** API only?
-2. **Multi-cloud / multi-cluster**: single combined view or separate profiles?
-3. **Cost** tracking: first-class in v1 or deferred?
+**Resolved (2026-05-28):** see [../ARCHITECTURE_DECISIONS.md](../ARCHITECTURE_DECISIONS.md).
+
+1. **Podman** user socket (`/run/user/$UID/podman/podman.sock`); RW with allowlist — not assumed Docker.
+2. Multi-cluster: **TBD** at UI design.
+3. Cost tracking: **deferred**.

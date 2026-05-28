@@ -78,7 +78,9 @@ Inbox and rules: filter by app, **DND** schedule, history, and **clear all**. Un
 
 ## Open questions
 
-1. Is package management **Arch-only** (`pacman`/`yay`) or should the panel abstract multiple backends?
-2. For “git-style” history, is a **local append-only log** in `~/.config/ags` acceptable, or must it integrate with an existing system journal only?
-3. Per-app VPN: implement via **NetworkManager** split routes, **nftables** user rules, or a named **clash**/`mihomo`-class tool?
-4. Keybind source of truth: **only Hyprland** or also GTK/global shortcuts?
+**Resolved (2026-05-28):** see [../ARCHITECTURE_DECISIONS.md](../ARCHITECTURE_DECISIONS.md).
+
+1. **Arch-only** (`pacman` / optional AUR helper).
+2. **Local append-only** transaction log under `~/.local/share/ags-sidecar/`.
+3. **All VPN phases:** NetworkManager → nftables → optional mihomo/clash profile type.
+4. **Hyprland** + Aura-managed `aura-binds.conf`; optional **keyd** for FN row.
