@@ -1,7 +1,8 @@
 import { motion } from "framer-motion"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import api from "@/lib/api"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 
 // ── Safe numeric / record guards (no @/lib/api-types in tree) ─────────────────
@@ -221,6 +222,17 @@ function MiniGauge({
 }
 
 export function PerformancePane() {
+  const qc = useQueryClient()
+
+  useEffect(() => {
+    connectWs()
+    const off = useWsStore.getState().on("Performance.MetricsChanged", () => {
+      void qc.invalidateQueries({ queryKey: ["performance-metrics"] })
+      void qc.invalidateQueries({ queryKey: ["system-stats", "performance-pane"] })
+    })
+    return off
+  }, [qc])
+
   const statsQuery = useQuery({
     queryKey: ["system-stats", "performance-pane"],
     queryFn: api.getSystemStats,
