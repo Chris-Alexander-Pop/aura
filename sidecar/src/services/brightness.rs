@@ -196,7 +196,7 @@ fn parse_ddc_monitors(output: &str) -> Vec<(String, String)> {
     let mut current_bus: Option<String> = None;
     let mut current_connector: Option<String> = None;
 
-    let mut flush = |monitors: &mut Vec<(String, String)>,
+    let flush = |monitors: &mut Vec<(String, String)>,
                      bus: &mut Option<String>,
                      connector: &mut Option<String>| {
         if let (Some(b), Some(c)) = (bus.take(), connector.take()) {
@@ -258,21 +258,41 @@ mod tests {
         assert_eq!(monitors[0].0, "HDMI-A-1");
         assert_eq!(monitors[0].1, "7");
     }
+
+    #[test]
+    fn parse_ddc_vcp_brightness_fixture() {
+        let text = include_str!("../../tests/fixtures/brightness/ddcutil_getvcp.txt");
+        let b = super::parse_ddc_vcp_brightness(text).expect("vcp");
+        assert!((b - 0.5).abs() < f64::EPSILON);
+        assert!(super::parse_ddc_vcp_brightness("VCP 10 C 0 0").is_none());
+    }
+
+    #[test]
+    fn parse_brightness_value_clamps() {
+        assert_eq!(parse_brightness_value("150%", 0.5).unwrap(), 1.0);
+        assert!(parse_brightness_value("not-a-number", 0.5).is_err());
+    }
 }
 
 async fn get_ddc_brightness(bus_num: &str) -> Result<f64> {
     let output = process::exec_command(&["ddcutil", "-b", bus_num, "getvcp", "10", "--brief"]).await?;
-    // Parse output like "VCP 10 C 50 100" where 50 is current, 100 is max
-    if let Some((current, max)) = output
+    Ok(parse_ddc_vcp_brightness(&output).unwrap_or(0.5))
+}
+
+/// Parse `ddcutil getvcp 10 --brief` output (e.g. `VCP 10 C 50 100`) as 0.0–1.0.
+pub fn parse_ddc_vcp_brightness(output: &str) -> Option<f64> {
+    let nums: Vec<u32> = output
         .split_whitespace()
-        .filter_map(|s| s.parse::<u32>().ok())
-        .collect::<Vec<_>>()
-        .get(0..2)
-        .and_then(|v| Some((v[0], v[1])))
-    {
-        if max > 0 {
-            return Ok(current as f64 / max as f64);
-        }
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    if nums.len() < 2 {
+        return None;
     }
-    Ok(0.5)
+    let max = *nums.last()?;
+    let current = nums[nums.len() - 2];
+    if max > 0 {
+        Some(current as f64 / max as f64)
+    } else {
+        None
+    }
 }

@@ -3,8 +3,10 @@
 mod common;
 
 use ags_sidecar::contract_parsers::{
-    firewall_status_from_ufw, parse_encryption_devices, parse_failed_login_lines,
-    parse_nmap_xml_ports, parse_ssh_connections, parse_ufw_numbered_rules, ssh_status_json,
+    filter_certificate_filenames, firewall_status_from_firewalld, firewall_status_from_ufw,
+    firewall_status_none, keyring_status_json, parse_encryption_devices, parse_failed_login_lines,
+    parse_nmap_xml_ports, parse_ssh_connections, parse_ss_listening_ports, parse_sudo_log_lines,
+    parse_ufw_numbered_rules, ssh_status_json, vpn_connections_from_pgrep,
 };
 use common::load_fixture;
 use serde_json::Value;
@@ -77,4 +79,88 @@ fn contract_nmap_xml_fixture() {
     let ports = parse_nmap_xml_ports(&load_fixture("security/nmap_minimal.xml")).expect("nmap xml");
     assert_eq!(ports.len(), 2);
     assert_eq!(ports[0]["port"], 22);
+}
+
+#[test]
+fn contract_firewalld_inactive_fixture() {
+    let fw = firewall_status_from_firewalld("stopped\n");
+    assert_eq!(fw["type"], "firewalld");
+    assert_eq!(fw["enabled"], false);
+    let none = firewall_status_none();
+    assert_eq!(none["type"], "none");
+    assert_eq!(none["enabled"], false);
+}
+
+#[test]
+fn contract_ufw_bracket_and_reject_fixtures() {
+    let bracket = parse_ufw_numbered_rules(&load_fixture("security/ufw_status_brackets.txt"));
+    assert_eq!(bracket.len(), 2);
+    assert_eq!(bracket[0].port.as_deref(), Some("22"));
+
+    let reject = parse_ufw_numbered_rules(&load_fixture("security/ufw_status_reject.txt"));
+    assert_eq!(reject.len(), 1);
+    assert_eq!(reject[0].action, "REJECT");
+    for rule in reject {
+        assert_firewall_rule_contract(&serde_json::to_value(rule).unwrap());
+    }
+}
+
+#[test]
+fn contract_sudo_log_fixture() {
+    let sudo = parse_sudo_log_lines(&load_fixture("security/auth_sudo.txt"));
+    assert_eq!(sudo.len(), 1);
+    assert_security_log_contract(&serde_json::to_value(&sudo[0]).unwrap());
+    assert_eq!(sudo[0].level, "info");
+}
+
+#[test]
+fn contract_ss_listening_ports_fixture() {
+    let ports = parse_ss_listening_ports(&load_fixture("security/ss_tuln_ports.txt"));
+    assert!(ports.contains(&"22".to_string()));
+    assert!(parse_ss_listening_ports("Netid State\nshort\n").is_empty());
+}
+
+#[test]
+fn contract_encryption_empty_and_mixed_fixtures() {
+    let (empty_enc, empty_devs) = parse_encryption_devices(&load_fixture("security/lsblk_empty.txt"));
+    assert!(!empty_enc);
+    assert!(empty_devs.is_empty());
+
+    let (mixed_enc, mixed_devs) = parse_encryption_devices(&load_fixture("security/lsblk_mixed.txt"));
+    assert!(mixed_enc);
+    assert_eq!(mixed_devs.len(), 1);
+}
+
+#[test]
+fn contract_certificate_filenames_fixture() {
+    let listing = load_fixture("security/cert_dir_listing.txt");
+    let names: Vec<&str> = listing
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let certs = filter_certificate_filenames(names);
+    assert_eq!(certs.len(), 2);
+    assert!(certs.iter().any(|name| name.ends_with(".crt")));
+}
+
+#[test]
+fn contract_keyring_status_json() {
+    assert_eq!(keyring_status_json(true)["available"], true);
+    assert_eq!(keyring_status_json(false)["available"], false);
+}
+
+#[test]
+fn contract_vpn_connections_from_pgrep() {
+    assert!(vpn_connections_from_pgrep(false, false).is_empty());
+    assert_eq!(
+        vpn_connections_from_pgrep(true, true),
+        vec!["OpenConnect".to_string(), "OpenVPN".to_string()]
+    );
+}
+
+#[test]
+fn contract_nmap_invalid_port_fixture() {
+    let ports = parse_nmap_xml_ports(&load_fixture("security/nmap_invalid_port.xml")).expect("xml");
+    assert!(ports.is_empty());
 }

@@ -190,4 +190,107 @@ pub mod contract_parsers {
     pub fn parse_nmap_xml_ports(output: &str) -> anyhow::Result<Vec<serde_json::Value>> {
         crate::services::security::nmap_ports_as_json(output)
     }
+
+    pub fn firewall_status_from_firewalld(output: &str) -> serde_json::Value {
+        crate::services::security::firewall_status_from_firewalld(output)
+    }
+
+    pub fn firewall_status_none() -> serde_json::Value {
+        crate::services::security::firewall_status_none()
+    }
+
+    pub fn keyring_status_json(available: bool) -> serde_json::Value {
+        crate::services::security::keyring_status_json(available)
+    }
+
+    pub fn filter_certificate_filenames(
+        names: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> Vec<String> {
+        crate::services::security::filter_certificate_filenames(names)
+    }
+
+    pub fn vpn_connections_from_pgrep(
+        openconnect_running: bool,
+        openvpn_running: bool,
+    ) -> Vec<String> {
+        crate::services::security::vpn_connections_from_pgrep(openconnect_running, openvpn_running)
+    }
+
+    pub fn parse_sudo_log_lines(
+        output: &str,
+    ) -> Vec<crate::services::security::SecurityLog> {
+        crate::services::security::parse_sudo_log_lines(output)
+    }
+
+    pub fn parse_ss_listening_ports(output: &str) -> Vec<String> {
+        crate::services::security::parse_ss_listening_ports(output)
+    }
+
+    pub fn vpn_interface_connected(
+        ip_output: &str,
+        iface: &str,
+        vpn_process_running: bool,
+    ) -> bool {
+        crate::services::vpn::vpn_interface_connected(ip_output, iface, vpn_process_running)
+    }
+
+    pub fn ip_link_interface_up(output: &str, iface: &str) -> bool {
+        crate::services::vpn::ip_link_interface_up(output, iface)
+    }
+
+    pub fn parse_wireguard_conf(conf: &str) -> crate::services::vpn::WireGuardConfigSummary {
+        crate::services::vpn::parse_wireguard_conf(conf)
+    }
+
+    pub fn parse_proc_stat_cpu(content: &str) -> Option<(u64, u64)> {
+        crate::services::system::parse_proc_stat_cpu(content)
+    }
+
+    pub fn cpu_usage_from_samples(
+        last_total: u64,
+        last_idle: u64,
+        total: u64,
+        idle: u64,
+    ) -> Option<f64> {
+        crate::services::system::cpu_usage_from_samples(last_total, last_idle, total, idle)
+    }
+
+    pub fn parse_sensors_cpu_temp(output: &str) -> Option<f64> {
+        crate::services::system::parse_sensors_cpu_temp(output)
+    }
+
+    pub fn parse_df_storage_usage(output: &str) -> f64 {
+        crate::services::system::parse_df_storage_usage(output)
+    }
+
+    pub fn parse_nvidia_gpu_utilization(output: &str) -> Option<f64> {
+        crate::services::system::parse_nvidia_gpu_utilization(output)
+    }
+
+    pub fn parse_docker_image_line(line: &str) -> Option<crate::services::devops::DockerImage> {
+        crate::services::devops::parse_docker_image_line(line)
+    }
+
+    pub fn parse_systemd_timer_line(line: &str) -> Option<crate::services::devops::SystemdTimer> {
+        crate::services::devops::parse_systemd_timer_line(line)
+    }
+
+    pub fn parse_cron_line(line: &str, user: &str) -> Option<crate::services::devops::CronJob> {
+        crate::services::devops::parse_cron_line(line, user)
+    }
+
+    pub fn git_status_dirty(porcelain: &str) -> bool {
+        crate::services::devops::git_status_dirty(porcelain)
+    }
+
+    pub fn parse_ddc_vcp_brightness(output: &str) -> Option<f64> {
+        crate::services::brightness::parse_ddc_vcp_brightness(output)
+    }
+
+    pub fn build_list_top_json(
+        rows: &mut [(sysinfo::Pid, f32, String)],
+        limit: usize,
+    ) -> Vec<serde_json::Value> {
+        crate::services::processes::build_list_top_json(rows, limit)
+    }
 }

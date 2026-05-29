@@ -59,6 +59,15 @@ async function callData(method: string, params?: Record<string, unknown>): Promi
 // ─────────────────────────────────────────────────────────────────────────────
 export type PowerProfile = "performance" | "balanced" | "saver"
 
+export type WorkflowView = {
+  id: string
+  name: string
+  enabled: boolean
+  triggers?: unknown
+  actions?: unknown
+  created_at?: number
+}
+
 export type {
   CalendarEvent,
   DndPrefsView,
@@ -141,7 +150,21 @@ export const api = {
   disconnectVpn: () => call("Vpn.Disconnect"),
 
   // Calendar
-  getCalendarEvents: () => callData("Calendar.GetEvents").then(parseCalendarEvents),
+  getCalendarEvents: (opts?: { start_date?: number; end_date?: number }) =>
+    callData("Calendar.GetEvents", opts ?? {}).then(parseCalendarEvents),
+  /** For react-query: `queryFn: () => api.fetchCalendarEvents()` */
+  fetchCalendarEvents: () => callData("Calendar.GetEvents").then(parseCalendarEvents),
+  getCalendarUpcoming: (limit = 10) =>
+    callData("Calendar.GetUpcomingEvents", { limit, days: 14 }).then(parseCalendarEvents),
+  createCalendarEvent: (opts: {
+    title: string
+    start: number
+    end: number
+    description?: string
+    reminder_minutes?: number
+  }) => call("Calendar.CreateEvent", opts),
+  deleteCalendarEvent: (eventId: string) =>
+    call("Calendar.DeleteEvent", { event_id: eventId }),
 
   // Packages
   getPackageUpdates: () => callData("Packages.GetUpgradable").then(adaptPackageUpdates),
@@ -168,9 +191,46 @@ export const api = {
 
   // Performance / Devops / Productivity / Automation / Communication / Fitness
   getPerformanceMetrics: () => callData("Performance.GetMetrics").then(adaptPerformanceMetrics),
-  getDevopsStatus:       () => call<Record<string, unknown>>("DevOps.GetStatus"),
-  getProductivityStats:  () => call<Record<string, unknown>>("Productivity.GetStats"),
-  getAutomationRules:    () => call<unknown[]>("Automation.GetWorkflows"),
+  getDevopsStatus: () => call<Record<string, unknown>>("DevOps.GetStatus"),
+  getDevopsContainers: () =>
+    call<
+      Array<{ id: string; name: string; image: string; status: string; ports?: string }>
+    >("DevOps.GetDockerContainers"),
+  getProductivityStats: () => call<Record<string, unknown>>("Productivity.GetStats"),
+  getProductivityTasks: () =>
+    call<
+      Array<{
+        id: string
+        title: string
+        description: string
+        due_date?: number | null
+        completed: boolean
+      }>
+    >("Productivity.GetTasks"),
+  createProductivityTask: (title: string, description?: string) =>
+    call("Productivity.CreateTask", { title, description: description ?? "" }),
+  deleteProductivityTask: (taskId: string) =>
+    call("Productivity.DeleteTask", { task_id: taskId }),
+  setProductivityFocusMode: (enabled: boolean) =>
+    call("Productivity.SetFocusMode", { enabled }),
+  getAutomationRules: () =>
+    call<WorkflowView[]>("Automation.GetWorkflows"),
+  createAutomationWorkflow: (opts: { name: string; actions: unknown; triggers?: unknown }) =>
+    call<WorkflowView>("Automation.CreateWorkflow", {
+      name: opts.name,
+      actions: opts.actions,
+      ...(opts.triggers != null ? { triggers: opts.triggers } : {}),
+    }),
+  triggerAutomation: (workflowId: string) =>
+    call<{ success: boolean }>("Automation.Trigger", { workflow_id: workflowId }),
+  enableAutomationWorkflow: (workflowId: string) =>
+    call<{ success: boolean }>("Automation.EnableWorkflow", { workflow_id: workflowId }),
+  disableAutomationWorkflow: (workflowId: string) =>
+    call<{ success: boolean }>("Automation.DisableWorkflow", { workflow_id: workflowId }),
+  deleteAutomationWorkflow: (workflowId: string) =>
+    call<{ success: boolean; deleted?: boolean }>("Automation.DeleteWorkflow", {
+      workflow_id: workflowId,
+    }),
   getUnreadMessages:     () => call<Record<string, number>>("Communication.GetUnread"),
   getFitnessStats:       () => call<Record<string, unknown>>("Fitness.GetGoals"),
 
@@ -180,10 +240,14 @@ export const api = {
     call("Brightness.Set", { monitor, percent }),
 
   // Hyprland (React bar — replaces GJS hyprland.ts)
-  hyprlandGetWorkspaces: () => call<unknown>("Hyprland.GetWorkspaces"),
-  hyprlandGetActiveWorkspace: () => call<unknown>("Hyprland.GetActiveWorkspace"),
-  hyprlandGetClients: () => call<unknown>("Hyprland.GetClients"),
-  hyprlandGetActiveWindow: () => call<unknown>("Hyprland.GetActiveWindow"),
+  hyprlandGetWorkspaces: () =>
+    call<import("./api-types").HyprWorkspace[]>("Hyprland.GetWorkspaces"),
+  hyprlandGetActiveWorkspace: () =>
+    call<import("./api-types").HyprActiveWorkspace | null>("Hyprland.GetActiveWorkspace"),
+  hyprlandGetClients: () => call<import("./api-types").HyprClient[]>("Hyprland.GetClients"),
+  hyprlandGetActiveWindow: () =>
+    call<import("./api-types").HyprActiveWindow | null>("Hyprland.GetActiveWindow"),
+  hyprlandGetMonitors: () => call<import("./api-types").HyprMonitor[]>("Hyprland.GetMonitors"),
   hyprlandDispatch: (command: string) => call<{ ok: boolean }>("Hyprland.Dispatch", { command }),
 
   // Session / Aura / Apps (allowlisted shell)
@@ -196,9 +260,21 @@ export const api = {
     call<{ ok: boolean }>("Aura.ToggleWindow", { name }),
   appsLaunch: (id: string) => call<{ ok: boolean }>("Apps.Launch", { id }),
 
-  // Media (playerctl)
-  getMediaNowPlaying: () =>
-    call<{ playing: boolean; title: string; artist: string }>("Media.GetNowPlaying"),
+  // Media (playerctl / MPRIS)
+  getMediaNowPlaying: () => call<import("./api-types").MediaNowPlaying>("Media.GetNowPlaying"),
+  mediaGetPlayers: () => call<string[]>("Audio.Media.GetPlayers"),
+  mediaPlayPause: (playerName?: string) =>
+    call<{ success: boolean }>("Audio.Media.PlayPause", {
+      ...(playerName ? { player_name: playerName } : {}),
+    }),
+  mediaNext: (playerName?: string) =>
+    call<{ success: boolean }>("Audio.Media.Next", {
+      ...(playerName ? { player_name: playerName } : {}),
+    }),
+  mediaPrevious: (playerName?: string) =>
+    call<{ success: boolean }>("Audio.Media.Previous", {
+      ...(playerName ? { player_name: playerName } : {}),
+    }),
 
   // Processes (task manager)
   processListTop: (limit?: number) =>

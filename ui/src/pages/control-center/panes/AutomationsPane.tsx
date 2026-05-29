@@ -1,75 +1,57 @@
 import { motion } from "framer-motion"
-import { useQuery } from "@tanstack/react-query"
-import api from "@/lib/api"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
+import api, { type WorkflowView } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { getNavItem } from "../navigation"
 
-type DisplayRule = {
-  key: string
-  title: string
-  subtitle?: string
-  enabled?: boolean
-}
-
-function summarizeJson(value: unknown): string | undefined {
-  try {
-    const s = JSON.stringify(value)
-    if (!s || s === "null") return undefined
-    return s.length > 120 ? `${s.slice(0, 117)}…` : s
-  } catch {
-    return undefined
-  }
-}
-
-function normalizeRule(raw: unknown, index: number): DisplayRule {
-  if (typeof raw === "string") {
-    return { key: `str-${index}`, title: raw }
-  }
-
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    const o = raw as Record<string, unknown>
-    const title =
-      (typeof o.name === "string" && o.name.trim()) ||
-      (typeof o.title === "string" && o.title.trim()) ||
-      (typeof o.label === "string" && o.label.trim()) ||
-      (typeof o.id === "string" && o.id.trim()) ||
-      `Rule ${index + 1}`
-
-    let subtitle: string | undefined =
-      typeof o.description === "string" && o.description.trim()
-        ? o.description.trim()
-        : undefined
-    if (!subtitle) subtitle = summarizeJson(o.summary ?? o.condition ?? o.trigger ?? o.triggers)
-
-    const enabled = typeof o.enabled === "boolean" ? o.enabled : undefined
-    const key =
-      (typeof o.id === "string" && o.id) ||
-      (typeof o.slug === "string" && o.slug) ||
-      `rule-${index}`
-
-    return { key, title, subtitle, enabled }
-  }
-
-  return {
-    key: `rule-${index}`,
-    title: `Rule ${index + 1}`,
-    subtitle: summarizeJson(raw),
-  }
-}
-
 export function AutomationsPane() {
   const { icon, label } = getNavItem("automations")
+  const qc = useQueryClient()
+  const [name, setName] = useState("")
+  const [actionsJson, setActionsJson] = useState(
+    '[{"type":"send_notification","title":"Aura","body":"Workflow ran"}]'
+  )
+
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["automation-rules"],
     queryFn: api.getAutomationRules,
     staleTime: 30_000,
   })
 
-  const rules: DisplayRule[] = Array.isArray(data)
-    ? data.map((raw, i) => normalizeRule(raw, i))
-    : []
+  const createMut = useMutation({
+    mutationFn: () => {
+      let actions: unknown
+      try {
+        actions = JSON.parse(actionsJson)
+      } catch {
+        throw new Error("Actions must be valid JSON array")
+      }
+      return api.createAutomationWorkflow({ name: name.trim() || "New workflow", actions })
+    },
+    onSuccess: () => {
+      setName("")
+      void qc.invalidateQueries({ queryKey: ["automation-rules"] })
+    },
+  })
 
-  const showEmpty = !isLoading && !isError && rules.length === 0
+  const triggerMut = useMutation({
+    mutationFn: (workflowId: string) => api.triggerAutomation(workflowId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["automation-rules"] }),
+  })
+
+  const toggleMut = useMutation({
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      enabled ? api.disableAutomationWorkflow(id) : api.enableAutomationWorkflow(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["automation-rules"] }),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => api.deleteAutomationWorkflow(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["automation-rules"] }),
+  })
+
+  const rules: WorkflowView[] = Array.isArray(data) ? data : []
 
   return (
     <motion.div
@@ -86,7 +68,8 @@ export function AutomationsPane() {
             <h2 className="text-xl font-semibold text-text">{label}</h2>
           </div>
           <p className="text-xs text-subtext1 max-w-prose">
-            Automation rules from the sidecar. Create and edit flows in roadmap tooling when wired up.
+            Workflows stored in the sidecar. Run now uses a safe action allowlist (notify-send and
+            scripts under ~/.config/ags/automation/scripts).
           </p>
         </div>
         <button
@@ -100,58 +83,88 @@ export function AutomationsPane() {
         </button>
       </div>
 
+      <div className="glass-card p-4 flex flex-col gap-3">
+        <p className="text-xs font-medium text-text">New workflow</p>
+        <input
+          className="w-full rounded-xl border border-surface0/80 bg-base/80 px-3 py-2 text-sm"
+          placeholder="Workflow name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <textarea
+          className="w-full rounded-xl border border-surface0/80 bg-base/80 px-3 py-2 text-xs font-mono min-h-[72px]"
+          value={actionsJson}
+          onChange={(e) => setActionsJson(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn-surface text-sm self-start"
+          disabled={createMut.isPending}
+          onClick={() => createMut.mutate()}
+        >
+          Create workflow
+        </button>
+        {createMut.isError && (
+          <p className="text-xs text-red">
+            {createMut.error instanceof Error ? createMut.error.message : "Create failed"}
+          </p>
+        )}
+      </div>
+
       {isLoading ? (
         <div className="flex flex-col gap-3">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="skeleton h-20 rounded-xl" style={{ opacity: 1 - i * 0.18 }} />
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="skeleton h-20 rounded-xl" />
           ))}
         </div>
       ) : isError ? (
-        <div className="glass-card p-5 flex flex-col gap-3 border-red/25">
-          <div className="flex items-center gap-2 text-red">
-            <span className="icon text-xl">error</span>
-            <p className="text-sm font-medium">Could not load rules</p>
-          </div>
-          <p className="text-xs text-subtext0 leading-relaxed">
-            {error instanceof Error ? error.message : "Sidecar request failed."}
-          </p>
-          <button type="button" className="btn-surface text-sm self-start" onClick={() => refetch()}>
-            Try again
-          </button>
+        <div className="glass-card p-5 border-red/25">
+          <p className="text-sm text-red">{error instanceof Error ? error.message : "Load failed"}</p>
         </div>
-      ) : showEmpty ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 py-12 px-4 text-center">
-          <span className="icon text-5xl text-subtext0/70">{icon}</span>
-          <div className="max-w-sm">
-            <p className="text-sm font-medium text-text">No automation rules yet</p>
-            <p className="text-xs text-subtext1 mt-2 leading-relaxed">
-              When workflows or rules are registered in Aura, they will appear here as cards you can scan at a glance.
-            </p>
-          </div>
-        </div>
+      ) : rules.length === 0 ? (
+        <div className="glass-card p-8 text-center text-subtext1 text-sm">No workflows yet.</div>
       ) : (
         <ul className="flex flex-col gap-3 list-none m-0 p-0">
           {rules.map((rule) => (
-            <li key={rule.key}>
-              <div className="glass-card p-4 flex flex-col gap-2 hover:bg-surface1/40 transition-colors">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm font-medium text-text leading-snug">{rule.title}</p>
-                  {rule.enabled !== undefined && (
-                    <span
-                      className={cn(
-                        "text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full shrink-0",
-                        rule.enabled
-                          ? "bg-green/15 text-green border border-green/30"
-                          : "bg-surface0 text-subtext1 border border-surface0"
-                      )}
-                    >
-                      {rule.enabled ? "On" : "Off"}
-                    </span>
-                  )}
+            <li key={rule.id}>
+              <div className="glass-card p-4 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-medium text-text">{rule.name}</p>
+                  <span
+                    className={cn(
+                      "text-[10px] uppercase px-2 py-0.5 rounded-full",
+                      rule.enabled
+                        ? "bg-green/15 text-green"
+                        : "bg-surface0 text-subtext1"
+                    )}
+                  >
+                    {rule.enabled ? "On" : "Off"}
+                  </span>
                 </div>
-                {rule.subtitle && (
-                  <p className="text-xs text-subtext0 font-mono leading-relaxed break-all">{rule.subtitle}</p>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="btn-surface text-xs"
+                    disabled={triggerMut.isPending || !rule.enabled}
+                    onClick={() => triggerMut.mutate(rule.id)}
+                  >
+                    Run now
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-surface text-xs"
+                    onClick={() => toggleMut.mutate({ id: rule.id, enabled: rule.enabled })}
+                  >
+                    {rule.enabled ? "Disable" : "Enable"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-surface text-xs text-red"
+                    onClick={() => deleteMut.mutate(rule.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             </li>
           ))}

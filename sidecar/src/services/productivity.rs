@@ -1,9 +1,13 @@
+use crate::notify;
 use crate::services::ServiceRegistry;
 use crate::utils::{process, storage};
 use serde::{Deserialize, Serialize};
 use serde_json;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
+
+static PRODUCTIVITY_EMIT_GEN: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Timer {
@@ -80,15 +84,24 @@ pub fn register(registry: &mut ServiceRegistry) {
                         timer.active = false;
                         timer.remaining_seconds = 0;
                         // Send notification
-                        let _ = process::exec_command(&["notify-send", "Timer", &format!("Timer '{}' completed!", timer.name)]).await;
+                        if std::env::var("AURA_SKIP_NOTIFY_SEND").is_err() {
+                            let _ = process::exec_command(&[
+                                "notify-send",
+                                "Timer",
+                                &format!("Timer '{}' completed!", timer.name),
+                            ])
+                            .await;
+                        }
                         break;
                     } else {
                         timer.remaining_seconds = timer.duration_seconds - elapsed;
                     }
+                    schedule_productivity_emit();
                 } else {
                     break;
                 }
             }
+            schedule_productivity_emit();
         });
 
         Ok(serde_json::to_value(&timer)?)
@@ -135,6 +148,9 @@ pub fn register(registry: &mut ServiceRegistry) {
             active: true,
         };
 
+        storage::init().await?;
+        storage::set_kv("productivity", "pomodoro", &serde_json::to_value(&pomodoro)?).await?;
+
         let mut state = POMODORO.write().await;
         *state = Some(pomodoro.clone());
 
@@ -152,11 +168,27 @@ pub fn register(registry: &mut ServiceRegistry) {
                             if pomo.current_phase == "work" {
                                 pomo.current_phase = "break".to_string();
                                 pomo.remaining_seconds = (break_minutes * 60) as u64;
-                                let _ = process::exec_command(&["notify-send", "Pomodoro", "Work session complete! Take a break."]).await;
+                                if std::env::var("AURA_SKIP_NOTIFY_SEND").is_err() {
+                                    let _ = process::exec_command(&[
+                                        "notify-send",
+                                        "Pomodoro",
+                                        "Work session complete! Take a break.",
+                                    ])
+                                    .await;
+                                }
+                                schedule_productivity_emit();
                             } else {
                                 pomo.current_phase = "work".to_string();
                                 pomo.remaining_seconds = (work_minutes * 60) as u64;
-                                let _ = process::exec_command(&["notify-send", "Pomodoro", "Break over! Back to work."]).await;
+                                if std::env::var("AURA_SKIP_NOTIFY_SEND").is_err() {
+                                    let _ = process::exec_command(&[
+                                        "notify-send",
+                                        "Pomodoro",
+                                        "Break over! Back to work.",
+                                    ])
+                                    .await;
+                                }
+                                schedule_productivity_emit();
                             }
                         }
                     } else {
@@ -165,6 +197,7 @@ pub fn register(registry: &mut ServiceRegistry) {
                 } else {
                     break;
                 }
+                schedule_productivity_emit();
                 drop(state);
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
@@ -175,7 +208,16 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     registry.register("Productivity.GetPomodoroStatus", |_params| async move {
         let state = POMODORO.read().await;
-        Ok(serde_json::to_value(state.clone())?)
+        if state.is_some() {
+            return Ok(serde_json::to_value(state.clone())?);
+        }
+        storage::init().await?;
+        if let Some(v) = storage::get_kv("productivity", "pomodoro").await? {
+            if let Ok(p) = serde_json::from_value::<PomodoroState>(v) {
+                return Ok(serde_json::to_value(Some(p))?);
+            }
+        }
+        Ok(serde_json::Value::Null)
     });
 
     registry.register("Productivity.SetFocusMode", |params| async move {
@@ -194,9 +236,9 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     registry.register("Productivity.GetFocusModeStatus", |_params| async move {
         storage::init().await?;
-        let enabled = storage::get_kv("productivity", "focus_mode").await?
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let enabled = focus_mode_enabled_from_value(
+            storage::get_kv("productivity", "focus_mode").await?.as_ref(),
+        );
         Ok(serde_json::json!({ "enabled": enabled }))
     });
 
@@ -237,9 +279,9 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Productivity.GetTasks", |_params| async move {
-        // Note: Would need storage list method to get all tasks
-        // For now, return empty list
-        Ok(serde_json::json!([]))
+        storage::init().await?;
+        let items = storage::scan_namespace("productivity_tasks").await?;
+        Ok(serde_json::to_value(&tasks_from_storage_values(items))?)
     });
 
     registry.register("Productivity.UpdateTask", |params| async move {
@@ -269,15 +311,16 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Productivity.DeleteTask", |params| async move {
-        let _task_id: String = serde_json::from_value(
+        let task_id: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("task_id").cloned())
                 .ok_or_else(|| anyhow::anyhow!("Missing task_id"))?,
         )?;
 
-        // Would need storage delete method
-        Ok(serde_json::json!({ "success": true }))
+        storage::init().await?;
+        let deleted = storage::delete_kv("productivity_tasks", &task_id).await?;
+        Ok(serde_json::json!({ "success": true, "deleted": deleted }))
     });
 
     registry.register("Productivity.GetScreenTime", |_params| async move {
@@ -296,19 +339,105 @@ pub fn register(registry: &mut ServiceRegistry) {
         let pomodoro = POMODORO.read().await.clone();
 
         storage::init().await?;
-        let focus_mode_enabled = storage::get_kv("productivity", "focus_mode")
-            .await?
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        let focus_mode_enabled = focus_mode_enabled_from_value(
+            storage::get_kv("productivity", "focus_mode").await?.as_ref(),
+        );
+        let items = storage::scan_namespace("productivity_tasks").await?;
+        let tasks = tasks_from_storage_values(items);
+        let open_tasks = tasks.iter().filter(|t| !t.completed).count();
 
-        Ok(serde_json::json!({
-            "active_timers": active_timers,
-            "total_timers": timers.len(),
-            "pomodoro_active": pomodoro.as_ref().map(|p| p.active).unwrap_or(false),
-            "pomodoro_phase": pomodoro.as_ref().map(|p| p.current_phase.clone()),
-            "focus_mode_enabled": focus_mode_enabled,
-            "screen_time_minutes": 0,
-            "task_count": 0,
-        }))
+        Ok(build_productivity_stats(
+            active_timers,
+            timers.len(),
+            pomodoro.as_ref(),
+            focus_mode_enabled,
+            open_tasks,
+            tasks.len(),
+        ))
     });
+}
+
+pub(crate) fn tasks_from_storage_values(items: Vec<serde_json::Value>) -> Vec<Task> {
+    items
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect()
+}
+
+fn schedule_productivity_emit() {
+    let gen = PRODUCTIVITY_EMIT_GEN.fetch_add(1, Ordering::Relaxed) + 1;
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        if PRODUCTIVITY_EMIT_GEN.load(Ordering::Relaxed) != gen {
+            return;
+        }
+        notify::emit(
+            "Productivity.TimerTick",
+            serde_json::json!({ "ts": chrono::Utc::now().timestamp_millis() }),
+        );
+    });
+}
+
+pub(crate) fn focus_mode_enabled_from_value(value: Option<&serde_json::Value>) -> bool {
+    value.and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+pub(crate) fn build_productivity_stats(
+    active_timers: usize,
+    total_timers: usize,
+    pomodoro: Option<&PomodoroState>,
+    focus_mode_enabled: bool,
+    open_tasks: usize,
+    total_tasks: usize,
+) -> serde_json::Value {
+    serde_json::json!({
+        "active_timers": active_timers,
+        "total_timers": total_timers,
+        "pomodoro_active": pomodoro.map(|p| p.active).unwrap_or(false),
+        "pomodoro_phase": pomodoro.map(|p| p.current_phase.clone()),
+        "focus_mode_enabled": focus_mode_enabled,
+        "screen_time_minutes": 0,
+        "screen_time_note": "Phase 2: ActivityWatch integration",
+        "open_task_count": open_tasks,
+        "task_count": total_tasks,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn focus_mode_enabled_rejects_non_bool_storage() {
+        assert!(!focus_mode_enabled_from_value(Some(&serde_json::json!("yes"))));
+        assert!(!focus_mode_enabled_from_value(Some(&serde_json::json!(1))));
+        assert!(focus_mode_enabled_from_value(Some(&serde_json::json!(true))));
+        assert!(!focus_mode_enabled_from_value(None));
+    }
+
+    #[test]
+    fn build_stats_includes_pomodoro_phase_when_active() {
+        let pomo = PomodoroState {
+            work_minutes: 25,
+            break_minutes: 5,
+            current_phase: "work".into(),
+            remaining_seconds: 60,
+            active: true,
+        };
+        let stats = build_productivity_stats(1, 2, Some(&pomo), false, 3, 5);
+        assert_eq!(stats.get("active_timers").and_then(|v| v.as_u64()), Some(1));
+        assert_eq!(stats.get("open_task_count").and_then(|v| v.as_u64()), Some(3));
+        assert_eq!(stats.get("pomodoro_active"), Some(&serde_json::json!(true)));
+        assert_eq!(
+            stats.get("pomodoro_phase").and_then(|v| v.as_str()),
+            Some("work")
+        );
+    }
+
+    #[test]
+    fn build_stats_null_pomodoro_phase_when_inactive() {
+        let stats = build_productivity_stats(0, 0, None, true, 0, 0);
+        assert_eq!(stats.get("focus_mode_enabled"), Some(&serde_json::json!(true)));
+        assert!(stats.get("pomodoro_phase").map(|v| v.is_null()).unwrap_or(false));
+    }
 }

@@ -1,3 +1,4 @@
+pub mod automation_log;
 pub mod process;
 pub mod keyring;
 pub mod storage;

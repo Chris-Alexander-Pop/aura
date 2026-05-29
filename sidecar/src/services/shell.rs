@@ -92,9 +92,13 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 }
 
+pub(crate) fn app_launch_argv(app_id: &str) -> Option<Vec<&'static str>> {
+    APP_MAP.get(app_id).cloned()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::aura_window_allowed;
+    use super::{app_launch_argv, aura_window_allowed};
 
     #[test]
     fn aura_window_allowlist() {
@@ -103,5 +107,13 @@ mod tests {
         }
         assert!(!aura_window_allowed("launcher"));
         assert!(!aura_window_allowed(""));
+        assert!(!aura_window_allowed("control_center"));
+    }
+
+    #[test]
+    fn app_launch_map_known_ids() {
+        assert_eq!(app_launch_argv("terminal"), Some(vec!["kitty"]));
+        assert_eq!(app_launch_argv("browser"), Some(vec!["firefox"]));
+        assert!(app_launch_argv("unknown-app").is_none());
     }
 }

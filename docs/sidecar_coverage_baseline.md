@@ -1,6 +1,6 @@
 # Sidecar coverage baseline
 
-**Date:** 2026-05-28  
+**Date:** 2026-05-29 (Wave 5 hyprland/mpris refresh)  
 **Repo:** `~/.config/ags` (`sidecar/`)  
 **Toolchain:** `cargo-llvm-cov` + `llvm-tools-preview` (see `sidecar/README.md`)
 
@@ -15,6 +15,7 @@
 | `server_http_test` | 6 | pass |
 | `wave3_rpc_shapes` | 9 | pass |
 | `wave4_rpc_shapes` | 10 | pass |
+| `wave5_hyprland_*` + `wave5_media_shapes` | 13+ | pass (fixture + shape tests) |
 | `wave12_rpc_shapes` | 7 | pass |
 | Binary (`main.rs`) | 0 | `test = false` on `[[bin]]` |
 | Doc tests | 0 | — |

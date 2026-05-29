@@ -64,59 +64,66 @@ pub fn register(registry: &mut ServiceRegistry) {
 }
 
 async fn calculate_cpu_usage() -> f64 {
-    // Read /proc/stat for more accurate CPU calculation
     if let Ok(content) = tokio::fs::read_to_string("/proc/stat").await {
-        if let Some(line) = content.lines().next() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 8 {
-                let stats: Vec<u64> = parts[1..8]
-                    .iter()
-                    .map(|s| s.parse().unwrap_or(0))
-                    .collect();
-                let total: u64 = stats.iter().sum();
-                let idle = stats[3] + stats.get(4).copied().unwrap_or(0);
+        if let Some((total, idle)) = parse_proc_stat_cpu(&content) {
+            let last_total = *LAST_CPU_TOTAL.read().await;
+            let last_idle = *LAST_CPU_IDLE.read().await;
 
-                let last_total = *LAST_CPU_TOTAL.read().await;
-                let last_idle = *LAST_CPU_IDLE.read().await;
-
-                if last_total > 0 {
-                    let total_diff = total - last_total;
-                    let idle_diff = idle - last_idle;
-                    if total_diff > 0 {
-                        let usage = 1.0 - (idle_diff as f64 / total_diff as f64);
-                        *LAST_CPU_TOTAL.write().await = total;
-                        *LAST_CPU_IDLE.write().await = idle;
-                        return usage.max(0.0).min(1.0);
-                    }
-                } else {
-                    *LAST_CPU_TOTAL.write().await = total;
-                    *LAST_CPU_IDLE.write().await = idle;
-                }
+            if let Some(usage) = cpu_usage_from_samples(last_total, last_idle, total, idle) {
+                *LAST_CPU_TOTAL.write().await = total;
+                *LAST_CPU_IDLE.write().await = idle;
+                return usage;
+            }
+            if last_total == 0 {
+                *LAST_CPU_TOTAL.write().await = total;
+                *LAST_CPU_IDLE.write().await = idle;
             }
         }
     }
     0.0
 }
 
-async fn get_cpu_temp() -> Result<f64> {
-    // Try sensors command first
-    let output = process::exec_command(&["sensors"]).await?;
-    
-    // Look for Package id or Tdie (AMD) or Tctl
-    let temp_match = output
-        .lines()
-        .find_map(|line| {
-            if let Some(cap) = regex::Regex::new(r"(?:Package id \d+|Tdie|Tctl):\s*\+?([\d.]+)")
-                .ok()
-                .and_then(|re| re.captures(line))
-            {
-                cap.get(1)?.as_str().parse::<f64>().ok()
-            } else {
-                None
-            }
-        });
+/// Parse aggregate `cpu` line from `/proc/stat` into (total jiffies, idle jiffies).
+pub fn parse_proc_stat_cpu(content: &str) -> Option<(u64, u64)> {
+    let line = content.lines().next()?;
+    if !line.starts_with("cpu ") {
+        return None;
+    }
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 8 {
+        return None;
+    }
+    let stats: Vec<u64> = parts[1..8]
+        .iter()
+        .map(|s| s.parse().unwrap_or(0))
+        .collect();
+    let total: u64 = stats.iter().sum();
+    let idle = stats[3] + stats.get(4).copied().unwrap_or(0);
+    Some((total, idle))
+}
 
-    if let Some(temp) = temp_match {
+/// CPU usage fraction from two `/proc/stat` samples; `None` on first sample or zero delta.
+pub fn cpu_usage_from_samples(
+    last_total: u64,
+    last_idle: u64,
+    total: u64,
+    idle: u64,
+) -> Option<f64> {
+    if last_total == 0 {
+        return None;
+    }
+    let total_diff = total.saturating_sub(last_total);
+    let idle_diff = idle.saturating_sub(last_idle);
+    if total_diff == 0 {
+        return None;
+    }
+    let usage = 1.0 - (idle_diff as f64 / total_diff as f64);
+    Some(usage.max(0.0).min(1.0))
+}
+
+async fn get_cpu_temp() -> Result<f64> {
+    let output = process::exec_command(&["sensors"]).await?;
+    if let Some(temp) = parse_sensors_cpu_temp(&output) {
         return Ok(temp);
     }
 
@@ -131,18 +138,22 @@ async fn get_cpu_temp() -> Result<f64> {
 }
 
 async fn get_gpu_usage() -> Result<f64> {
-    // Try NVIDIA first
-    let nvidia_output = process::exec_command(&["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"]).await;
+    let nvidia_output = process::exec_command(&[
+        "nvidia-smi",
+        "--query-gpu=utilization.gpu",
+        "--format=csv,noheader,nounits",
+    ])
+    .await;
     if let Ok(output) = nvidia_output {
-        if let Ok(usage) = output.trim().parse::<f64>() {
-            return Ok(usage / 100.0);
+        if let Some(usage) = parse_nvidia_gpu_utilization(&output) {
+            return Ok(usage);
         }
     }
 
-    // Try generic GPU
-    if let Ok(content) = tokio::fs::read_to_string("/sys/class/drm/card0/device/gpu_busy_percent").await {
-        if let Ok(usage) = content.trim().parse::<f64>() {
-            return Ok(usage / 100.0);
+    if let Ok(content) = tokio::fs::read_to_string("/sys/class/drm/card0/device/gpu_busy_percent").await
+    {
+        if let Some(usage) = parse_sysfs_gpu_busy_percent(&content) {
+            return Ok(usage);
         }
     }
 
@@ -151,7 +162,39 @@ async fn get_gpu_usage() -> Result<f64> {
 
 async fn get_storage_usage() -> Result<f64> {
     let output = process::exec_command(&["df", "-B1"]).await?;
-    
+    Ok(parse_df_storage_usage(&output))
+}
+
+/// Extract CPU temperature (°C) from `sensors` text output.
+pub fn parse_sensors_cpu_temp(output: &str) -> Option<f64> {
+    let re = regex::Regex::new(r"(?:Package id \d+|Tdie|Tctl):\s*\+?([\d.]+)").ok()?;
+    output.lines().find_map(|line| {
+        re.captures(line)?
+            .get(1)?
+            .as_str()
+            .parse::<f64>()
+            .ok()
+    })
+}
+
+/// Parse `nvidia-smi` utilization line as 0.0–1.0 fraction.
+pub fn parse_nvidia_gpu_utilization(output: &str) -> Option<f64> {
+    let line = output.lines().next()?.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let usage = line.parse::<f64>().ok()?;
+    Some((usage / 100.0).max(0.0).min(1.0))
+}
+
+/// Parse `/sys/class/drm/.../gpu_busy_percent` as 0.0–1.0 fraction.
+pub fn parse_sysfs_gpu_busy_percent(content: &str) -> Option<f64> {
+    let usage = content.trim().parse::<f64>().ok()?;
+    Some((usage / 100.0).max(0.0).min(1.0))
+}
+
+/// Aggregate block-device usage from `df -B1` output.
+pub fn parse_df_storage_usage(output: &str) -> f64 {
     let mut total_used = 0u64;
     let mut total_avail = 0u64;
 
@@ -167,8 +210,55 @@ async fn get_storage_usage() -> Result<f64> {
 
     let total = total_used + total_avail;
     if total > 0 {
-        Ok(total_used as f64 / total as f64)
+        total_used as f64 / total as f64
     } else {
-        Ok(0.0)
+        0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_proc_stat_cpu_fixture() {
+        let text = include_str!("../../tests/fixtures/system/proc_stat.txt");
+        let (total, idle) = parse_proc_stat_cpu(text).expect("cpu line");
+        assert!(total > idle);
+    }
+
+    #[test]
+    fn parse_proc_stat_cpu_rejects_short_line() {
+        let text = include_str!("../../tests/fixtures/system/proc_stat_short.txt");
+        assert!(parse_proc_stat_cpu(text).is_none());
+    }
+
+    #[test]
+    fn cpu_usage_from_samples_computes_delta() {
+        let usage = cpu_usage_from_samples(1000, 400, 1100, 420).expect("delta");
+        assert!((usage - 0.8).abs() < f64::EPSILON);
+        assert!(cpu_usage_from_samples(0, 0, 100, 50).is_none());
+        assert!(cpu_usage_from_samples(100, 50, 100, 50).is_none());
+    }
+
+    #[test]
+    fn parse_sensors_cpu_temp_fixture() {
+        let text = include_str!("../../tests/fixtures/system/sensors_output.txt");
+        let temp = parse_sensors_cpu_temp(text).expect("temp");
+        assert!((temp - 52.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_df_storage_usage_fixture() {
+        let text = include_str!("../../tests/fixtures/system/df_output.txt");
+        let usage = parse_df_storage_usage(text);
+        assert!((usage - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn parse_nvidia_and_sysfs_gpu() {
+        assert!((parse_nvidia_gpu_utilization("42\n").unwrap() - 0.42).abs() < f64::EPSILON);
+        assert!(parse_nvidia_gpu_utilization("\n").is_none());
+        assert!((parse_sysfs_gpu_busy_percent("80\n").unwrap() - 0.8).abs() < f64::EPSILON);
     }
 }

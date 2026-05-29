@@ -12,14 +12,13 @@
 
 | Item | Status |
 |------|--------|
-| Registered RPC methods | ~**273** across existing services |
-| Integration tests | **Minimal** — `tests/integration_test.rs` only validates JSON shape + brightness parser |
-| `ui/src/lib/api.ts` vs sidecar | **Several method name mismatches** (UI calls methods that do not exist) |
-| `src/lib/sidecar.ts` (GTK) vs sidecar | **Same mismatches** on aggregate helpers |
-| Dedicated services missing | **Keybinds**, **Notifications**, **Launcher/Vicinae**, **Screenshot/Capture**, **Settings/Config**, **Vault**, **Lock/Session (extended)**, **IDE**, **Todos** |
-| Storage layer | SQLite KV only — **no list/delete/scan** (blocks Calendar, Automation, Productivity) |
-| Real-time push | HTTP `/ws` exists; **few services emit** `push_notification` today |
-| Stdin JSON-RPC + HTTP | Both hit same `ServiceRegistry` — good; tests should cover **both** entrypoints |
+| Registered RPC methods | ~**309** (`sidecar/rpc-manifest.json`) |
+| Integration tests | **250+** test fns — contracts, RPC guard, wave4 slice tests, fast vs slow host sweep |
+| `ui/src/lib/api.ts` vs sidecar | **Contract script** — `scripts/check-api-rpc-contract.sh` |
+| Dedicated services missing | **Launcher/Vicinae**, **Capture**, **Settings/Config**, **Vault**, **Todos** (see §3) |
+| Storage layer | SQLite KV with **list/delete/scan** |
+| Real-time push | `notify` bus — Power, Network, BT, Audio, Notifications, Performance, Productivity, **Hyprland** |
+| Coverage | ~**50%** line (`docs/sidecar_coverage_baseline.md`, `scripts/sidecar-coverage.sh`) |
 
 ---
 
@@ -200,12 +199,12 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ### 2.8 Hyprland (`hyprland.rs`) — P1
 
-- [ ] `GetWorkspaces` / `GetClients` / `GetActiveWindow` — typed JSON matching React bar
-- [ ] `Dispatch` allowlist (prevent arbitrary command injection)
-- [ ] `GetMonitors` for multi-monitor bar
-- [ ] Event subscription → WebSocket (`workspace`, `window`, `monitor`)
-- [ ] Unit tests: parse hyprctl JSON fixtures
-- [ ] Integration tests with `HYPRCTL` mock
+- [x] `GetWorkspaces` / `GetClients` / `GetActiveWindow` — typed JSON matching React bar
+- [x] `Dispatch` allowlist (prevent arbitrary command injection)
+- [x] `GetMonitors` for multi-monitor bar
+- [x] Event subscription → WebSocket (`Hyprland.StateChanged` via socket2; `AURA_HYPRLAND_EVENTS=0` to disable)
+- [x] Unit tests: parse hyprctl JSON fixtures (`tests/fixtures/hyprland/`, `wave5_*` tests)
+- [ ] Integration tests with live `hyprctl` on CI host (optional; fixtures cover parsers)
 
 ### 2.9 Shell / session (`shell.rs`) — P1
 
@@ -217,9 +216,9 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ### 2.10 MPRIS / media (`mpris.rs`) — P1
 
-- [ ] `Media.GetNowPlaying` — playerctl or zbus mpris
-- [ ] Play/pause/next/prev or deprecate in favor of `Audio.Media.*`
-- [ ] Tests with fixture bus names
+- [x] `Media.GetNowPlaying` — `playerctl status` + metadata; `playing`/`paused`/`player_name`
+- [x] Play/pause/next/prev wired in `api.ts` → `Audio.Media.*` (bar controls)
+- [x] Tests with fixtures (`playerctl_status.txt`, `wave5_media_shapes.rs`)
 
 ### 2.11 Processes (`processes.rs`) — P1
 
@@ -311,7 +310,7 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ### 2.19 DevOps (`devops.rs`) — P2
 
-- [ ] **`Devops.GetStatus`** (or `DevOps.GetStatus`) summary: docker running, k8s context, git dirty count
+- [x] **`DevOps.GetStatus`** summary: podman/docker runtime, container count, k8s hint, git dirty count (`AURA_GIT_ROOTS`)
 - [ ] Docker: containers/images/stats — handle missing docker.sock gracefully
 - [ ] Podman/K8s optional
 - [ ] Git repo discovery + status
@@ -322,9 +321,9 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ### 2.20 Productivity (`productivity.rs`) — P2
 
-- [ ] **`Productivity.GetStats`** aggregate
-- [ ] Timers/pomodoro — persist state, emit WS on tick
-- [ ] Tasks CRUD with storage **list/delete** fixed
+- [x] **`Productivity.GetStats`** aggregate (task counts, pomodoro, focus, timers)
+- [x] Timers/pomodoro — in-memory ticks; pomodoro prefs in SQLite; **`Productivity.TimerTick`** WS
+- [x] Tasks CRUD with storage **list/delete** (`GetTasks`, `DeleteTask`)
 - [ ] Focus mode / site blocking — integrate `/etc/hosts` or nftables (dangerous — confirm UX)
 - [ ] Screen time / app usage — integrate ActivityWatch or similar (roadmap Cold Turkey)
 - [ ] Unit tests: timer state machine
@@ -356,8 +355,10 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 ### 2.23 Calendar (`calendar.rs`) — P2
 
-- [ ] `Calendar.GetEvents` — load from SQLite via `scan_namespace`
-- [ ] CRUD: create/update/delete with validation
+- [x] `Calendar.GetEvents` — load from SQLite via `scan_namespace`
+- [x] CRUD: create/update/delete with validation (`DeleteEvent` via storage)
+- [x] `Calendar.GetUpcomingEvents` — sorted upcoming window
+- [x] Reminders v0 — sidecar tick → notification inbox
 - [ ] `GetCalendars`, `SyncCalendars` — CalDAV/Google OAuth (P3)
 - [ ] ICS import/export — implement parsers (use `quick-xml`)
 - [ ] Reminders → notification service + WS
@@ -631,7 +632,10 @@ Full rationale, host probe results, and notification guidance: **[ARCHITECTURE_D
 
 | Date | Item completed | Notes |
 |------|----------------|-------|
-| | | |
+| 2026-05-29 | Wave 5 — Hyprland typed RPCs, dispatch allowlist, WS bar sync, media transport | See `docs/plans/wave_5_compositor_bar_live.md` |
+| 2026-05-29 | Wave 4 — DevOps, Automation, Productivity, Calendar | See `docs/plans/wave_4_control_center_depth.md` |
+| 2026-05-28 | Wave 3 — Notifications, Keybinds, Logs/Security/Performance | |
+| 2026-05-28 | Test harness + ~47% coverage | `sidecar-test-fast.sh`, contract tests |
 
 ---
 

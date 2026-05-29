@@ -1,14 +1,12 @@
 import { motion } from "framer-motion"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useState } from "react"
 import api from "@/lib/api"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { getNavItem } from "../navigation"
 
-const { icon, label } = getNavItem("productivity")
-
-function humanizeKey(key: string): string {
-  return key
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
+function labelizeKey(key: string): string {
+  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 function formatStatValue(value: unknown): string {
@@ -16,46 +14,59 @@ function formatStatValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "On" : "Off"
   if (typeof value === "number" && Number.isFinite(value)) return String(value)
   if (typeof value === "string") return value.trim() === "" ? "—" : value
-  if (Array.isArray(value)) return value.length === 0 ? "None" : `${value.length} items`
-  if (typeof value === "object") {
-    const keys = Object.keys(value as object)
-    if (keys.length === 0) return "—"
-    try {
-      return JSON.stringify(value)
-    } catch {
-      return "…"
-    }
-  }
   return String(value)
 }
 
-function isShallowEmptyStats(data: Record<string, unknown>): boolean {
-  const keys = Object.keys(data)
-  if (keys.length === 0) return true
-  return keys.every((k) => {
-    const v = data[k]
-    if (v == null) return true
-    if (typeof v === "string" && v.trim() === "") return true
-    if (Array.isArray(v) && v.length === 0) return true
-    if (typeof v === "object" && v !== null && !Array.isArray(v) && Object.keys(v).length === 0)
-      return true
-    return false
-  })
-}
-
 export function ProductivityPane() {
-  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+  const { icon, label } = getNavItem("productivity")
+  const qc = useQueryClient()
+  const [taskTitle, setTaskTitle] = useState("")
+
+  useEffect(() => {
+    connectWs()
+    const off = useWsStore.getState().on("Productivity.TimerTick", () => {
+      void qc.invalidateQueries({ queryKey: ["productivity-stats"] })
+      void qc.invalidateQueries({ queryKey: ["productivity-tasks"] })
+    })
+    return off
+  }, [qc])
+
+  const statsQuery = useQuery({
     queryKey: ["productivity-stats"],
     queryFn: api.getProductivityStats,
     refetchInterval: 30_000,
   })
 
-  const showEmpty =
-    !isLoading && !isError && data != null && isShallowEmptyStats(data as Record<string, unknown>)
-  const entries =
-    data && !isShallowEmptyStats(data as Record<string, unknown>)
-      ? Object.entries(data as Record<string, unknown>)
-      : []
+  const tasksQuery = useQuery({
+    queryKey: ["productivity-tasks"],
+    queryFn: api.getProductivityTasks,
+  })
+
+  const createTaskMut = useMutation({
+    mutationFn: () => api.createProductivityTask(taskTitle.trim()),
+    onSuccess: () => {
+      setTaskTitle("")
+      void qc.invalidateQueries({ queryKey: ["productivity-tasks"] })
+      void qc.invalidateQueries({ queryKey: ["productivity-stats"] })
+    },
+  })
+
+  const deleteTaskMut = useMutation({
+    mutationFn: (id: string) => api.deleteProductivityTask(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["productivity-tasks"] })
+      void qc.invalidateQueries({ queryKey: ["productivity-stats"] })
+    },
+  })
+
+  const focusMut = useMutation({
+    mutationFn: (enabled: boolean) => api.setProductivityFocusMode(enabled),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["productivity-stats"] }),
+  })
+
+  const stats = statsQuery.data as Record<string, unknown> | undefined
+  const focusOn = stats?.focus_mode_enabled === true
+  const tasks = tasksQuery.data ?? []
 
   return (
     <motion.div
@@ -70,63 +81,72 @@ export function ProductivityPane() {
           <span className="icon text-mauve text-2xl">{icon}</span>
           <h2 className="text-xl font-semibold text-text">{label}</h2>
         </div>
-        <p className="text-xs text-subtext1 mt-1 max-w-prose">
-          Live stats from the sidecar. When metrics roll in, they appear in the grid below.
-        </p>
+        <p className="text-xs text-subtext1 mt-1">Tasks persist in SQLite; timers stay in-memory until restart.</p>
       </div>
 
-      {isLoading ? (
+      <div className="glass-card p-4 flex flex-wrap items-center gap-3">
+        <span className="text-sm text-text">Focus mode (prefs only)</span>
+        <button
+          type="button"
+          className="btn-surface text-xs"
+          onClick={() => focusMut.mutate(!focusOn)}
+          disabled={focusMut.isPending}
+        >
+          {focusOn ? "Disable" : "Enable"}
+        </button>
+      </div>
+
+      {statsQuery.isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="glass-card p-4">
-              <div className="skeleton h-3 w-24 rounded mb-3" />
-              <div className="skeleton h-8 w-full rounded" />
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="skeleton h-20 rounded-xl" />
+          ))}
+        </div>
+      ) : stats ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {Object.entries(stats).map(([key, value]) => (
+            <div key={key} className="glass-card p-4">
+              <p className="text-xs uppercase text-subtext0">{labelizeKey(key)}</p>
+              <p className="text-lg font-semibold text-text mt-1">{formatStatValue(value)}</p>
             </div>
           ))}
         </div>
-      ) : isError ? (
-        <div className="glass-card p-6 flex flex-col gap-3 items-start">
-          <p className="text-sm text-text font-medium">Could not load productivity stats</p>
-          <p className="text-xs text-subtext0 max-w-prose">
-            {error instanceof Error ? error.message : "Sidecar error"}
-          </p>
-          <button type="button" className="btn-surface text-sm" onClick={() => refetch()}>
-            <span className="icon text-base">refresh</span>
-            Retry
-          </button>
-        </div>
-      ) : showEmpty ? (
-        <div className="flex flex-1 min-h-[220px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-surface0/80 bg-surface0/20 px-6 py-10 text-center">
-          <span className="icon text-4xl text-subtext1">analytics</span>
-          <div>
-            <p className="text-sm font-medium text-text">No productivity metrics yet</p>
-            <p className="text-xs text-subtext0 mt-1 max-w-sm mx-auto">
-              The dashboard will fill in when `Productivity.GetStats` returns non-empty data from the
-              sidecar.
-            </p>
-          </div>
+      ) : null}
+
+      <div className="glass-card p-4 flex flex-col gap-3">
+        <p className="text-sm font-medium text-text">Tasks</p>
+        <div className="flex gap-2">
+          <input
+            className="flex-1 rounded-xl border border-surface0/80 bg-base/80 px-3 py-2 text-sm"
+            placeholder="New task title"
+            value={taskTitle}
+            onChange={(e) => setTaskTitle(e.target.value)}
+          />
           <button
             type="button"
-            className="btn-surface text-xs"
-            onClick={() => refetch()}
-            disabled={isFetching}
+            className="btn-surface text-sm"
+            disabled={!taskTitle.trim() || createTaskMut.isPending}
+            onClick={() => createTaskMut.mutate()}
           >
-            <span className="icon text-base">sync</span>
-            {isFetching ? "Refreshing…" : "Refresh"}
+            Add
           </button>
         </div>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {entries.map(([key, value]) => (
-            <div key={key} className="glass-card p-4 flex flex-col gap-1 min-h-[88px]">
-              <p className="text-xs uppercase tracking-wide text-subtext1">{humanizeKey(key)}</p>
-              <p className="text-lg font-semibold text-text leading-tight break-words">
-                {formatStatValue(value)}
-              </p>
-            </div>
+        <ul className="flex flex-col gap-2">
+          {tasks.map((t) => (
+            <li key={t.id} className="flex items-center justify-between gap-2 text-sm border border-surface0/50 rounded-lg px-3 py-2">
+              <span className={t.completed ? "line-through text-subtext1" : "text-text"}>{t.title}</span>
+              <button
+                type="button"
+                className="text-xs text-red"
+                onClick={() => deleteTaskMut.mutate(t.id)}
+              >
+                Delete
+              </button>
+            </li>
           ))}
-        </div>
-      )}
+          {tasks.length === 0 && <p className="text-xs text-subtext1">No tasks yet.</p>}
+        </ul>
+      </div>
     </motion.div>
   )
 }

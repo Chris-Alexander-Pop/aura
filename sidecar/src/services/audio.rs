@@ -1258,4 +1258,17 @@ mod tests {
         assert_eq!(sinks[0].info, "");
         assert!(sources.is_empty());
     }
+
+    #[test]
+    fn parse_streams_pactl_error_and_malformed_fixtures() {
+        let err = include_str!("../../tests/fixtures/audio/pactl_error.txt");
+        assert!(parse_streams(err).is_empty());
+
+        let malformed = include_str!("../../tests/fixtures/audio/pactl_sink_inputs_malformed.txt");
+        let streams = parse_streams(malformed);
+        assert_eq!(streams.len(), 1);
+        assert_eq!(streams[0].id, 12);
+        assert_eq!(streams[0].app, "");
+        assert_eq!(streams[0].sink_id, -1);
+    }
 }

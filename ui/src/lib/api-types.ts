@@ -264,6 +264,121 @@ export function adaptNotificationList(data: unknown): NotificationItemView[] {
   return data.map(adaptNotificationItem).filter((x): x is NotificationItemView => x != null)
 }
 
+// ── Hyprland (matches sidecar Hypr* types, snake_case on wire) ───────────────
+
+export interface HyprWorkspaceRef {
+  id: number
+  name?: string
+}
+
+export interface HyprWorkspace {
+  id: number
+  name: string
+  windows: number
+}
+
+export interface HyprClient {
+  address: string
+  title: string
+  class: string
+  workspace: HyprWorkspaceRef
+  floating: boolean
+}
+
+export interface HyprActiveWindow {
+  address: string
+  title: string
+  class: string
+  workspace: HyprWorkspaceRef
+  floating: boolean
+}
+
+export interface HyprActiveWorkspace {
+  id: number
+  name: string
+}
+
+export interface HyprMonitor {
+  name: string
+  id: number
+  active_workspace: HyprWorkspaceRef
+}
+
+export interface MediaNowPlaying {
+  playing: boolean
+  paused?: boolean
+  stopped?: boolean
+  title: string
+  artist: string
+  player_name?: string | null
+}
+
+function hyprClassName(item: Record<string, unknown>): string {
+  const c = item.class ?? item.class_name
+  return typeof c === "string" ? c : ""
+}
+
+export function parseHyprWorkspaces(raw: unknown): HyprWorkspace[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is Record<string, unknown> => isRecord(x))
+    .map((x) => ({
+      id: Number(x.id),
+      name: typeof x.name === "string" ? x.name : String(x.id ?? ""),
+      windows: typeof x.windows === "number" ? x.windows : 0,
+    }))
+    .filter((x) => Number.isFinite(x.id))
+}
+
+export function parseHyprClients(raw: unknown): HyprClient[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is Record<string, unknown> => isRecord(x))
+    .map((x) => {
+      const ws = isRecord(x.workspace) ? x.workspace : {}
+      const id = Number(ws.id)
+      return {
+        address: typeof x.address === "string" ? x.address : "",
+        title: typeof x.title === "string" ? x.title : "",
+        class: hyprClassName(x),
+        workspace: {
+          id: Number.isFinite(id) ? id : -1,
+          name: typeof ws.name === "string" ? ws.name : undefined,
+        },
+        floating: x.floating === true,
+      }
+    })
+    .filter((x) => x.address.length > 0)
+}
+
+export function parseHyprActiveWorkspace(raw: unknown): HyprActiveWorkspace | null {
+  if (!isRecord(raw)) return null
+  const id = Number(raw.id)
+  if (!Number.isFinite(id)) return null
+  return {
+    id,
+    name: typeof raw.name === "string" ? raw.name : String(id),
+  }
+}
+
+export function parseHyprActiveWindow(raw: unknown): HyprActiveWindow | null {
+  if (!isRecord(raw)) return null
+  const address = typeof raw.address === "string" ? raw.address : ""
+  if (!address) return null
+  const ws = isRecord(raw.workspace) ? raw.workspace : {}
+  const id = Number(ws.id)
+  return {
+    address,
+    title: typeof raw.title === "string" ? raw.title : "",
+    class: hyprClassName(raw),
+    workspace: {
+      id: Number.isFinite(id) ? id : -1,
+      name: typeof ws.name === "string" ? ws.name : undefined,
+    },
+    floating: raw.floating === true,
+  }
+}
+
 export function adaptDndPrefs(data: unknown): DndPrefsView {
   if (!isRecord(data)) {
     return {

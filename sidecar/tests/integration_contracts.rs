@@ -5,10 +5,12 @@ mod common;
 
 use ags_sidecar::contract_parsers::{
     bluetoothctl_device_not_found, build_network_status_from_nmcli, compute_time_remaining_from_sysfs,
-    format_minutes, format_time_from_energy, parse_controller_list_line, parse_device_info,
-    parse_device_line, parse_devices, parse_devices_list_address, parse_networks, parse_pacman_q,
-    parse_pacman_qu, parse_pacman_search, parse_powerprofilesctl_output, parse_saved_connections,
-    parse_show_block_json, parse_streams,
+    cpu_usage_from_samples, format_minutes, format_time_from_energy, git_status_dirty,
+    parse_controller_list_line, parse_cron_line, parse_ddc_vcp_brightness, parse_device_info,
+    parse_device_line, parse_devices, parse_devices_list_address, parse_df_storage_usage,
+    parse_docker_image_line, parse_networks, parse_pacman_q, parse_pacman_qu, parse_pacman_search,
+    parse_powerprofilesctl_output, parse_proc_stat_cpu, parse_saved_connections,
+    parse_sensors_cpu_temp, parse_show_block_json, parse_streams, parse_systemd_timer_line,
 };
 use ags_sidecar::types::{AccessPoint, PowerProfile};
 use common::load_fixture;
@@ -321,6 +323,63 @@ fn contract_audio_malformed_device_line_returns_none() {
 fn contract_audio_pactl_empty_streams() {
     let streams = parse_streams(&load_fixture("audio/pactl_sink_inputs_empty.txt"));
     assert!(streams.is_empty());
+}
+
+#[test]
+fn contract_audio_pactl_error_output_yields_no_streams() {
+    assert!(parse_streams(&load_fixture("audio/pactl_error.txt")).is_empty());
+}
+
+#[test]
+fn contract_system_proc_stat_and_cpu_delta() {
+    let text = load_fixture("system/proc_stat.txt");
+    let (total, idle) = parse_proc_stat_cpu(&text).expect("proc stat");
+    let usage = cpu_usage_from_samples(total - 100, idle - 40, total, idle).expect("usage");
+    assert!(usage > 0.0 && usage <= 1.0);
+    assert!(parse_proc_stat_cpu(&load_fixture("system/proc_stat_short.txt")).is_none());
+}
+
+#[test]
+fn contract_system_df_and_sensors_fixtures() {
+    let usage = parse_df_storage_usage(&load_fixture("system/df_output.txt"));
+    assert!(usage > 0.0 && usage < 1.0);
+    let temp = parse_sensors_cpu_temp(&load_fixture("system/sensors_output.txt")).expect("temp");
+    assert!(temp > 0.0);
+}
+
+#[test]
+fn contract_devops_timers_images_git_cron_fixtures() {
+    let timers: Vec<_> = load_fixture("devops/systemctl_timers.txt")
+        .lines()
+        .filter_map(parse_systemd_timer_line)
+        .collect();
+    assert_eq!(timers.len(), 2);
+    assert!(timers[0].active);
+
+    let images: Vec<_> = load_fixture("devops/docker_images.txt")
+        .lines()
+        .filter_map(parse_docker_image_line)
+        .collect();
+    assert_eq!(images.len(), 2);
+
+    assert!(!git_status_dirty(&load_fixture("devops/git_porcelain_clean.txt")));
+    assert!(git_status_dirty(&load_fixture("devops/git_porcelain_dirty.txt")));
+
+    let job = parse_cron_line(
+        load_fixture("devops/crontab_sample.txt")
+            .lines()
+            .find(|l| !l.starts_with('#'))
+            .unwrap(),
+        "root",
+    )
+    .expect("cron");
+    assert!(job.command.contains("logrotate"));
+}
+
+#[test]
+fn contract_brightness_ddc_vcp_fixture() {
+    let b = parse_ddc_vcp_brightness(&load_fixture("brightness/ddcutil_getvcp.txt")).expect("vcp");
+    assert!((b - 0.5).abs() < f64::EPSILON);
 }
 
 #[test]

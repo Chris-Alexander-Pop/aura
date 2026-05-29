@@ -265,26 +265,7 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     registry.register("Performance.GetSystemdServices", |_params| async move {
         let output = process::exec_command(&["systemctl", "list-units", "--type=service", "--no-pager", "--no-legend"]).await?;
-
-        let mut services = Vec::new();
-        for line in output.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 3 {
-                let name = parts[0].to_string();
-                let status = parts[2].to_string();
-                let active = status == "active";
-                let enabled = parts.len() > 3 && parts[3] == "enabled";
-
-                services.push(SystemdService {
-                    name,
-                    status,
-                    active,
-                    enabled,
-                });
-            }
-        }
-
-        Ok(serde_json::to_value(&services)?)
+        Ok(serde_json::to_value(&parse_systemd_service_lines(&output))?)
     });
 
     registry.register("Performance.StartService", |params| async move {
@@ -395,6 +376,21 @@ async fn metrics_changed(current: &Value) -> bool {
     metrics_delta_significant(p, current, 2.0)
 }
 
+#[cfg(test)]
+pub(crate) async fn set_last_metrics_for_tests(value: Option<Value>) {
+    *LAST_METRICS.write().await = value;
+}
+
+#[cfg(test)]
+pub(crate) async fn metrics_changed_for_tests(current: &Value) -> bool {
+    metrics_changed(current).await
+}
+
+#[cfg(test)]
+pub(crate) async fn schedule_metrics_emit_for_tests() {
+    schedule_metrics_emit().await;
+}
+
 async fn schedule_metrics_emit() {
     let gen = METRICS_EMIT_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     tokio::spawn(async move {
@@ -433,51 +429,70 @@ async fn get_cpu_governor(core: usize) -> Result<String> {
 }
 
 async fn get_gpu_stats() -> Result<Vec<GpuStats>> {
-    let mut stats = Vec::new();
-
-    // Try nvidia-smi first
-    if let Ok(output) = process::exec_command(&["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu", "--format=csv,noheader,nounits"]).await {
-        for line in output.lines() {
-            let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-            if parts.len() >= 5 {
-                if let (Ok(util), Ok(mem_used), Ok(mem_total), Ok(temp)) = (
-                    parts[1].parse::<f64>(),
-                    parts[2].parse::<u64>(),
-                    parts[3].parse::<u64>(),
-                    parts[4].parse::<f64>(),
-                ) {
-                    stats.push(GpuStats {
-                        name: parts[0].to_string(),
-                        utilization_percent: util,
-                        memory_used_mb: mem_used,
-                        memory_total_mb: mem_total,
-                        temperature_c: temp,
-                    });
-                }
-            }
+    if let Ok(output) = process::exec_command(&[
+        "nvidia-smi",
+        "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
+        "--format=csv,noheader,nounits",
+    ])
+    .await
+    {
+        let stats = parse_nvidia_smi_output(&output);
+        if !stats.is_empty() {
+            return Ok(stats);
         }
-    } else {
-        // Fallback to /sys/class/drm
-        let mut entries = tokio::fs::read_dir("/sys/class/drm").await?;
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with("card") && !name.contains("-") {
-                stats.push(GpuStats {
-                    name,
-                    utilization_percent: 0.0,
-                    memory_used_mb: 0,
-                    memory_total_mb: 0,
-                    temperature_c: 0.0,
-                });
-            }
+    }
+
+    // Fallback to /sys/class/drm
+    let mut stats = Vec::new();
+    let mut entries = tokio::fs::read_dir("/sys/class/drm").await?;
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("card") && !name.contains('-') {
+            stats.push(GpuStats {
+                name,
+                utilization_percent: 0.0,
+                memory_used_mb: 0,
+                memory_total_mb: 0,
+                temperature_c: 0.0,
+            });
         }
     }
 
     Ok(stats)
 }
 
+/// Parse `nvidia-smi` CSV output (`--format=csv,noheader,nounits`).
+pub(crate) fn parse_nvidia_smi_output(output: &str) -> Vec<GpuStats> {
+    let mut stats = Vec::new();
+    for line in output.lines() {
+        let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+        if parts.len() >= 5 {
+            if let (Ok(util), Ok(mem_used), Ok(mem_total), Ok(temp)) = (
+                parts[1].parse::<f64>(),
+                parts[2].parse::<u64>(),
+                parts[3].parse::<u64>(),
+                parts[4].parse::<f64>(),
+            ) {
+                stats.push(GpuStats {
+                    name: parts[0].to_string(),
+                    utilization_percent: util,
+                    memory_used_mb: mem_used,
+                    memory_total_mb: mem_total,
+                    temperature_c: temp,
+                });
+            }
+        }
+    }
+    stats
+}
+
 async fn get_disk_stats() -> Result<Vec<DiskStats>> {
     let output = process::exec_command(&["df", "-BG"]).await?;
+    Ok(parse_df_bg_output(&output))
+}
+
+/// Parse `df -BG` output into disk usage rows.
+pub(crate) fn parse_df_bg_output(output: &str) -> Vec<DiskStats> {
     let mut stats = Vec::new();
 
     for line in output.lines().skip(1) {
@@ -499,17 +514,22 @@ async fn get_disk_stats() -> Result<Vec<DiskStats>> {
                 mount_point,
                 total_gb,
                 used_gb,
-                read_bytes_per_sec: 0, // Would need /proc/diskstats parsing
+                read_bytes_per_sec: 0,
                 write_bytes_per_sec: 0,
             });
         }
     }
 
-    Ok(stats)
+    stats
 }
 
 async fn get_network_stats() -> Result<Vec<NetworkStats>> {
     let output = process::exec_command(&["cat", "/proc/net/dev"]).await?;
+    Ok(parse_proc_net_dev(&output))
+}
+
+/// Parse `/proc/net/dev` lines into interface byte counters.
+pub(crate) fn parse_proc_net_dev(output: &str) -> Vec<NetworkStats> {
     let mut stats = Vec::new();
 
     for line in output.lines().skip(2) {
@@ -521,19 +541,43 @@ async fn get_network_stats() -> Result<Vec<NetworkStats>> {
 
             stats.push(NetworkStats {
                 interface,
-                rx_bytes_per_sec: rx_bytes, // Would need to track previous values for per-second
+                rx_bytes_per_sec: rx_bytes,
                 tx_bytes_per_sec: tx_bytes,
             });
         }
     }
 
-    Ok(stats)
+    stats
+}
+
+/// Parse `systemctl list-units --type=service --no-legend` rows.
+pub(crate) fn parse_systemd_service_lines(output: &str) -> Vec<SystemdService> {
+    let mut services = Vec::new();
+    for line in output.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 3 {
+            let name = parts[0].to_string();
+            let status = parts[2].to_string();
+            let active = status == "active";
+            let enabled = parts.len() > 3 && parts[3] == "enabled";
+
+            services.push(SystemdService {
+                name,
+                status,
+                active,
+                enabled,
+            });
+        }
+    }
+    services
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::sync::OnceLock;
+    use tokio::sync::Mutex;
 
     #[test]
     fn metrics_delta_significant_detects_cpu_change() {
@@ -553,6 +597,99 @@ mod tests {
     fn metrics_delta_significant_missing_keys_treated_as_zero() {
         let cur = json!({ "cpu_percent": 5.0, "memory_percent": 40.0, "disk_percent": 20.0 });
         assert!(metrics_delta_significant(&json!({}), &cur, 2.0));
+    }
+
+    #[test]
+    fn metrics_delta_significant_detects_disk_change() {
+        let prev = json!({ "cpu_percent": 10.0, "memory_percent": 50.0, "disk_percent": 30.0 });
+        let cur = json!({ "cpu_percent": 10.5, "memory_percent": 50.5, "disk_percent": 33.0 });
+        assert!(metrics_delta_significant(&prev, &cur, 2.0));
+    }
+
+    #[test]
+    fn parse_nvidia_smi_fixture() {
+        let text = include_str!("../../tests/fixtures/performance/nvidia_smi.csv");
+        let gpus = parse_nvidia_smi_output(text);
+        assert_eq!(gpus.len(), 1);
+        assert_eq!(gpus[0].name, "NVIDIA GeForce RTX 3080");
+        assert!((gpus[0].utilization_percent - 45.0).abs() < f64::EPSILON);
+        assert_eq!(gpus[0].memory_used_mb, 2048);
+        assert_eq!(gpus[0].memory_total_mb, 10240);
+        assert!((gpus[0].temperature_c - 62.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_nvidia_smi_skips_malformed_lines() {
+        assert!(parse_nvidia_smi_output("bad,row\n").is_empty());
+    }
+
+    #[test]
+    fn parse_df_bg_fixture() {
+        let text = include_str!("../../tests/fixtures/performance/df_bg.txt");
+        let disks = parse_df_bg_output(text);
+        assert_eq!(disks.len(), 3);
+        assert_eq!(disks[0].mount_point, "/");
+        assert!((disks[0].used_gb - 200.0).abs() < f64::EPSILON);
+        assert_eq!(disks[1].device, "/dev/sda1");
+    }
+
+    #[tokio::test]
+    async fn metrics_changed_first_sample_is_true() {
+        set_last_metrics_for_tests(None).await;
+        let cur = json!({ "cpu_percent": 1.0, "memory_percent": 1.0, "disk_percent": 1.0 });
+        assert!(metrics_changed_for_tests(&cur).await);
+    }
+
+    #[tokio::test]
+    async fn metrics_changed_small_drift_is_false() {
+        let prev = json!({ "cpu_percent": 10.0, "memory_percent": 50.0, "disk_percent": 30.0 });
+        set_last_metrics_for_tests(Some(prev)).await;
+        let cur = json!({ "cpu_percent": 11.0, "memory_percent": 51.0, "disk_percent": 31.0 });
+        assert!(!metrics_changed_for_tests(&cur).await);
+    }
+
+    #[test]
+    fn parse_systemd_service_lines_fixture() {
+        let text = include_str!("../../tests/fixtures/performance/systemctl_services.txt");
+        let services = parse_systemd_service_lines(text);
+        assert_eq!(services.len(), 3);
+        assert!(services[0].active);
+        assert!(!services[2].active);
+    }
+
+    #[test]
+    fn parse_proc_net_dev_fixture() {
+        let text = include_str!("../../tests/fixtures/performance/proc_net_dev.txt");
+        let stats = parse_proc_net_dev(text);
+        assert_eq!(stats.len(), 2);
+        assert_eq!(stats[1].interface, "wlan0");
+        assert_eq!(stats[1].rx_bytes_per_sec, 987654321);
+    }
+
+    #[test]
+    fn metrics_delta_significant_detects_memory_change() {
+        let prev = json!({ "cpu_percent": 10.0, "memory_percent": 50.0, "disk_percent": 30.0 });
+        let cur = json!({ "cpu_percent": 10.1, "memory_percent": 53.0, "disk_percent": 30.1 });
+        assert!(metrics_delta_significant(&prev, &cur, 2.0));
+    }
+
+    #[tokio::test]
+    async fn metrics_emit_debounce_coalesces() {
+        static DEBOUNCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = DEBOUNCE_LOCK.get_or_init(|| Mutex::new(())).lock().await;
+
+        let tx = crate::notify::init_for_tests();
+        let mut rx = tx.subscribe();
+
+        schedule_metrics_emit_for_tests().await;
+        schedule_metrics_emit_for_tests().await;
+        tokio::time::sleep(Duration::from_millis(350)).await;
+
+        let mut count = 0;
+        while rx.try_recv().is_ok() {
+            count += 1;
+        }
+        assert!(count <= 1);
     }
 
     #[tokio::test]

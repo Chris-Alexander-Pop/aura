@@ -1,5 +1,6 @@
 import { motion } from "framer-motion"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
 import api, { type CalendarEvent } from "@/lib/api"
 import { getNavItem } from "../navigation"
 
@@ -22,10 +23,36 @@ function formatRange(startMs: number, endMs: number | null): string {
 
 export function CalendarNavPane() {
   const { icon, label } = getNavItem("calendar")
+  const qc = useQueryClient()
+  const [title, setTitle] = useState("")
+  const [hoursFromNow, setHoursFromNow] = useState(1)
+
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ["calendar-events", "control-center-pane"],
-    queryFn: api.getCalendarEvents,
+    queryKey: ["calendar-upcoming", "control-center-pane"],
+    queryFn: () => api.getCalendarUpcoming(20),
     refetchInterval: 60_000,
+  })
+
+  const createMut = useMutation({
+    mutationFn: () => {
+      const start = Math.floor(Date.now() / 1000) + hoursFromNow * 3600
+      const end = start + 3600
+      return api.createCalendarEvent({
+        title: title.trim() || "New event",
+        start,
+        end,
+        reminder_minutes: 15,
+      })
+    },
+    onSuccess: () => {
+      setTitle("")
+      void qc.invalidateQueries({ queryKey: ["calendar-upcoming"] })
+    },
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => api.deleteCalendarEvent(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["calendar-upcoming"] }),
   })
 
   const events = data ?? []
@@ -73,6 +100,34 @@ export function CalendarNavPane() {
         </div>
       </div>
 
+      <div className="glass-card p-4 flex flex-col gap-2">
+        <p className="text-xs font-medium text-text">Quick add</p>
+        <input
+          className="rounded-xl border border-surface0/80 bg-base/80 px-3 py-2 text-sm"
+          placeholder="Event title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+        <label className="text-xs text-subtext1 flex items-center gap-2">
+          Starts in (hours)
+          <input
+            type="number"
+            min={0}
+            className="w-16 rounded border border-surface0/80 bg-base/80 px-2 py-1"
+            value={hoursFromNow}
+            onChange={(e) => setHoursFromNow(Number(e.target.value) || 0)}
+          />
+        </label>
+        <button
+          type="button"
+          className="btn-surface text-sm self-start"
+          disabled={createMut.isPending}
+          onClick={() => createMut.mutate()}
+        >
+          Create event
+        </button>
+      </div>
+
       {isLoading ? (
         <div className="flex flex-col gap-2">
           <div className="skeleton h-16 rounded-xl" />
@@ -113,6 +168,13 @@ export function CalendarNavPane() {
                   {e.description.trim() ? (
                     <p className="text-xs text-subtext1 mt-1 line-clamp-2">{e.description.trim()}</p>
                   ) : null}
+                  <button
+                    type="button"
+                    className="text-xs text-red self-start mt-1"
+                    onClick={() => deleteMut.mutate(e.id)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </li>
             )

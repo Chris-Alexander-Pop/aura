@@ -297,6 +297,109 @@ pub(crate) fn vpn_interface_connected(
         || (iface.starts_with("tun") && ip_output.contains("tun") && vpn_process_running)
 }
 
+/// One row from `ip link` / `ip -o link show`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct IpLinkLine {
+    pub name: String,
+    pub is_up: bool,
+}
+
+/// Parse a single `ip link` output line (`2: wg0: <POINTOPOINT,UP,LOWER_UP> ...`).
+pub(crate) fn parse_ip_link_line(line: &str) -> Option<IpLinkLine> {
+    let line = line.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let rest = line.split_once(':')?.1.trim();
+    let (name, flags) = rest.split_once(':')?;
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return None;
+    }
+    let flags_upper = flags.to_ascii_uppercase();
+    if flags_upper.contains("STATE DOWN") {
+        return Some(IpLinkLine { name, is_up: false });
+    }
+    if flags_upper.contains("STATE UP") {
+        return Some(IpLinkLine { name, is_up: true });
+    }
+    let is_up = flags
+        .split('<')
+        .nth(1)
+        .and_then(|s| s.split('>').next())
+        .is_some_and(|inner| {
+            inner.split(',').any(|f| {
+                matches!(
+                    f.trim().to_ascii_uppercase().as_str(),
+                    "UP" | "LOWER_UP"
+                )
+            })
+        });
+    Some(IpLinkLine { name, is_up })
+}
+
+/// True when `iface` appears UP in `ip link` output (WireGuard/NM profile checks).
+pub(crate) fn ip_link_interface_up(output: &str, iface: &str) -> bool {
+    output
+        .lines()
+        .filter_map(parse_ip_link_line)
+        .any(|row| row.name == iface && row.is_up)
+}
+
+/// Summary fields from a WireGuard `.conf` (profile discovery / UI labels).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WireGuardConfigSummary {
+    pub addresses: Vec<String>,
+    pub dns: Vec<String>,
+    pub endpoint: Option<String>,
+    pub allowed_ips: Vec<String>,
+}
+
+/// Parse standard WireGuard config sections for future profile wiring.
+pub(crate) fn parse_wireguard_conf(conf: &str) -> WireGuardConfigSummary {
+    let mut summary = WireGuardConfigSummary::default();
+    let mut section: Option<&str> = None;
+
+    for raw in conf.lines() {
+        let line = raw.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            section = Some(&line[1..line.len() - 1]);
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        match section {
+            Some("Interface") => match key {
+                "Address" => summary
+                    .addresses
+                    .extend(value.split(',').map(|s| s.trim().to_string())),
+                "DNS" => summary
+                    .dns
+                    .extend(value.split(',').map(|s| s.trim().to_string())),
+                _ => {}
+            },
+            Some("Peer") => match key {
+                "Endpoint" if summary.endpoint.is_none() => {
+                    summary.endpoint = Some(value.to_string());
+                }
+                "AllowedIPs" => summary
+                    .allowed_ips
+                    .extend(value.split(',').map(|s| s.trim().to_string())),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    summary
+}
+
 async fn is_vpn_process_running() -> bool {
     process::exec_command(&["pgrep", "-x", "openconnect"])
         .await
@@ -308,25 +411,82 @@ async fn is_vpn_process_running() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::vpn_interface_connected;
+    use super::{
+        ip_link_interface_up, parse_ip_link_line, parse_wireguard_conf, vpn_interface_connected,
+        WireGuardConfigSummary,
+    };
+    use std::path::PathBuf;
+
+    fn vpn_fixture(name: &str) -> String {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/vpn")
+            .join(name);
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("fixture {name}: {e}"))
+    }
 
     #[test]
     fn vpn_connected_when_iface_present() {
-        let out = "2: tun0: <POINTOPOINT> inet 10.0.0.2/32\n";
-        assert!(vpn_interface_connected(out, "tun0", false));
+        let out = vpn_fixture("ip_o_addr_show_connected.txt");
+        assert!(vpn_interface_connected(&out, "tun0", false));
     }
 
     #[test]
     fn vpn_tun_fallback_requires_process() {
-        let out = "3: tun1: inet 10.0.0.3/32\n";
-        assert!(!vpn_interface_connected(out, "tun9", false));
-        assert!(vpn_interface_connected(out, "tun9", true));
+        let out = vpn_fixture("ip_o_addr_show_tun_only.txt");
+        assert!(!vpn_interface_connected(&out, "tun9", false));
+        assert!(vpn_interface_connected(&out, "tun9", true));
     }
 
     #[test]
     fn vpn_nmcli_profile_interface_match() {
-        let out = "4: example-exit: <BROADCAST> inet 192.168.1.5/24\n";
-        assert!(vpn_interface_connected(out, "example-exit", false));
-        assert!(!vpn_interface_connected(out, "eth0", false));
+        let out = vpn_fixture("ip_o_addr_show_nm_profile.txt");
+        assert!(vpn_interface_connected(&out, "example-exit", false));
+        assert!(!vpn_interface_connected(&out, "eth0", false));
+    }
+
+    #[test]
+    fn parse_ip_link_fixture_multi() {
+        let out = vpn_fixture("ip_link_multi.txt");
+        assert!(ip_link_interface_up(&out, "wg0"));
+        assert!(ip_link_interface_up(&out, "example-exit"));
+        assert!(!ip_link_interface_up(&out, "eth0"));
+        assert!(!ip_link_interface_up(&out, "docker0"));
+    }
+
+    #[test]
+    fn parse_ip_link_line_skips_malformed() {
+        assert!(parse_ip_link_line("").is_none());
+        assert!(parse_ip_link_line("not ip output").is_none());
+        let row = parse_ip_link_line("2: wg0: <POINTOPOINT,UP,LOWER_UP> mtu 1420").expect("row");
+        assert_eq!(row.name, "wg0");
+        assert!(row.is_up);
+        let down = parse_ip_link_line("3: eth0: <BROADCAST,MULTICAST> mtu 1500").expect("down");
+        assert!(!down.is_up);
+    }
+
+    #[test]
+    fn parse_wireguard_home_fixture() {
+        let conf = vpn_fixture("wg_home.conf");
+        let summary = parse_wireguard_conf(&conf);
+        assert_eq!(
+            summary,
+            WireGuardConfigSummary {
+                addresses: vec!["10.14.0.2/32".to_string()],
+                dns: vec!["1.1.1.1".to_string(), "1.0.0.1".to_string()],
+                endpoint: Some("vpn.example.com:51820".to_string()),
+                allowed_ips: vec!["0.0.0.0/0".to_string(), "::/0".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn parse_wireguard_minimal_fixture_peer_only_fields() {
+        let conf = vpn_fixture("wg_minimal.conf");
+        let summary = parse_wireguard_conf(&conf);
+        assert_eq!(summary.addresses, vec!["192.168.6.2/32"]);
+        assert!(summary.dns.is_empty());
+        assert_eq!(summary.endpoint.as_deref(), Some("vpn.example.com:443"));
+        assert_eq!(summary.allowed_ips, vec!["10.0.0.0/8"]);
     }
 }

@@ -72,9 +72,8 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     registry.register("Communication.GetNotificationSettings", |_params| async move {
         storage::init().await?;
-        let settings = storage::get_kv("communication", "notification_settings").await?
-            .unwrap_or(serde_json::json!({}));
-        Ok(settings)
+        let settings = storage::get_kv("communication", "notification_settings").await?;
+        Ok(notification_settings_from_storage(settings.as_ref()))
     });
 
     registry.register("Communication.SetNotificationSettings", |params| async move {
@@ -129,4 +128,60 @@ pub fn register(registry: &mut ServiceRegistry) {
         process::exec_command_detached(&[&app_name]).await?;
         Ok(serde_json::json!({ "success": true }))
     });
+}
+
+/// Normalize stored notification settings for UI schema branches.
+pub(crate) fn notification_settings_from_storage(raw: Option<&serde_json::Value>) -> serde_json::Value {
+    match raw {
+        Some(v) if v.is_object() => v.clone(),
+        Some(_) => serde_json::json!({}),
+        None => serde_json::json!({}),
+    }
+}
+
+/// Stub unread map: object with string keys and numeric counts when populated.
+pub(crate) fn unread_counts_schema_valid(value: &serde_json::Value) -> bool {
+    value.as_object().is_some_and(|map| {
+        map.values()
+            .all(|v| v.is_u64() || v.is_i64() || v.is_null())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn notification_settings_defaults_empty_object() {
+        assert_eq!(
+            notification_settings_from_storage(None),
+            json!({})
+        );
+    }
+
+    #[test]
+    fn notification_settings_rejects_non_object_storage() {
+        assert_eq!(
+            notification_settings_from_storage(Some(&json!("bad"))),
+            json!({})
+        );
+    }
+
+    #[test]
+    fn notification_settings_passes_through_object() {
+        let raw = json!({ "mute_all": true, "per_app": { "discord": false } });
+        assert_eq!(
+            notification_settings_from_storage(Some(&raw)),
+            raw
+        );
+    }
+
+    #[test]
+    fn unread_schema_accepts_empty_and_counts() {
+        assert!(unread_counts_schema_valid(&json!({})));
+        assert!(unread_counts_schema_valid(&json!({ "discord": 3, "slack": 0 })));
+        assert!(!unread_counts_schema_valid(&json!([])));
+        assert!(!unread_counts_schema_valid(&json!({ "x": "two" })));
+    }
 }

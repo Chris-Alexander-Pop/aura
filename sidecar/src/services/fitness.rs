@@ -76,11 +76,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Fitness.GetWorkoutHistory", |_params| async move {
         storage::init().await?;
         let items = storage::scan_namespace("fitness_workouts").await?;
-        let workouts: Vec<Workout> = items
-            .into_iter()
-            .filter_map(|v| serde_json::from_value(v).ok())
-            .collect();
-        Ok(serde_json::to_value(workouts)?)
+        Ok(serde_json::to_value(&workouts_from_storage_values(items))?)
     });
 
     registry.register("Fitness.SetGoal", |params| async move {
@@ -114,11 +110,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Fitness.GetGoals", |_params| async move {
         storage::init().await?;
         let items = storage::scan_namespace("fitness_goals").await?;
-        let goals: Vec<Goal> = items
-            .into_iter()
-            .filter_map(|v| serde_json::from_value(v).ok())
-            .collect();
-        Ok(serde_json::to_value(goals)?)
+        Ok(serde_json::to_value(&goals_from_storage_values(items))?)
     });
 
     registry.register("Fitness.GetDevices", |_params| async move {
@@ -136,4 +128,47 @@ pub fn register(registry: &mut ServiceRegistry) {
         // Would sync with fitness device
         Ok(serde_json::json!({ "success": true }))
     });
+}
+
+pub(crate) fn goals_from_storage_values(items: Vec<serde_json::Value>) -> Vec<Goal> {
+    items
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect()
+}
+
+pub(crate) fn workouts_from_storage_values(items: Vec<serde_json::Value>) -> Vec<Workout> {
+    items
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn goals_from_storage_skips_corrupt_entries() {
+        let valid = Goal {
+            id: "g1".into(),
+            goal_type: "steps".into(),
+            target: 10_000.0,
+            current: 0.0,
+        };
+        let items = vec![
+            serde_json::to_value(&valid).unwrap(),
+            json!({ "bad": true }),
+            json!("string"),
+        ];
+        let out = goals_from_storage_values(items);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].goal_type, "steps");
+    }
+
+    #[test]
+    fn workouts_from_storage_empty_namespace() {
+        assert!(workouts_from_storage_values(vec![]).is_empty());
+    }
 }

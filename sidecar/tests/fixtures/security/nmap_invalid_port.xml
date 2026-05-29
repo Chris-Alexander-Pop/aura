@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<nmaprun>
+<host>
+<ports>
+<port protocol="tcp" portid="abc">
+<state state="open"/>
+<service name="ssh"/>
+</port>
+</ports>
+</host>
+</nmaprun>

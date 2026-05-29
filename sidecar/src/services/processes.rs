@@ -27,20 +27,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             })
             .collect();
 
-        rows.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        rows.truncate(limit.max(5));
-
-        let out: Vec<Value> = rows
-            .into_iter()
-            .map(|(pid, cpu, name)| {
-                json!({
-                    "pid": pid.as_u32(),
-                    "cpu": cpu,
-                    "name": name,
-                })
-            })
-            .collect();
-
+        let out = build_list_top_json(&mut rows, limit);
         Ok(json!(out))
     });
 
@@ -73,9 +60,29 @@ pub(crate) fn kill_pid_allowed(pid: u32) -> bool {
     pid > 1 && pid >= 100
 }
 
+/// Minimum rows returned by `Process.ListTop` even when `limit` is smaller.
+pub const LIST_TOP_MIN_ROWS: usize = 5;
+
+/// Sort by CPU descending, cap length, and serialize process rows for RPC.
+pub fn build_list_top_json(rows: &mut [(Pid, f32, String)], limit: usize) -> Vec<Value> {
+    rows.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let cap = limit.max(LIST_TOP_MIN_ROWS);
+    rows.iter()
+        .take(cap)
+        .map(|(pid, cpu, name)| {
+            json!({
+                "pid": pid.as_u32(),
+                "cpu": cpu,
+                "name": name,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::kill_pid_allowed;
+    use super::*;
+    use sysinfo::{Pid, PidExt};
 
     #[test]
     fn refuses_low_pids() {
@@ -83,5 +90,21 @@ mod tests {
         assert!(!kill_pid_allowed(50));
         assert!(kill_pid_allowed(100));
         assert!(kill_pid_allowed(4242));
+    }
+
+    #[test]
+    fn build_list_top_json_sorts_and_enforces_minimum() {
+        let pid = |n| Pid::from_u32(n);
+        let mut rows = vec![
+            (pid(1), 1.0, "low".into()),
+            (pid(2), 50.0, "high".into()),
+            (pid(3), 10.0, "mid".into()),
+            (pid(4), 5.0, "a".into()),
+            (pid(5), 4.0, "b".into()),
+            (pid(6), 3.0, "c".into()),
+        ];
+        let out = build_list_top_json(&mut rows, 2);
+        assert_eq!(out.len(), LIST_TOP_MIN_ROWS);
+        assert_eq!(out[0].get("name").and_then(|v| v.as_str()), Some("high"));
     }
 }

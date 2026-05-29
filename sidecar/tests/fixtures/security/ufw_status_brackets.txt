@@ -1,0 +1,6 @@
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+[ 1] 22/tcp                     ALLOW IN    Anywhere
+[ 2] 443/tcp                    DENY OUT    203.0.113.0/24

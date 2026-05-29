@@ -100,6 +100,58 @@ pub struct WeatherData {
     pub icon: String,
 }
 
+// Hyprland bar DTOs (hyprctl -j shapes, stable subset)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HyprWorkspace {
+    pub id: i64,
+    pub name: String,
+    #[serde(default)]
+    pub windows: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HyprWorkspaceRef {
+    pub id: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HyprClient {
+    pub address: String,
+    pub title: String,
+    #[serde(rename = "class")]
+    pub class_name: String,
+    pub workspace: HyprWorkspaceRef,
+    #[serde(default)]
+    pub floating: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HyprActiveWindow {
+    pub address: String,
+    pub title: String,
+    #[serde(rename = "class")]
+    pub class_name: String,
+    pub workspace: HyprWorkspaceRef,
+    #[serde(default)]
+    pub floating: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HyprActiveWorkspace {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HyprMonitor {
+    pub name: String,
+    pub id: i64,
+    #[serde(default)]
+    pub active_workspace: HyprWorkspaceRef,
+}
+
 // JSON-RPC Request/Response Types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JsonRpcRequest {

@@ -49,16 +49,7 @@ pub struct CronJob {
 
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("DevOps.GetDockerContainers", |_params| async move {
-        let output = process::exec_command(&["docker", "ps", "-a", "--format", "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}"]).await?;
-        let mut containers = Vec::new();
-
-        for line in output.lines() {
-            if let Some(c) = parse_docker_ps_line(line) {
-                containers.push(c);
-            }
-        }
-
-        Ok(serde_json::to_value(&containers)?)
+        Ok(serde_json::to_value(&list_containers_preferred().await?)?)
     });
 
     registry.register("DevOps.StartContainer", |params| async move {
@@ -120,14 +111,8 @@ pub fn register(registry: &mut ServiceRegistry) {
         let mut images = Vec::new();
 
         for line in output.lines() {
-            let parts: Vec<&str> = line.split('|').collect();
-            if parts.len() >= 4 {
-                images.push(DockerImage {
-                    id: parts[0].to_string(),
-                    repository: parts[1].to_string(),
-                    tag: parts[2].to_string(),
-                    size: parts[3].to_string(),
-                });
+            if let Some(image) = parse_docker_image_line(line) {
+                images.push(image);
             }
         }
 
@@ -209,7 +194,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         Ok(serde_json::json!({
             "branch": branch_output.trim(),
             "status": status_output,
-            "dirty": !status_output.trim().is_empty()
+            "dirty": git_status_dirty(&status_output)
         }))
     });
 
@@ -218,14 +203,8 @@ pub fn register(registry: &mut ServiceRegistry) {
         let mut timers = Vec::new();
 
         for line in output.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 4 {
-                timers.push(SystemdTimer {
-                    name: parts[0].to_string(),
-                    next_run: parts[1].to_string(),
-                    last_run: parts[2].to_string(),
-                    active: parts[3] == "active",
-                });
+            if let Some(timer) = parse_systemd_timer_line(line) {
+                timers.push(timer);
             }
         }
 
@@ -238,35 +217,18 @@ pub fn register(registry: &mut ServiceRegistry) {
         // System crontab
         if let Ok(output) = process::exec_command(&["cat", "/etc/crontab"]).await {
             for line in output.lines() {
-                if !line.starts_with('#') && !line.trim().is_empty() {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 6 {
-                        let schedule = format!("{} {} {} {} {}", parts[0], parts[1], parts[2], parts[3], parts[4]);
-                        let command = parts[5..].join(" ");
-                        jobs.push(CronJob {
-                            schedule,
-                            command,
-                            user: "root".to_string(),
-                        });
-                    }
+                if let Some(job) = parse_cron_line(line, "root") {
+                    jobs.push(job);
                 }
             }
         }
 
         // User crontab
         if let Ok(output) = process::exec_command(&["crontab", "-l"]).await {
+            let user = std::env::var("USER").unwrap_or_else(|_| "user".to_string());
             for line in output.lines() {
-                if !line.starts_with('#') && !line.trim().is_empty() {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if parts.len() >= 6 {
-                        let schedule = format!("{} {} {} {} {}", parts[0], parts[1], parts[2], parts[3], parts[4]);
-                        let command = parts[5..].join(" ");
-                        jobs.push(CronJob {
-                            schedule,
-                            command,
-                            user: std::env::var("USER").unwrap_or_else(|_| "user".to_string()),
-                        });
-                    }
+                if let Some(job) = parse_cron_line(line, &user) {
+                    jobs.push(job);
                 }
             }
         }
@@ -275,35 +237,186 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("DevOps.GetStatus", |_params| async move {
-        let podman_available = process::exec_command(&["which", "podman"]).await.is_ok();
-        let docker_available = process::exec_command(&["which", "docker"]).await.is_ok();
+        let runtime = resolve_container_runtime().await;
+        let podman_available = matches!(runtime, ContainerRuntime::Podman)
+            || process::exec_command(&["which", "podman"]).await.is_ok();
+        let docker_available = matches!(runtime, ContainerRuntime::Docker)
+            || process::exec_command(&["which", "docker"]).await.is_ok();
         let kubectl_available = process::exec_command(&["which", "kubectl"]).await.is_ok();
 
-        let mut container_count: u64 = 0;
-        if podman_available {
-            if let Ok(output) = process::exec_command(&["podman", "ps", "-q"]).await {
-                container_count = output.lines().filter(|l| !l.trim().is_empty()).count() as u64;
-            }
-        } else if docker_available {
-            if let Ok(output) = process::exec_command(&["docker", "ps", "-q"]).await {
-                container_count = output.lines().filter(|l| !l.trim().is_empty()).count() as u64;
-            }
-        }
+        let containers = list_containers_preferred().await.unwrap_or_default();
+        let container_count = containers.len() as u64;
 
-        let home = std::env::var("HOME").unwrap_or_default();
-        let mut git_dirty_hint = false;
-        if let Ok(output) = process::exec_command(&["git", "-C", &home, "status", "--porcelain"]).await {
-            git_dirty_hint = !output.trim().is_empty();
-        }
+        let git_dirty_count = count_dirty_git_roots().await;
+        let git_dirty_hint = git_dirty_count > 0;
+
+        let runtime_name = match runtime {
+            ContainerRuntime::Podman => "podman",
+            ContainerRuntime::Docker => "docker",
+            ContainerRuntime::None => "none",
+        };
 
         Ok(serde_json::json!({
             "podman_available": podman_available,
             "docker_available": docker_available,
             "kubectl_available": kubectl_available,
+            "container_runtime": runtime_name,
+            "tool_missing": runtime == ContainerRuntime::None,
             "container_count": container_count,
             "git_dirty_hint": git_dirty_hint,
+            "git_dirty_count": git_dirty_count,
         }))
     });
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContainerRuntime {
+    Podman,
+    Docker,
+    None,
+}
+
+pub async fn resolve_container_runtime() -> ContainerRuntime {
+    if process::exec_command(&["which", "podman"]).await.is_ok() {
+        return ContainerRuntime::Podman;
+    }
+    if std::env::var("AURA_ALLOW_DOCKER").is_ok()
+        && process::exec_command(&["which", "docker"]).await.is_ok()
+    {
+        return ContainerRuntime::Docker;
+    }
+    ContainerRuntime::None
+}
+
+pub async fn list_containers_preferred() -> Result<Vec<DockerContainer>> {
+    match resolve_container_runtime().await {
+        ContainerRuntime::Podman => {
+            let output = process::exec_command(&[
+                "podman",
+                "ps",
+                "-a",
+                "--format",
+                "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}",
+            ])
+            .await?;
+            let mut containers = Vec::new();
+            for line in output.lines() {
+                if let Some(mut c) = parse_docker_ps_line(line) {
+                    c.ports.clear();
+                    containers.push(c);
+                }
+            }
+            Ok(containers)
+        }
+        ContainerRuntime::Docker => {
+            let output = process::exec_command(&[
+                "docker",
+                "ps",
+                "-a",
+                "--format",
+                "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}",
+            ])
+            .await?;
+            Ok(output.lines().filter_map(parse_docker_ps_line).collect())
+        }
+        ContainerRuntime::None => Ok(Vec::new()),
+    }
+}
+
+async fn count_dirty_git_roots() -> u64 {
+    let mut count = 0u64;
+    let roots: Vec<PathBuf> = git_search_roots();
+    for root in roots {
+        if !root.join(".git").exists() {
+            continue;
+        }
+        if let Ok(output) =
+            process::exec_command(&["git", "-C", &root.to_string_lossy(), "status", "--porcelain"])
+                .await
+        {
+            if git_status_dirty(&output) {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn git_search_roots() -> Vec<PathBuf> {
+    if let Ok(raw) = std::env::var("AURA_GIT_ROOTS") {
+        return raw
+            .split(':')
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect();
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return vec![PathBuf::from(home)];
+    }
+    Vec::new()
+}
+
+pub fn parse_docker_image_line(line: &str) -> Option<DockerImage> {
+    let line = line.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let parts: Vec<&str> = line.split('|').collect();
+    if parts.len() >= 4 {
+        Some(DockerImage {
+            id: parts[0].to_string(),
+            repository: parts[1].to_string(),
+            tag: parts[2].to_string(),
+            size: parts[3].to_string(),
+        })
+    } else {
+        None
+    }
+}
+
+/// Parse one `systemctl list-timers --no-legend` row (simplified: name + next + last + active token).
+pub fn parse_systemd_timer_line(line: &str) -> Option<SystemdTimer> {
+    let line = line.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 4 {
+        return None;
+    }
+    Some(SystemdTimer {
+        name: parts[0].to_string(),
+        next_run: parts[1].to_string(),
+        last_run: parts[2].to_string(),
+        active: parts[3].eq_ignore_ascii_case("active"),
+    })
+}
+
+/// Parse a non-comment crontab line into schedule + command.
+pub fn parse_cron_line(line: &str, user: &str) -> Option<CronJob> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 6 {
+        return None;
+    }
+    let schedule = format!(
+        "{} {} {} {} {}",
+        parts[0], parts[1], parts[2], parts[3], parts[4]
+    );
+    let command = parts[5..].join(" ");
+    Some(CronJob {
+        schedule,
+        command,
+        user: user.to_string(),
+    })
+}
+
+/// True when `git status --porcelain` has any non-whitespace output.
+pub fn git_status_dirty(porcelain: &str) -> bool {
+    !porcelain.trim().is_empty()
 }
 
 pub fn parse_docker_ps_line(line: &str) -> Option<DockerContainer> {
@@ -329,18 +442,71 @@ pub fn parse_docker_ps_line(line: &str) -> Option<DockerContainer> {
 mod tests {
     use super::*;
 
+    fn fixture(name: &str) -> String {
+        let path = format!(
+            "{}/tests/fixtures/devops/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            name
+        );
+        std::fs::read_to_string(path).expect("fixture")
+    }
+
     #[test]
     fn parse_docker_ps_fixture() {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/devops/docker_ps.txt"
-        );
-        let text = std::fs::read_to_string(path).expect("fixture");
+        let text = fixture("docker_ps.txt");
         let containers: Vec<_> = text.lines().filter_map(parse_docker_ps_line).collect();
         assert_eq!(containers.len(), 2);
         assert_eq!(containers[0].name, "my-app");
         assert_eq!(containers[0].ports, "0.0.0.0:8080->80/tcp");
         assert_eq!(containers[1].status, "Exited (0) 1 day ago");
+    }
+
+    #[test]
+    fn parse_docker_image_and_malformed_lines() {
+        let text = fixture("docker_images.txt");
+        let images: Vec<_> = text.lines().filter_map(parse_docker_image_line).collect();
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].repository, "nginx");
+        assert!(parse_docker_image_line("bad|line").is_none());
+    }
+
+    #[test]
+    fn parse_systemd_timers_fixture() {
+        let text = fixture("systemctl_timers.txt");
+        let timers: Vec<_> = text.lines().filter_map(parse_systemd_timer_line).collect();
+        assert_eq!(timers.len(), 2);
+        assert!(timers[0].active);
+        assert!(!timers[1].active);
+        assert!(parse_systemd_timer_line("too few").is_none());
+    }
+
+    #[test]
+    fn git_search_roots_uses_env_override() {
+        std::env::set_var("AURA_GIT_ROOTS", "/tmp/a:/tmp/b");
+        let roots = git_search_roots();
+        std::env::remove_var("AURA_GIT_ROOTS");
+        assert_eq!(roots.len(), 2);
+        assert_eq!(roots[0], PathBuf::from("/tmp/a"));
+    }
+
+    #[tokio::test]
+    async fn resolve_container_runtime_returns_known_variant() {
+        let runtime = resolve_container_runtime().await;
+        assert!(matches!(
+            runtime,
+            ContainerRuntime::Podman | ContainerRuntime::Docker | ContainerRuntime::None
+        ));
+    }
+
+    #[test]
+    fn parse_cron_and_git_porcelain_fixtures() {
+        let cron = fixture("crontab_sample.txt");
+        let jobs: Vec<_> = cron.lines().filter_map(|l| parse_cron_line(l, "root")).collect();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].command, "/usr/bin/logrotate");
+
+        assert!(!git_status_dirty(&fixture("git_porcelain_clean.txt")));
+        assert!(git_status_dirty(&fixture("git_porcelain_dirty.txt")));
     }
 }
 

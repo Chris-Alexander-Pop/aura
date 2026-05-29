@@ -295,6 +295,46 @@ async fn logs_get_respects_small_line_limit() {
 }
 
 #[tokio::test]
+async fn logs_get_priority_and_grep_filters() {
+    let registry = test_registry();
+    let value = call_method(
+        &registry,
+        "Logs.Get",
+        Some(json!({ "lines": 5, "priority": "err", "grep": "kernel|systemd" })),
+    )
+    .await
+    .expect("Logs.Get");
+    assert!(value.is_array());
+}
+
+#[tokio::test]
+async fn logs_get_unit_filter_small_limit() {
+    let registry = test_registry();
+    let value = call_method(
+        &registry,
+        "Logs.Get",
+        Some(json!({ "lines": 2, "unit": "systemd-journald.service", "priority": "info" })),
+    )
+    .await
+    .expect("Logs.Get");
+    let entries = value.as_array().expect("array");
+    assert!(entries.len() <= 2);
+}
+
+#[tokio::test]
+async fn logs_get_warn_priority_alias() {
+    let registry = test_registry();
+    let value = call_method(
+        &registry,
+        "Logs.Get",
+        Some(json!({ "lines": 4, "priority": "warning" })),
+    )
+    .await
+    .expect("Logs.Get");
+    assert!(value.is_array());
+}
+
+#[tokio::test]
 async fn performance_get_metrics_shape() {
     let registry = test_registry();
     let value = call_method(&registry, "Performance.GetMetrics", None)

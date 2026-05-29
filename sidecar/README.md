@@ -36,7 +36,14 @@ Message shape:
 { "method": "Power.BatteryState", "params": { "percent": 80, "charging": false, "time_remaining": "2h" } }
 ```
 
-Examples: `Power.BatteryState`, `Power.Profile`, `Network.StateChanged`, `Bluetooth.StateChanged`, `Audio.StateChanged`, `Notifications.Changed`, `Performance.MetricsChanged`.
+Examples: `Power.BatteryState`, `Power.Profile`, `Network.StateChanged`, `Bluetooth.StateChanged`, `Audio.StateChanged`, `Notifications.Changed`, `Performance.MetricsChanged`, `Hyprland.StateChanged`, `Productivity.TimerTick`.
+
+## Hyprland (React bar)
+
+- Typed RPCs: `Hyprland.GetWorkspaces`, `GetClients`, `GetActiveWindow`, `GetActiveWorkspace`, `GetMonitors`.
+- `Hyprland.Dispatch` — **allowlisted** workspace/focus/float verbs only; rejects `exec`, `keyword`, shell metacharacters.
+- Socket2 listener emits debounced `Hyprland.StateChanged` when `HYPRLAND_INSTANCE_SIGNATURE` is set. Disable with `AURA_HYPRLAND_EVENTS=0`.
+- Optional: `playerctl` for `Media.GetNowPlaying` and `Audio.Media.*` transport on the bar.
 
 ## Notifications
 

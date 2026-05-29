@@ -22,7 +22,7 @@ pub fn priority_to_level(priority: i64) -> String {
 }
 
 /// Minimum journal priority number for a filter level name.
-fn min_priority_for_filter(level: &str) -> Option<&'static str> {
+pub(crate) fn min_priority_for_filter(level: &str) -> Option<&'static str> {
     match level.to_lowercase().as_str() {
         "err" | "error" => Some("err"),
         "warn" | "warning" => Some("warning"),
@@ -286,11 +286,197 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn priority_mapping() {
+    fn priority_mapping_all_buckets() {
+        assert_eq!(priority_to_level(0), "err");
         assert_eq!(priority_to_level(3), "err");
         assert_eq!(priority_to_level(4), "warn");
+        assert_eq!(priority_to_level(5), "info");
         assert_eq!(priority_to_level(6), "info");
         assert_eq!(priority_to_level(7), "debug");
+        assert_eq!(priority_to_level(99), "debug");
+    }
+
+    #[test]
+    fn min_priority_for_filter_aliases() {
+        assert_eq!(min_priority_for_filter("err"), Some("err"));
+        assert_eq!(min_priority_for_filter("ERROR"), Some("err"));
+        assert_eq!(min_priority_for_filter("warning"), Some("warning"));
+        assert_eq!(min_priority_for_filter("notice"), Some("info"));
+        assert_eq!(min_priority_for_filter("debug"), Some("debug"));
+        assert_eq!(min_priority_for_filter("trace"), None);
+    }
+
+    #[test]
+    fn parse_journal_uses_syslog_identifier_fallback() {
+        let v = serde_json::json!({
+            "MESSAGE": "hello from app",
+            "PRIORITY": "6",
+            "SYSLOG_IDENTIFIER": "myapp",
+            "__REALTIME_TIMESTAMP": "not-a-number"
+        });
+        let entry = parse_journal_json_value(&v).expect("entry");
+        assert_eq!(entry.service, "myapp");
+        assert_eq!(entry.level, "info");
+        assert_eq!(entry.timestamp, "not-a-number");
+    }
+
+    #[test]
+    fn parse_journal_rejects_non_object() {
+        assert!(parse_journal_json_value(&serde_json::json!("nope")).is_none());
+    }
+
+    #[test]
+    fn parse_journal_prefers_systemd_unit_over_syslog() {
+        let v = serde_json::json!({
+            "MESSAGE": "unit wins",
+            "PRIORITY": "3",
+            "_SYSTEMD_UNIT": "svc.service",
+            "SYSLOG_IDENTIFIER": "other",
+            "__REALTIME_TIMESTAMP": "1716883200000000"
+        });
+        let entry = parse_journal_json_value(&v).expect("entry");
+        assert_eq!(entry.service, "svc.service");
+        assert_eq!(entry.level, "err");
+        assert!(!entry.timestamp.is_empty());
+    }
+
+    #[test]
+    fn parse_journal_defaults_priority_and_service() {
+        let v = serde_json::json!({ "MESSAGE": "only message" });
+        let entry = parse_journal_json_value(&v).expect("entry");
+        assert_eq!(entry.level, "info");
+        assert_eq!(entry.service, "journal");
+    }
+
+    #[tokio::test]
+    async fn logs_get_log_levels_rpc() {
+        use crate::services::ServiceRegistry;
+        use crate::types::JsonRpcRequest;
+
+        let mut reg = ServiceRegistry::new();
+        register(&mut reg);
+        let v = reg
+            .handle_request(JsonRpcRequest {
+                jsonrpc: "2.0".into(),
+                method: "Logs.GetLogLevels".into(),
+                params: None,
+                id: Some(1.into()),
+            })
+            .await
+            .expect("Logs.GetLogLevels");
+        assert_eq!(v.as_array().map(|a| a.len()), Some(8));
+    }
+
+    #[tokio::test]
+    async fn logs_get_unknown_priority_still_returns_array() {
+        use crate::services::ServiceRegistry;
+        use crate::types::JsonRpcRequest;
+
+        let mut reg = ServiceRegistry::new();
+        register(&mut reg);
+        let v = reg
+            .handle_request(JsonRpcRequest {
+                jsonrpc: "2.0".into(),
+                method: "Logs.Get".into(),
+                params: Some(serde_json::json!({ "lines": 2, "priority": "trace" })),
+                id: Some(1.into()),
+            })
+            .await
+            .expect("Logs.Get");
+        assert!(v.is_array());
+    }
+
+    #[tokio::test]
+    async fn logs_get_system_logs_with_service() {
+        use crate::services::ServiceRegistry;
+        use crate::types::JsonRpcRequest;
+
+        let mut reg = ServiceRegistry::new();
+        register(&mut reg);
+        let v = reg
+            .handle_request(JsonRpcRequest {
+                jsonrpc: "2.0".into(),
+                method: "Logs.GetSystemLogs".into(),
+                params: Some(serde_json::json!({ "lines": 2, "service": "systemd-journald.service" })),
+                id: Some(1.into()),
+            })
+            .await
+            .expect("Logs.GetSystemLogs");
+        assert!(v.get("logs").and_then(|l| l.as_str()).is_some());
+    }
+
+    #[tokio::test]
+    async fn logs_filter_logs_with_level() {
+        use crate::services::ServiceRegistry;
+        use crate::types::JsonRpcRequest;
+
+        let mut reg = ServiceRegistry::new();
+        register(&mut reg);
+        let v = reg
+            .handle_request(JsonRpcRequest {
+                jsonrpc: "2.0".into(),
+                method: "Logs.FilterLogs".into(),
+                params: Some(serde_json::json!({ "level": "err" })),
+                id: Some(1.into()),
+            })
+            .await
+            .expect("Logs.FilterLogs");
+        assert!(v.get("logs").and_then(|l| l.as_str()).is_some());
+    }
+
+    #[tokio::test]
+    async fn logs_search_requires_query() {
+        use crate::services::ServiceRegistry;
+        use crate::types::JsonRpcRequest;
+
+        let mut reg = ServiceRegistry::new();
+        register(&mut reg);
+        let err = reg
+            .handle_request(JsonRpcRequest {
+                jsonrpc: "2.0".into(),
+                method: "Logs.SearchLogs".into(),
+                params: None,
+                id: Some(1.into()),
+            })
+            .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn logs_get_application_logs_requires_app_name() {
+        use crate::services::ServiceRegistry;
+        use crate::types::JsonRpcRequest;
+
+        let mut reg = ServiceRegistry::new();
+        register(&mut reg);
+        let err = reg
+            .handle_request(JsonRpcRequest {
+                jsonrpc: "2.0".into(),
+                method: "Logs.GetApplicationLogs".into(),
+                params: Some(serde_json::json!({ "lines": 2 })),
+                id: Some(1.into()),
+            })
+            .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn logs_follow_returns_placeholder() {
+        use crate::services::ServiceRegistry;
+        use crate::types::JsonRpcRequest;
+
+        let mut reg = ServiceRegistry::new();
+        register(&mut reg);
+        let v = reg
+            .handle_request(JsonRpcRequest {
+                jsonrpc: "2.0".into(),
+                method: "Logs.FollowLogs".into(),
+                params: None,
+                id: Some(1.into()),
+            })
+            .await
+            .expect("Logs.FollowLogs");
+        assert!(v.get("message").and_then(|m| m.as_str()).is_some());
     }
 
     #[test]

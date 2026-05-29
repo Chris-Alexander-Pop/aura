@@ -235,13 +235,25 @@ async fn load_rules() -> Result<AppNotificationRules> {
     }
 }
 
+pub(crate) fn notification_blocked_by_rules(rules: &AppNotificationRules, app_name: &str) -> bool {
+    rules
+        .muted_apps
+        .iter()
+        .any(|a| a.eq_ignore_ascii_case(app_name))
+}
+
 async fn mark_closed(internal_id: u64) {
-    let mut store = STORE.write().await;
-    if let Some(n) = store.iter_mut().find(|n| n.id == internal_id) {
-        n.closed = true;
-        if let Some(sid) = n.server_id {
-            SERVER_ID_MAP.write().await.remove(&sid);
+    let sid_to_remove = {
+        let mut store = STORE.write().await;
+        if let Some(n) = store.iter_mut().find(|n| n.id == internal_id) {
+            n.closed = true;
+            n.server_id
+        } else {
+            None
         }
+    };
+    if let Some(sid) = sid_to_remove {
+        SERVER_ID_MAP.write().await.remove(&sid);
     }
 }
 
@@ -263,11 +275,7 @@ pub async fn record_notification(
     actions: Vec<NotificationAction>,
 ) {
     let rules = load_rules().await.unwrap_or_default();
-    if rules
-        .muted_apps
-        .iter()
-        .any(|a| a.eq_ignore_ascii_case(&app_name))
-    {
+    if notification_blocked_by_rules(&rules, &app_name) {
         return;
     }
 
@@ -275,6 +283,7 @@ pub async fn record_notification(
 
     if replaces_id != 0 {
         if let Some(internal) = SERVER_ID_MAP.read().await.get(&replaces_id).copied() {
+            let mut map_update = None;
             if let Some(n) = store.iter_mut().find(|n| n.id == internal) {
                 n.summary = summary;
                 n.body = body;
@@ -284,9 +293,12 @@ pub async fn record_notification(
                 n.timestamp = now_secs();
                 if let Some(sid) = server_id {
                     n.server_id = Some(sid);
-                    SERVER_ID_MAP.write().await.insert(sid, internal);
+                    map_update = Some((sid, internal));
                 }
                 drop(store);
+                if let Some((sid, internal)) = map_update {
+                    SERVER_ID_MAP.write().await.insert(sid, internal);
+                }
                 schedule_emit("replaced").await;
                 return;
             }
@@ -306,18 +318,22 @@ pub async fn record_notification(
         actions,
         closed: false,
     };
-    if let Some(sid) = server_id {
-        SERVER_ID_MAP.write().await.insert(sid, id);
-    }
+    let mut sid_removals = Vec::new();
     store.push_back(item);
     while store.len() > MAX_ITEMS {
         if let Some(old) = store.pop_front() {
             if let Some(sid) = old.server_id {
-                SERVER_ID_MAP.write().await.remove(&sid);
+                sid_removals.push(sid);
             }
         }
     }
     drop(store);
+    if let Some(sid) = server_id {
+        SERVER_ID_MAP.write().await.insert(sid, id);
+    }
+    for sid in sid_removals {
+        SERVER_ID_MAP.write().await.remove(&sid);
+    }
     schedule_emit("new").await;
 }
 
@@ -367,39 +383,51 @@ async fn run_dbus_monitor() -> Result<()> {
         .take()
         .ok_or_else(|| anyhow::anyhow!("dbus-monitor stdout"))?;
     let mut lines = BufReader::new(stdout).lines();
-    #[derive(Default)]
-    struct PendingNotify {
-        app_name: Option<String>,
-        replaces_id: u32,
-        icon: Option<String>,
-        summary: Option<String>,
-        body: Option<String>,
-    }
-
-    let mut pending_notify: Option<PendingNotify> = None;
-    let mut pending_closed = false;
+    let mut parser = DbusMonitorParser::default();
 
     while let Some(line) = lines.next_line().await? {
-        let trimmed = line.trim();
+        parser.feed_line(line.trim()).await;
+    }
+
+    Ok(())
+}
+
+#[derive(Default)]
+struct PendingNotify {
+    app_name: Option<String>,
+    replaces_id: u32,
+    icon: Option<String>,
+    summary: Option<String>,
+    body: Option<String>,
+}
+
+#[derive(Default)]
+struct DbusMonitorParser {
+    pending_notify: Option<PendingNotify>,
+    pending_closed: bool,
+}
+
+impl DbusMonitorParser {
+    async fn feed_line(&mut self, trimmed: &str) {
         if trimmed.starts_with("method call") && trimmed.contains("member=Notify") {
-            pending_notify = Some(PendingNotify::default());
-            pending_closed = false;
-            continue;
+            self.pending_notify = Some(PendingNotify::default());
+            self.pending_closed = false;
+            return;
         }
         if trimmed.starts_with("signal") && trimmed.contains("member=NotificationClosed") {
-            pending_notify = None;
-            pending_closed = true;
-            continue;
+            self.pending_notify = None;
+            self.pending_closed = true;
+            return;
         }
-        if pending_closed {
+        if self.pending_closed {
             if let Some(id) = parse_dbus_monitor_uint32(trimmed) {
                 mark_closed_by_server(id).await;
                 schedule_emit("closed").await;
-                pending_closed = false;
+                self.pending_closed = false;
             }
-            continue;
+            return;
         }
-        if let Some(p) = pending_notify.as_mut() {
+        if let Some(p) = self.pending_notify.as_mut() {
             if let Some(s) = parse_dbus_monitor_string(trimmed) {
                 if p.app_name.is_none() {
                     p.app_name = Some(s);
@@ -427,12 +455,24 @@ async fn run_dbus_monitor() -> Result<()> {
                     Vec::new(),
                 )
                 .await;
-                pending_notify = None;
+                self.pending_notify = None;
             }
         }
     }
+}
 
-    Ok(())
+/// Feed fixture lines through the dbus-monitor state machine (unit tests).
+pub(crate) async fn feed_dbus_monitor_fixture(text: &str) {
+    let mut parser = DbusMonitorParser::default();
+    for line in text.lines() {
+        parser.feed_line(line.trim()).await;
+    }
+}
+
+#[cfg(test)]
+pub(crate) async fn reset_store_for_tests() {
+    STORE.write().await.clear();
+    SERVER_ID_MAP.write().await.clear();
 }
 
 /// Subscribe to NotificationClosed via zbus signal stream on the daemon object.
@@ -530,6 +570,26 @@ async fn invoke_action_on_daemon(_server_id: u32, _action_key: &str) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::ServiceRegistry;
+    use crate::types::JsonRpcRequest;
+    use std::sync::OnceLock;
+    use tokio::sync::Mutex;
+
+    static NOTIFICATION_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn notification_test_lock() -> &'static Mutex<()> {
+        NOTIFICATION_TEST_LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn muted_app_rules_block_by_name() {
+        let rules = AppNotificationRules {
+            muted_apps: vec!["Slack".into()],
+        };
+        assert!(notification_blocked_by_rules(&rules, "Slack"));
+        assert!(notification_blocked_by_rules(&rules, "slack"));
+        assert!(!notification_blocked_by_rules(&rules, "Firefox"));
+    }
 
     #[test]
     fn parse_actions_pairs() {
@@ -571,9 +631,8 @@ mod tests {
 
     #[tokio::test]
     async fn list_empty_without_dbus() {
-        use crate::services::ServiceRegistry;
-        use crate::types::JsonRpcRequest;
-
+        let _guard = notification_test_lock().lock().await;
+        reset_store_for_tests().await;
         let mut reg = ServiceRegistry::new();
         register(&mut reg);
         let v = reg
@@ -590,9 +649,8 @@ mod tests {
 
     #[tokio::test]
     async fn record_notification_visible_in_list() {
-        use crate::services::ServiceRegistry;
-        use crate::types::JsonRpcRequest;
-
+        let _guard = notification_test_lock().lock().await;
+        reset_store_for_tests().await;
         record_notification(
             Some(9001),
             "test-app".into(),
@@ -618,5 +676,118 @@ mod tests {
             .unwrap();
         let items = v.as_array().expect("array");
         assert!(items.iter().any(|n| n.get("summary").and_then(|s| s.as_str()) == Some("Summary")));
+    }
+
+    #[tokio::test]
+    async fn dbus_monitor_notify_fixture_records_item() {
+        let _guard = notification_test_lock().lock().await;
+        reset_store_for_tests().await;
+        let fixture = include_str!("../../tests/fixtures/notifications/dbus_monitor_notify.txt");
+        feed_dbus_monitor_fixture(fixture).await;
+
+        let store = STORE.read().await;
+        assert_eq!(store.len(), 1);
+        let item = store.back().expect("notification");
+        assert_eq!(item.app_name, "firefox");
+        assert_eq!(item.summary, "Page loaded");
+        assert_eq!(item.body, "example.com finished loading");
+        assert_eq!(item.icon.as_deref(), Some("dialog-information"));
+    }
+
+    #[tokio::test]
+    async fn dbus_monitor_closed_fixture_marks_closed() {
+        let _guard = notification_test_lock().lock().await;
+        reset_store_for_tests().await;
+        record_notification(
+            Some(9001),
+            "daemon-app".into(),
+            0,
+            "Title".into(),
+            "Text".into(),
+            None,
+            1,
+            Vec::new(),
+        )
+        .await;
+
+        let closed = include_str!("../../tests/fixtures/notifications/dbus_monitor_closed.txt");
+        feed_dbus_monitor_fixture(closed).await;
+
+        let store = STORE.read().await;
+        let item = store.iter().find(|n| n.server_id == Some(9001)).expect("item");
+        assert!(item.closed);
+    }
+
+    #[tokio::test]
+    async fn list_excludes_closed_and_respects_since() {
+        let _guard = notification_test_lock().lock().await;
+        reset_store_for_tests().await;
+        record_notification(None, "app-a".into(), 0, "Old".into(), "x".into(), None, 1, Vec::new())
+            .await;
+        {
+            let mut store = STORE.write().await;
+            store.back_mut().unwrap().timestamp = 100;
+        }
+        record_notification(None, "app-a".into(), 0, "New".into(), "y".into(), None, 1, Vec::new())
+            .await;
+        {
+            let mut store = STORE.write().await;
+            if let Some(front) = store.front_mut() {
+                front.closed = true;
+            }
+        }
+
+        let mut reg = ServiceRegistry::new();
+        register(&mut reg);
+        let v = reg
+            .handle_request(JsonRpcRequest {
+                jsonrpc: "2.0".into(),
+                method: "Notifications.List".into(),
+                params: Some(json!({ "limit": 10, "since": 50 })),
+                id: Some(1.into()),
+            })
+            .await
+            .unwrap();
+        let items = v.as_array().expect("array");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].get("summary").and_then(|s| s.as_str()), Some("New"));
+    }
+
+    #[tokio::test]
+    async fn replace_notification_updates_existing() {
+        let _guard = notification_test_lock().lock().await;
+        reset_store_for_tests().await;
+
+        SERVER_ID_MAP.write().await.insert(42, 1);
+        STORE.write().await.push_back(NotificationItem {
+            id: 1,
+            server_id: Some(42),
+            app_name: "app".into(),
+            summary: "First".into(),
+            body: "body".into(),
+            icon: None,
+            urgency: 1,
+            timestamp: 1,
+            actions: Vec::new(),
+            closed: false,
+        });
+
+        {
+            let mut store = STORE.write().await;
+            let internal = SERVER_ID_MAP.read().await.get(&42).copied().expect("map");
+            let n = store.iter_mut().find(|n| n.id == internal).expect("item");
+            n.summary = "Updated".into();
+            n.body = "new body".into();
+            n.icon = Some("icon".into());
+            n.urgency = 2;
+            n.server_id = Some(99);
+        }
+        SERVER_ID_MAP.write().await.insert(99, 1);
+
+        let store = STORE.read().await;
+        assert_eq!(store.len(), 1);
+        let item = store.back().expect("item");
+        assert_eq!(item.summary, "Updated");
+        assert_eq!(item.server_id, Some(99));
     }
 }

@@ -262,7 +262,7 @@ export default function Calendar() {
     isFetching,
   } = useQuery({
     queryKey: ["cal"],
-    queryFn: api.getCalendarEvents,
+    queryFn: () => api.fetchCalendarEvents(),
     refetchInterval: 60_000,
   })
 

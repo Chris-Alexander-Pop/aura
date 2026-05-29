@@ -2,8 +2,15 @@
  * Always-on vertical strip (#/bar) — replaces GTK Bar.tsx when AURA_GTK_BAR is unset.
  */
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
+import {
+  parseHyprActiveWindow,
+  parseHyprActiveWorkspace,
+  parseHyprClients,
+  parseHyprWorkspaces,
+  type HyprClient,
+} from "@/lib/api-types"
 import {
   DEFAULT_BAR_SECTION_ORDER,
   type BarSectionId,
@@ -11,13 +18,12 @@ import {
 import StatusCluster from "@/components/bar/StatusCluster"
 import { type StatusFlyoutId } from "@/components/bar/useFlyoutHover"
 import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 
-/** Post a message to the AGS-registered WebKit message handler.
- *  Pass the object directly — postMessage serialises it via the JS engine,
- *  and the GJS handler receives it as a JSCValue object (not a string).
- *  Stringifying here would cause double-encoding on the GJS side.
- */
+const HYPRLAND_REFETCH_MS = 60_000
+
+/** Post a message to the AGS-registered WebKit message handler. */
 function postFlyoutMessage(payload: { open: boolean; panel?: string; y?: number }) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,40 +31,18 @@ function postFlyoutMessage(payload: { open: boolean; panel?: string; y?: number 
   } catch { /* non-WebKit context (dev server) */ }
 }
 
-/** Hyprland `workspaces -j` entries — `windows` count when present */
-function parseWorkspaces(data: unknown): { id: number; name?: string; windows: number }[] {
-  if (!Array.isArray(data)) return []
-  return data
-    .filter((x): x is Record<string, unknown> => x != null && typeof x === "object")
-    .map((x) => ({
-      id: Number(x.id),
-      name: typeof x.name === "string" ? x.name : undefined,
-      windows: typeof x.windows === "number" ? x.windows : 0,
-    }))
-    .filter((x) => Number.isFinite(x.id))
-}
-
-function parseActiveWsId(data: unknown): number | null {
-  if (data && typeof data === "object" && "id" in data) {
-    const id = Number((data as { id: unknown }).id)
-    return Number.isFinite(id) ? id : null
-  }
-  return null
-}
-
-type HyprWorkspaceRef = { id?: number; name?: string }
-
-type HyprClient = {
-  address?: string
-  title?: string
-  class?: string
-  workspace?: HyprWorkspaceRef
-  floating?: boolean
-}
-
-function parseClients(raw: unknown): HyprClient[] {
-  if (!Array.isArray(raw)) return []
-  return raw.filter((c): c is HyprClient => c != null && typeof c === "object")
+function useHyprlandInvalidation() {
+  const qc = useQueryClient()
+  useEffect(() => {
+    connectWs()
+    const off = useWsStore.getState().on("Hyprland.StateChanged", () => {
+      void qc.invalidateQueries({ queryKey: ["hypr-ws"] })
+      void qc.invalidateQueries({ queryKey: ["hypr-active-ws"] })
+      void qc.invalidateQueries({ queryKey: ["clients"] })
+      void qc.invalidateQueries({ queryKey: ["hypr-active"] })
+    })
+    return off
+  }, [qc])
 }
 
 function clientWorkspaceId(client: HyprClient): number | null {
@@ -67,26 +51,28 @@ function clientWorkspaceId(client: HyprClient): number | null {
 }
 
 function WorkspacesBlock() {
+  useHyprlandInvalidation()
+
   const { data: wsRaw, isPending: wsPending } = useQuery({
     queryKey: ["hypr-ws"],
     queryFn: api.hyprlandGetWorkspaces,
-    refetchInterval: 1500,
+    refetchInterval: HYPRLAND_REFETCH_MS,
   })
   const { data: activeRaw, isPending: activePending } = useQuery({
     queryKey: ["hypr-active-ws"],
     queryFn: api.hyprlandGetActiveWorkspace,
-    refetchInterval: 1500,
+    refetchInterval: HYPRLAND_REFETCH_MS,
   })
   const { data: clientsRaw, isPending: clientsPending } = useQuery({
     queryKey: ["clients"],
     queryFn: api.hyprlandGetClients,
-    refetchInterval: 1500,
+    refetchInterval: HYPRLAND_REFETCH_MS,
   })
 
-  const list = useMemo(() => parseWorkspaces(wsRaw), [wsRaw])
-  const activeId = useMemo(() => parseActiveWsId(activeRaw), [activeRaw])
+  const list = useMemo(() => parseHyprWorkspaces(wsRaw), [wsRaw])
+  const activeId = useMemo(() => parseHyprActiveWorkspace(activeRaw)?.id ?? null, [activeRaw])
   const wsById = useMemo(() => new Map(list.map((w) => [w.id, w])), [list])
-  const clients = useMemo(() => parseClients(clientsRaw).filter((c) => c.address), [clientsRaw])
+  const clients = useMemo(() => parseHyprClients(clientsRaw), [clientsRaw])
   const clientsByWs = useMemo(() => {
     const byWs = new Map<number, HyprClient[]>()
     for (const client of clients) {
@@ -122,13 +108,13 @@ function WorkspacesBlock() {
         const w = wsById.get(id)
         const wsClients = clientsByWs.get(id) ?? []
         const occupied = wsClients.length > 0 || (w?.windows ?? 0) > 0
-        const icons = wsClients.slice(0, 3).map((client) => iconFromHyprClass(String(client.class ?? "")))
+        const icons = wsClients.slice(0, 3).map((client) => iconFromHyprClass(client.class))
         return (
           <button
             key={id}
             type="button"
             title={`Workspace ${id}${occupied ? ` (${w?.windows} windows)` : ""}`}
-            onClick={() => api.hyprlandDispatch(`workspace ${id}`)}
+            onClick={() => void api.hyprlandDispatch(`workspace ${id}`)}
             className={cn(
               "group flex min-h-11 w-full flex-col items-center justify-center gap-0.5 rounded-2xl border px-1 py-1 transition-colors",
               activeId === id
@@ -158,28 +144,27 @@ function WorkspacesBlock() {
 }
 
 function RunningAppsBlock() {
+  useHyprlandInvalidation()
+
   const { data: clientsRaw, isPending: clientsPending } = useQuery({
     queryKey: ["clients"],
     queryFn: api.hyprlandGetClients,
-    refetchInterval: 1500,
+    refetchInterval: HYPRLAND_REFETCH_MS,
   })
   const { data: activeRaw } = useQuery({
     queryKey: ["hypr-active"],
     queryFn: api.hyprlandGetActiveWindow,
-    refetchInterval: 1000,
+    refetchInterval: HYPRLAND_REFETCH_MS,
   })
 
-  const activeAddr =
-    activeRaw && typeof activeRaw === "object" && "address" in activeRaw
-      ? String((activeRaw as { address?: unknown }).address ?? "")
-      : ""
+  const activeAddr = parseHyprActiveWindow(activeRaw)?.address ?? ""
 
   const apps = useMemo(() => {
     const byClass = new Map<string, HyprClient>()
-    for (const client of parseClients(clientsRaw)) {
-      const address = String(client.address ?? "")
+    for (const client of parseHyprClients(clientsRaw)) {
+      const address = client.address
       if (!address) continue
-      const cls = String(client.class ?? "Window")
+      const cls = client.class || "Window"
       const key = cls.toLowerCase()
       if (!byClass.has(key) || address === activeAddr) byClass.set(key, client)
     }
@@ -208,9 +193,9 @@ function RunningAppsBlock() {
   return (
     <div className="flex flex-col items-center gap-0.5 py-1">
       {apps.map((client) => {
-        const addr = String(client.address ?? "")
-        const cls = String(client.class ?? "")
-        const title = String(client.title ?? (cls || "Window"))
+        const addr = client.address
+        const cls = client.class
+        const title = client.title || cls || "Window"
         const active = addr === activeAddr
 
         return (
@@ -222,7 +207,7 @@ function RunningAppsBlock() {
               "flex h-9 w-full items-center justify-center rounded-xl transition-colors",
               active ? "bg-surface1 text-text" : "text-subtext1 hover:bg-surface1/70 hover:text-text"
             )}
-            onClick={() => addr && api.hyprlandDispatch(`focuswindow address:${addr}`)}
+            onClick={() => addr && void api.hyprlandDispatch(`focuswindow address:${addr}`)}
           >
             <span className="icon text-[21px]">{iconFromHyprClass(cls)}</span>
           </button>
@@ -233,11 +218,50 @@ function RunningAppsBlock() {
 }
 
 function MediaBlock() {
-  const { data } = useQuery({ queryKey: ["media"], queryFn: api.getMediaNowPlaying, refetchInterval: 2000 })
-  if (!data?.playing) return null
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ["media"],
+    queryFn: api.getMediaNowPlaying,
+    refetchInterval: 30_000,
+  })
+
+  const hasPlayer = Boolean(data?.title || data?.artist || data?.playing || data?.paused)
+  if (!hasPlayer) return null
+
+  const toggle = () => {
+    void api.mediaPlayPause(data?.player_name ?? undefined).then(() => {
+      void qc.invalidateQueries({ queryKey: ["media"] })
+    })
+  }
+
   return (
-    <div className="px-0.5 py-1 text-center" title={`${data.title} — ${data.artist}`}>
-      <span className="icon text-lg text-pink">music_note</span>
+    <div className="flex flex-col items-center gap-0.5 px-0.5 py-1" title={`${data?.title ?? ""} — ${data?.artist ?? ""}`}>
+      <button
+        type="button"
+        className="flex h-8 w-full items-center justify-center rounded-lg text-pink hover:bg-surface1/80"
+        onClick={toggle}
+        title={data?.playing ? "Pause" : "Play"}
+      >
+        <span className="icon text-lg">{data?.playing ? "pause" : "play_arrow"}</span>
+      </button>
+      <div className="flex w-full gap-0.5">
+        <button
+          type="button"
+          className="flex flex-1 items-center justify-center rounded-md text-subtext0 hover:bg-surface1/70"
+          onClick={() => void api.mediaPrevious(data?.player_name ?? undefined).then(() => qc.invalidateQueries({ queryKey: ["media"] }))}
+          title="Previous"
+        >
+          <span className="icon text-base">skip_previous</span>
+        </button>
+        <button
+          type="button"
+          className="flex flex-1 items-center justify-center rounded-md text-subtext0 hover:bg-surface1/70"
+          onClick={() => void api.mediaNext(data?.player_name ?? undefined).then(() => qc.invalidateQueries({ queryKey: ["media"] }))}
+          title="Next"
+        >
+          <span className="icon text-base">skip_next</span>
+        </button>
+      </div>
     </div>
   )
 }
@@ -245,7 +269,7 @@ function MediaBlock() {
 function CalendarPreviewBlock() {
   const { data: evs, isPending: calPending } = useQuery({
     queryKey: ["cal"],
-    queryFn: api.getCalendarEvents,
+    queryFn: () => api.fetchCalendarEvents(),
     refetchInterval: 60_000,
   })
   const preview = Array.isArray(evs) ? evs.slice(0, 2) : []

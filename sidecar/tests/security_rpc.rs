@@ -98,3 +98,53 @@ async fn security_get_sudo_logs_or_missing_auth_log() {
         Err(e) => panic!("Security.GetSudoLogs: {e}"),
     }
 }
+
+#[tokio::test]
+async fn security_get_keyring_status_shape() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Security.GetKeyringStatus", None)
+        .await
+        .expect("Security.GetKeyringStatus");
+    assert_json_object_keys(&value, &["available"]);
+    assert!(value.get("available").and_then(|v| v.as_bool()).is_some());
+}
+
+#[tokio::test]
+async fn security_get_certificates_array() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Security.GetCertificates", None)
+        .await
+        .expect("Security.GetCertificates");
+    let arr = value.as_array().expect("certificate array");
+    for name in arr {
+        let s = name.as_str().expect("certificate filename");
+        assert!(
+            s.ends_with(".crt") || s.ends_with(".pem") || s.ends_with(".CRT") || s.ends_with(".PEM"),
+            "unexpected cert extension: {s}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn security_get_vpn_connections_array() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Security.GetVpnConnections", None)
+        .await
+        .expect("Security.GetVpnConnections");
+    assert!(value.is_array());
+}
+
+#[tokio::test]
+async fn security_get_ssh_connections_or_missing_ss() {
+    let registry = test_registry();
+    match call_method(&registry, "Security.GetSshConnections", None).await {
+        Ok(value) => {
+            let arr = value.as_array().expect("ssh connections array");
+            for row in arr {
+                assert_json_object_keys(row, &["user", "host", "port", "pid"]);
+            }
+        }
+        Err(e) if host_tool_missing(&e) => {}
+        Err(e) => panic!("Security.GetSshConnections: {e}"),
+    }
+}

@@ -1,7 +1,13 @@
+use crate::services::notifications;
 use crate::services::ServiceRegistry;
 use crate::utils::storage;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
+use std::sync::Once;
+use tokio::time::Duration;
+
+static REMINDER_TICK: Once = Once::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalendarEvent {
@@ -35,10 +41,7 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         storage::init().await?;
         let items = storage::scan_namespace("calendar_events").await?;
-        let mut events: Vec<CalendarEvent> = items
-            .into_iter()
-            .filter_map(|v| serde_json::from_value(v).ok())
-            .collect();
+        let mut events = events_from_storage_values(items);
 
         filter_events_by_range(&mut events, start_date, end_date);
 
@@ -74,6 +77,11 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .unwrap_or(serde_json::Value::String(String::new())),
         )?;
 
+        let reminder_minutes: Option<i32> = params
+            .as_ref()
+            .and_then(|p| p.get("reminder_minutes").cloned())
+            .and_then(|v| serde_json::from_value(v).ok());
+
         let event_id = format!("event_{}", chrono::Utc::now().timestamp_millis());
         let event = CalendarEvent {
             id: event_id.clone(),
@@ -82,7 +90,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             end,
             description,
             calendar_id: None,
-            reminder_minutes: None,
+            reminder_minutes,
         };
 
         storage::init().await?;
@@ -117,15 +125,16 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Calendar.DeleteEvent", |params| async move {
-        let _event_id: String = serde_json::from_value(
+        let event_id: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("event_id").cloned())
                 .ok_or_else(|| anyhow::anyhow!("Missing event_id"))?,
         )?;
 
-        // Would need storage delete method
-        Ok(serde_json::json!({ "success": true }))
+        storage::init().await?;
+        let deleted = storage::delete_kv("calendar_events", &event_id).await?;
+        Ok(serde_json::json!({ "success": true, "deleted": deleted }))
     });
 
     registry.register("Calendar.GetCalendars", |_params| async move {
@@ -138,15 +147,26 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Calendar.GetUpcomingEvents", |params| async move {
-        let _days: i32 = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("days").cloned())
-                .unwrap_or(serde_json::Value::Number(serde_json::Number::from(7))),
-        )?;
+        let limit: usize = params
+            .as_ref()
+            .and_then(|p| p.get("limit").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(10);
 
-        // Would filter events by date range
-        Ok(serde_json::json!([]))
+        let days: i64 = params
+            .as_ref()
+            .and_then(|p| p.get("days").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(7);
+
+        storage::init().await?;
+        let mut events = events_from_storage_values(storage::scan_namespace("calendar_events").await?);
+        let now = chrono::Utc::now().timestamp();
+        let horizon = now + days * 86_400;
+        events.retain(|e| e.end >= now && e.start <= horizon);
+        events.sort_by_key(|e| e.start);
+        events.truncate(limit);
+        Ok(serde_json::to_value(events)?)
     });
 
     registry.register("Calendar.SetReminder", |params| async move {
@@ -205,6 +225,67 @@ pub fn register(registry: &mut ServiceRegistry) {
         // Would export .ics file
         Ok(serde_json::json!({ "success": true }))
     });
+
+}
+
+/// Start the 60s reminder poll (call once from the sidecar binary).
+pub fn spawn_reminder_tick() {
+    REMINDER_TICK.call_once(|| {
+        tokio::spawn(async {
+            reminder_tick_loop().await;
+        });
+    });
+}
+
+async fn reminder_tick_loop() {
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        if let Err(e) = check_calendar_reminders().await {
+            tracing::debug!("calendar reminder tick: {}", e);
+        }
+    }
+}
+
+async fn check_calendar_reminders() -> Result<()> {
+    storage::init().await?;
+    let now = chrono::Utc::now().timestamp();
+    let events = events_from_storage_values(storage::scan_namespace("calendar_events").await?);
+    for event in events {
+        let Some(mins) = event.reminder_minutes else {
+            continue;
+        };
+        let trigger_at = event.start - i64::from(mins) * 60;
+        if now < trigger_at || now >= event.start {
+            continue;
+        }
+        let fired_key = format!("fired_{}", event.id);
+        if storage::get_kv("calendar_reminders", &fired_key)
+            .await?
+            .is_some()
+        {
+            continue;
+        }
+        notifications::record_notification(
+            None,
+            "aura-calendar".to_string(),
+            0,
+            format!("Upcoming: {}", event.title),
+            event.description.clone(),
+            None,
+            1,
+            Vec::new(),
+        )
+        .await;
+        storage::set_kv("calendar_reminders", &fired_key, &serde_json::json!(now)).await?;
+    }
+    Ok(())
+}
+
+pub(crate) fn events_from_storage_values(items: Vec<serde_json::Value>) -> Vec<CalendarEvent> {
+    items
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect()
 }
 
 pub(crate) fn filter_events_by_range(
@@ -276,5 +357,20 @@ mod tests {
         let mut events = vec![sample_event("touch", 100, 200)];
         filter_events_by_range(&mut events, Some(200), Some(100));
         assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn events_from_storage_skips_corrupt() {
+        let valid = sample_event("ok", 1, 2);
+        let items = vec![
+            serde_json::to_value(&valid).unwrap(),
+            serde_json::json!({ "nope": 1 }),
+        ];
+        assert_eq!(events_from_storage_values(items).len(), 1);
+    }
+
+    #[test]
+    fn events_from_storage_empty_namespace() {
+        assert!(events_from_storage_values(vec![]).is_empty());
     }
 }

@@ -71,22 +71,106 @@ pub fn firewall_status_from_firewalld(output: &str) -> serde_json::Value {
     })
 }
 
+pub fn firewall_status_none() -> serde_json::Value {
+    serde_json::json!({
+        "enabled": false,
+        "type": "none"
+    })
+}
+
+pub fn keyring_status_json(available: bool) -> serde_json::Value {
+    serde_json::json!({
+        "available": available
+    })
+}
+
+pub(crate) fn is_certificate_filename(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower.ends_with(".crt") || lower.ends_with(".pem")
+}
+
+pub fn filter_certificate_filenames(names: impl IntoIterator<Item = impl AsRef<str>>) -> Vec<String> {
+    names
+        .into_iter()
+        .filter(|name| is_certificate_filename(name.as_ref()))
+        .map(|name| name.as_ref().to_string())
+        .collect()
+}
+
+pub fn vpn_connections_from_pgrep(openconnect_running: bool, openvpn_running: bool) -> Vec<String> {
+    let mut connections = Vec::new();
+    if openconnect_running {
+        connections.push("OpenConnect".to_string());
+    }
+    if openvpn_running {
+        connections.push("OpenVPN".to_string());
+    }
+    connections
+}
+
+pub(crate) fn parse_ufw_rule_line(line: &str, id: usize) -> Option<FirewallRule> {
+    let action = ["ALLOW", "DENY", "REJECT"]
+        .into_iter()
+        .find(|candidate| line.contains(candidate))?;
+    let idx = line.find(action)?;
+    let before = line[..idx].trim();
+    let after = line[idx + action.len()..].trim();
+    let after_parts: Vec<&str> = after.split_whitespace().collect();
+    if after_parts.is_empty() {
+        return None;
+    }
+
+    let direction = after_parts[0].to_string();
+    let mut protocol = "any".to_string();
+    let mut port = None;
+
+    for token in before.split_whitespace().rev() {
+        let clean = token.trim_start_matches('[').trim_end_matches(']');
+        if let Some((p, proto)) = clean.split_once('/') {
+            port = Some(p.to_string());
+            protocol = proto.to_string();
+            break;
+        }
+    }
+
+    if after_parts.len() >= 2 {
+        let token = after_parts[1];
+        if let Some((p, proto)) = token.split_once('/') {
+            let looks_like_port_proto = proto.eq_ignore_ascii_case("tcp")
+                || proto.eq_ignore_ascii_case("udp")
+                || p.chars().all(|c| c.is_ascii_digit());
+            if looks_like_port_proto && port.is_none() {
+                port = Some(p.to_string());
+                protocol = proto.to_string();
+            }
+        } else if token.eq_ignore_ascii_case("tcp") || token.eq_ignore_ascii_case("udp") {
+            protocol = token.to_string();
+            if after_parts.len() >= 3 {
+                port = Some(after_parts[2].to_string());
+            }
+        }
+    }
+
+    if port.is_none() && after_parts.len() < 2 {
+        return None;
+    }
+
+    Some(FirewallRule {
+        id: id.to_string(),
+        action: action.to_string(),
+        direction,
+        protocol,
+        port,
+        source: None,
+        destination: None,
+    })
+}
+
 pub fn parse_ufw_numbered_rules(output: &str) -> Vec<FirewallRule> {
     let mut rules = Vec::new();
-    for (i, line) in output.lines().enumerate() {
-        if line.contains("ALLOW") || line.contains("DENY") || line.contains("REJECT") {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 3 {
-                rules.push(FirewallRule {
-                    id: i.to_string(),
-                    action: parts[0].to_string(),
-                    direction: parts[1].to_string(),
-                    protocol: parts[2].to_string(),
-                    port: parts.get(3).map(|s| s.to_string()),
-                    source: None,
-                    destination: None,
-                });
-            }
+    for line in output.lines() {
+        if let Some(rule) = parse_ufw_rule_line(line, rules.len()) {
+            rules.push(rule);
         }
     }
     rules
@@ -227,10 +311,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         } else if let Ok(output) = process::exec_command(&["firewall-cmd", "--state"]).await {
             Ok(firewall_status_from_firewalld(&output))
         } else {
-            Ok(serde_json::json!({
-                "enabled": false,
-                "type": "none"
-            }))
+            Ok(firewall_status_none())
         }
     });
 
@@ -350,14 +431,15 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Security.GetKeyringStatus", |_params| async move {
-        let available = process::exec_command(&["which", "secret-tool"]).await.is_ok();
-        Ok(serde_json::json!({
-            "available": available
-        }))
+        let available = process::exec_command(&["which", "secret-tool"])
+            .await
+            .map(|output| parse_command_found(&output))
+            .unwrap_or(false);
+        Ok(keyring_status_json(available))
     });
 
     registry.register("Security.GetCertificates", |_params| async move {
-        let mut certs = Vec::new();
+        let mut names = Vec::new();
 
         // Check common certificate locations
         let home = std::env::var("HOME").unwrap_or_default();
@@ -372,30 +454,24 @@ pub fn register(registry: &mut ServiceRegistry) {
                 let mut entries = entries;
                 while let Ok(Some(entry)) = entries.next_entry().await {
                     if let Ok(file_name) = entry.file_name().into_string() {
-                        if file_name.ends_with(".crt") || file_name.ends_with(".pem") {
-                            certs.push(file_name);
-                        }
+                        names.push(file_name);
                     }
                 }
             }
         }
 
-        Ok(serde_json::to_value(&certs)?)
+        Ok(serde_json::to_value(&filter_certificate_filenames(names))?)
     });
 
     registry.register("Security.GetVpnConnections", |_params| async move {
-        // This would integrate with the VPN service
-        // For now, check for active VPN processes
-        let mut connections = Vec::new();
-
-        if process::exec_command(&["pgrep", "openconnect"]).await.is_ok() {
-            connections.push("OpenConnect".to_string());
-        }
-        if process::exec_command(&["pgrep", "openvpn"]).await.is_ok() {
-            connections.push("OpenVPN".to_string());
-        }
-
-        Ok(serde_json::to_value(&connections)?)
+        let openconnect_running = process::exec_command(&["pgrep", "openconnect"])
+            .await
+            .is_ok();
+        let openvpn_running = process::exec_command(&["pgrep", "openvpn"]).await.is_ok();
+        Ok(serde_json::to_value(&vpn_connections_from_pgrep(
+            openconnect_running,
+            openvpn_running,
+        ))?)
     });
 
     registry.register("Security.GetStatus", |_params| async move {
@@ -2115,5 +2191,82 @@ mod parser_tests {
         assert_eq!(ports[0].protocol, "tcp");
         assert!(parse_nmap_xml("<nmaprun></nmaprun>").unwrap().is_empty());
         assert!(parse_nmap_xml("not xml at all").unwrap().is_empty());
+        assert!(
+            parse_nmap_xml(&fixture("nmap_invalid_port.xml"))
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn firewall_status_none_json() {
+        let none = firewall_status_none();
+        assert_eq!(none["enabled"], false);
+        assert_eq!(none["type"], "none");
+    }
+
+    #[test]
+    fn keyring_status_json_branches() {
+        assert_eq!(keyring_status_json(true)["available"], true);
+        assert_eq!(keyring_status_json(false)["available"], false);
+        assert!(!parse_command_found(&fixture("which_not_found.txt")));
+        assert!(parse_command_found(&fixture("which_secret_tool.txt")));
+    }
+
+    #[test]
+    fn filter_certificate_filenames_fixture() {
+        let listing = fixture("cert_dir_listing.txt");
+        let names: Vec<&str> = listing
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect();
+        let certs = filter_certificate_filenames(names);
+        assert_eq!(certs, vec!["CA.crt".to_string(), "user.PEM".to_string()]);
+        assert!(!is_certificate_filename("readme.txt"));
+        assert!(!is_certificate_filename("bundle.cer"));
+    }
+
+    #[test]
+    fn vpn_connections_from_pgrep_branches() {
+        assert!(vpn_connections_from_pgrep(false, false).is_empty());
+        assert_eq!(
+            vpn_connections_from_pgrep(true, false),
+            vec!["OpenConnect".to_string()]
+        );
+        assert_eq!(
+            vpn_connections_from_pgrep(false, true),
+            vec!["OpenVPN".to_string()]
+        );
+        assert_eq!(
+            vpn_connections_from_pgrep(true, true),
+            vec!["OpenConnect".to_string(), "OpenVPN".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_ufw_bracket_and_reject_fixtures() {
+        let rules = parse_ufw_numbered_rules(&fixture("ufw_status_brackets.txt"));
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0].action, "ALLOW");
+        assert_eq!(rules[0].port.as_deref(), Some("22"));
+        assert_eq!(rules[0].protocol, "tcp");
+
+        let reject = parse_ufw_numbered_rules(&fixture("ufw_status_reject.txt"));
+        assert_eq!(reject.len(), 1);
+        assert_eq!(reject[0].action, "REJECT");
+        assert_eq!(reject[0].direction, "IN");
+    }
+
+    #[test]
+    fn parse_encryption_empty_and_mixed_fixtures() {
+        let (encrypted, devices) = parse_encryption_devices(&fixture("lsblk_empty.txt"));
+        assert!(!encrypted);
+        assert!(devices.is_empty());
+
+        let (mixed_enc, mixed_devs) = parse_encryption_devices(&fixture("lsblk_mixed.txt"));
+        assert!(mixed_enc);
+        assert_eq!(mixed_devs.len(), 1);
+        assert!(mixed_devs[0].contains("nvme"));
     }
 }

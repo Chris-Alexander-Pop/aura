@@ -1,0 +1,5 @@
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+REJECT IN tcp 25

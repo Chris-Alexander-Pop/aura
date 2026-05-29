@@ -1,24 +1,13 @@
-import { useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useEffect, useMemo } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
+import { parseHyprActiveWindow, parseHyprClients, type HyprClient } from "@/lib/api-types"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
 
-type HyprWorkspaceRef = { id?: number; name?: string }
-
-type HyprClient = {
-  address?: string
-  title?: string
-  class?: string
-  workspace?: HyprWorkspaceRef
-  floating?: boolean
-}
-
-function parseClients(raw: unknown): HyprClient[] {
-  if (!Array.isArray(raw)) return []
-  return raw.filter((c): c is HyprClient => c != null && typeof c === "object")
-}
+const HYPRLAND_REFETCH_MS = 60_000
 
 function wsKey(c: HyprClient): number {
   const id = c.workspace?.id
@@ -26,23 +15,34 @@ function wsKey(c: HyprClient): number {
 }
 
 export default function WindowsFlyout() {
+  const qc = useQueryClient()
+
+  useEffect(() => {
+    connectWs()
+    const off = useWsStore.getState().on("Hyprland.StateChanged", () => {
+      void qc.invalidateQueries({ queryKey: ["clients"] })
+      void qc.invalidateQueries({ queryKey: ["hypr-active"] })
+    })
+    return off
+  }, [qc])
+
   const {
     data: rawClients,
     isPending: clientsPending,
     isError: clientsError,
-  } = useQuery({ queryKey: ["clients"], queryFn: api.hyprlandGetClients, refetchInterval: 1500 })
+  } = useQuery({
+    queryKey: ["clients"],
+    queryFn: api.hyprlandGetClients,
+    refetchInterval: HYPRLAND_REFETCH_MS,
+  })
   const { data: rawActive, isPending: activePending } = useQuery({
     queryKey: ["hypr-active"],
     queryFn: api.hyprlandGetActiveWindow,
-    refetchInterval: 1000,
+    refetchInterval: HYPRLAND_REFETCH_MS,
   })
 
-  const activeAddr =
-    rawActive && typeof rawActive === "object" && "address" in rawActive
-      ? String((rawActive as { address?: unknown }).address ?? "")
-      : ""
-
-  const clients = useMemo(() => parseClients(rawClients).filter((c) => c.address), [rawClients])
+  const activeAddr = parseHyprActiveWindow(rawActive)?.address ?? ""
+  const clients = useMemo(() => parseHyprClients(rawClients), [rawClients])
 
   const grouped = useMemo(() => {
     const byWs = new Map<number, HyprClient[]>()
@@ -56,7 +56,7 @@ export default function WindowsFlyout() {
       wsId: id,
       label: id < 0 ? "?" : String(id),
       items: byWs.get(id)!.sort((a, b) =>
-        String(a.title ?? "").localeCompare(String(b.title ?? ""), undefined, { sensitivity: "base" })
+        (a.title ?? "").localeCompare(b.title ?? "", undefined, { sensitivity: "base" })
       ),
     }))
   }, [clients])
@@ -128,7 +128,7 @@ export default function WindowsFlyout() {
                   </p>
                   <ul className="flex flex-col gap-1">
                     {g.items.map((c) => {
-                      const addr = String(c.address ?? "")
+                      const addr = c.address
                       const title = String(c.title ?? "").trim() || "(no title)"
                       const cls = String(c.class ?? "").trim()
                       const isActive = addr === activeAddr

@@ -1,0 +1,3 @@
+logrotate.timer            Thu  last1   active
+fstrim.timer               Fri  last2   inactive
+broken

@@ -1,0 +1,3 @@
+Sink Input #12
+	Driver: PipeWire
+	Sink: broken
