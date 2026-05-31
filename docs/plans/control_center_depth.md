@@ -1,7 +1,7 @@
-# Wave 4 — Control Center depth (DevOps, Automation, Productivity, Calendar)
+# Control Center depth (DevOps, Automation, Productivity, Calendar)
 
 **Status:** Implemented (2026-05-29)  
-**Depends on:** Wave 3, P0 contract + test harness  
+**Depends on:** [control_center_foundation.md](control_center_foundation.md), P0 contract + test harness  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §7 steps 7–8
 
 ## Delivered
@@ -27,7 +27,7 @@
 - UI quick-add + delete in `CalendarNavPane.tsx`
 
 ### Tests
-- `tests/wave4_automation_test.rs`, `wave4_productivity_test.rs`, `wave4_calendar_test.rs`
+- `tests/automation_storage_test.rs`, `productivity_storage_test.rs`, `calendar_storage_test.rs`, `automation_rpc_shapes.rs`, `productivity_rpc_shapes.rs`, `calendar_rpc_shapes.rs`
 
 ## Verification
 

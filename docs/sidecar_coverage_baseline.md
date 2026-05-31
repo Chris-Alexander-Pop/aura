@@ -1,6 +1,6 @@
 # Sidecar coverage baseline
 
-**Date:** 2026-05-29 (Wave 5 hyprland/mpris refresh)  
+**Date:** 2026-05-29 (compositor bar / hyprland+mpris refresh)  
 **Repo:** `~/.config/ags` (`sidecar/`)  
 **Toolchain:** `cargo-llvm-cov` + `llvm-tools-preview` (see `sidecar/README.md`)
 
@@ -137,7 +137,7 @@ Authoring guidance: `sidecar/tests/README.md` (“one test, one branch”).
 | Tier | Count | Description |
 |------|------:|-------------|
 | Dedicated shape tests | 31+ | Own test function + field/type assertions |
-| Bulk-only (resolve, no shape) | 16 | Listed in `P0_METHODS` or `WAVE4_READONLY_METHODS` only |
+| Bulk-only (resolve, no shape) | 16 | Listed in `P0_METHODS` or readonly gap sets only |
 | Readonly gap fast set | 16 | `READONLY_GAP_FAST` in `readonly_gap_methods_resolve` |
 | Readonly gap slow host | 57 | `READONLY_GAP_SLOW_HOST` in `readonly_gap_methods_resolve_slow_host` (`#[ignore]`) |
 | No integration test | remainder | See manifest vs `integration_test.rs` |

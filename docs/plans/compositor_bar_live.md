@@ -1,8 +1,8 @@
-# Wave 5 — Compositor bar live sync (Hyprland depth + media transport)
+# Compositor bar live sync (Hyprland depth + media transport)
 
 **Status:** Implemented (2026-05-29)  
-**Depends on:** Wave 4 (notify bus, SQLite CRUD patterns, contract scripts), Wave 3 (React bar on `Hyprland.*` / `Media.GetNowPlaying`), P0 test harness (`call_method` deny-list, `AURA_STORAGE_DB`)  
-**Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §2.8, §2.10 (partial), §6.1 P0 smoke; [react-bar-migration.md](../roadmap/react-bar-migration.md); deferred Wave 3 preview item “Hyprland shell — event stream over WS”
+**Depends on:** [control_center_depth.md](control_center_depth.md), [control_center_foundation.md](control_center_foundation.md), P0 test harness (`call_method` deny-list, `AURA_STORAGE_DB`)  
+**Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §2.8, §2.10 (partial), §6.1 P0 smoke; [react-bar-migration.md](../roadmap/react-bar-migration.md)
 
 **Repo:** `/home/user/Engineering/Productivity/ags` (canonical; `~/.config/ags` symlink or copy may differ — see [Binary path](#binary-path-caveat) below)
 
@@ -17,29 +17,29 @@ Make the **React/WebKit bar** feel as live as the GTK bar did, without unsafe `h
 3. **WebSocket invalidation** — compositor changes push `Hyprland.*Changed` events so `BarStrip` / `WindowsFlyout` drop `refetchInterval` polling.
 4. **Bar media transport** — expose existing `Audio.Media.*` in `api.ts`, harden `Media.GetNowPlaying` (`playing` from `playerctl status`), optional mini controls on the bar.
 
-This is the **shell/compositor** wave after Wave 4’s **Control Center depth** — not launcher, capture, settings, VPN, or communication hub.
+This slice is **shell/compositor** work after **Control Center depth** — not launcher, capture, settings, VPN, or communication hub.
 
 ---
 
-## Non-goals (Wave 5)
+## Non-goals
 
 | Item | Reason / defer to |
 |------|-------------------|
-| `launcher.rs` / Vicinae (`§3.3`) | Own wave; needs product contract |
-| `capture.rs` screenshots/recording (`§3.4`) | Own wave; grim/slurp/wf-recorder host deps |
-| `settings.rs` Aura JSON schema (`§3.5`) | Own wave; forms + schema design |
+| `launcher.rs` / Vicinae (`§3.3`) | Own plan; needs product contract |
+| `capture.rs` screenshots/recording (`§3.4`) | Own plan; grim/slurp/wf-recorder host deps |
+| `settings.rs` Aura JSON schema (`§3.5`) | Own plan; forms + schema design |
 | `Dashboard.GetQuickStatus` / dropdown module system (`§3.13`) | Needs settings schema + perf budget ([top-dropdown.md](../roadmap/top-dropdown.md)) |
 | VPN state machine (`§2.7`) | Large, privileged |
 | `Communication.GetUnread` (`§2.22`) | ADR: separate app |
-| Full `System.GetStats` / GPU sensors (`§2.6`) | Performance pane exists; deep sensors = later wave |
-| Multi-monitor `Brightness.*` rewrite (`§2.5`) | Sidebar OSD wave; bar only consumes if trivial |
+| Full `System.GetStats` / GPU sensors (`§2.6`) | Performance pane exists; deep sensors = later plan |
+| Multi-monitor `Brightness.*` rewrite (`§2.5`) | Sidebar OSD plan; bar only consumes if trivial |
 | `Session.*` polkit / `hyprlock` swap (`§2.9`) | Small follow-up PR acceptable; not headline |
 | Hyprland **rules** editor, workspace thumbnails, multitasking UI | Roadmap sidebar; backend events only |
-| §1 remaining contract rows unrelated to Hyprland/media | Track in contract-fix PR or Wave 6 |
+| §1 remaining contract rows unrelated to Hyprland/media | [foundation_contracts.md](foundation_contracts.md) |
 
 ---
 
-## Prerequisites (Wave 4)
+## Prerequisites
 
 | Prerequisite | Why |
 |--------------|-----|
@@ -47,7 +47,7 @@ This is the **shell/compositor** wave after Wave 4’s **Control Center depth** 
 | `scripts/check-api-rpc-contract.sh` + `rpc-manifest.json` CI | New methods must not drift from `api.ts` |
 | `sidecar/tests/common/mod.rs` deny-list | `Hyprland.Dispatch` stays integration-safe via allowlist unit tests + unchecked only under `#[ignore]` |
 | React bar shipped (`BarStrip.tsx`, `WindowsFlyout.tsx`) | Consumers for typed RPCs + WS |
-| Wave 4 calendar reminders | Optional: bar `CalendarPreviewBlock` can later subscribe to `Calendar.*Changed` — **not** in Wave 5 scope |
+| Calendar reminders | Bar `CalendarPreviewBlock` subscribes via [shell_platform.md](shell_platform.md) `Calendar.EventsChanged` |
 
 ---
 
@@ -86,7 +86,7 @@ sequenceDiagram
 | A.3 Fixtures | `sidecar/tests/fixtures/hyprland/workspaces.json`, `clients.json`, `monitors.json`, `activewindow.json`, `activeworkspace.json` (minimal real-shaped samples). |
 | A.4 TS types | `ui/src/lib/api-types.ts`: mirror DTOs; change `api.ts` return types from `unknown` to typed arrays/objects. |
 | A.5 UI | `BarStrip.tsx`, `WindowsFlyout.tsx`: delete duplicate parsers where types suffice; keep thin guards for dev-server/no-Hyprland. |
-| A.6 Tests | `sidecar/tests/wave5_hyprland_shapes.rs`: registry calls assert array lengths, field types, stable sort; add methods to `WAVE5_READONLY_METHODS` bulk set. |
+| A.6 Tests | `sidecar/tests/hyprland_rpc_shapes.rs`: registry calls assert array lengths, field types, stable sort; add methods to `READONLY_GAP_FAST` when stable. |
 
 **RPC (unchanged names, stricter output):**
 
@@ -96,7 +96,7 @@ sequenceDiagram
 - `Hyprland.GetActiveWindow` → `HyprActiveWindow | null`
 - `Hyprland.GetMonitors` → `HyprMonitor[]`
 
-**Files:** `sidecar/src/services/hyprland.rs`, `sidecar/src/types.rs`, `ui/src/lib/api.ts`, `ui/src/lib/api-types.ts`, `ui/src/pages/BarStrip.tsx`, `ui/src/components/bar/flyouts/WindowsFlyout.tsx`, `sidecar/tests/fixtures/hyprland/*`, `sidecar/tests/wave5_hyprland_shapes.rs`
+**Files:** `sidecar/src/services/hyprland.rs`, `sidecar/src/types.rs`, `ui/src/lib/api.ts`, `ui/src/lib/api-types.ts`, `ui/src/pages/BarStrip.tsx`, `ui/src/components/bar/flyouts/WindowsFlyout.tsx`, `sidecar/tests/fixtures/hyprland/*`, `sidecar/tests/hyprland_rpc_shapes.rs`
 
 **Acceptance:** With Hyprland running, shape tests pass on host; without Hyprland, RPCs return `[]` / `null` and **do not panic**. Fixture unit tests cover all parsers without `hyprctl`.
 
@@ -141,7 +141,7 @@ sequenceDiagram
 
 - **Push:** `Hyprland.StateChanged` (no new read RPC required)
 
-**Files:** `sidecar/src/services/hyprland.rs`, `sidecar/src/main.rs`, `sidecar/src/notify.rs` (export only), `ui/src/pages/BarStrip.tsx`, `ui/src/components/bar/flyouts/WindowsFlyout.tsx`, `sidecar/tests/wave5_hyprland_events_test.rs`
+**Files:** `sidecar/src/services/hyprland.rs`, `sidecar/src/main.rs`, `sidecar/src/notify.rs` (export only), `ui/src/pages/BarStrip.tsx`, `ui/src/components/bar/flyouts/WindowsFlyout.tsx`, `sidecar/tests/hyprland_internal_test.rs`, `sidecar/tests/server_http_test.rs`
 
 **Acceptance:** On Hyprland, switching workspace updates bar indicators within one debounced WS tick **without** waiting 1.5s. CI passes without compositor (listener disabled).
 
@@ -164,7 +164,7 @@ sequenceDiagram
 - `Media.GetNowPlaying` — enhanced response
 - `Audio.Media.GetPlayers`, `Audio.Media.PlayPause`, `Audio.Media.Next`, `Audio.Media.Previous` — wire UI only (implementations exist)
 
-**Files:** `sidecar/src/services/mpris.rs`, `sidecar/src/services/audio.rs` (if consolidating), `ui/src/lib/api.ts`, `ui/src/pages/BarStrip.tsx`, `sidecar/tests/fixtures/audio/*`, `sidecar/tests/wave5_media_shapes.rs`
+**Files:** `sidecar/src/services/mpris.rs`, `sidecar/src/services/audio.rs` (if consolidating), `ui/src/lib/api.ts`, `ui/src/pages/BarStrip.tsx`, `sidecar/tests/fixtures/audio/*`, `sidecar/tests/audio_rpc_shapes.rs`
 
 **Acceptance:** Spotify/mpv playing: bar shows note icon **and** play/pause works; paused player hides icon or shows paused state per UX choice. CI: fixture tests only.
 
@@ -176,23 +176,22 @@ sequenceDiagram
 |-------|----------|
 | **Unit** | Hyprland JSON fixtures → typed structs; dispatch allowlist matrix; playerctl status parser; event-line debouncer |
 | **Integration** | `ServiceRegistry` + `call_method` for all `Hyprland.Get*` shape tests; `Media.GetNowPlaying` / `Audio.Media.GetPlayers` shapes; **never** `Hyprland.Dispatch` in default harness |
-| **Temp DB** | Not required for this wave (no new SQLite namespaces) |
-| **HTTP/WS** | Extend `server_http_test.rs` or `wave5_hyprland_events_test.rs`: connect `/ws`, inject `notify::emit("Hyprland.StateChanged", …)`, assert delivery |
+| **Temp DB** | Not required for this slice (no new SQLite namespaces) |
+| **HTTP/WS** | Extend `server_http_test.rs`: connect `/ws`, inject `notify::emit("Hyprland.StateChanged", …)`, assert delivery |
 | **Safety** | Keep `Hyprland.Dispatch`, `Audio.Media.PlayPause|Next|Previous` on `tests/common/mod.rs` deny-list; allowlist tests call validator directly or `call_method_unchecked` under `#[ignore]` with comment |
 | **Manual** | Hyprland: switch workspace, focus window from flyout, play/pause media; confirm bar updates &lt;200ms after WS |
 
-**New test files (proposed):**
+**Delivered test files:**
 
-- `sidecar/tests/wave5_hyprland_shapes.rs`
-- `sidecar/tests/wave5_hyprland_dispatch_test.rs`
-- `sidecar/tests/wave5_hyprland_events_test.rs`
-- `sidecar/tests/wave5_media_shapes.rs`
+- `sidecar/tests/hyprland_rpc_shapes.rs`
+- `sidecar/tests/hyprland_internal_test.rs` (dispatch allowlist + event-line parsing)
+- `sidecar/tests/audio_rpc_shapes.rs` (includes media-related readonly smoke where applicable)
 
-Register readonly methods in `integration_test.rs` (`WAVE5_READONLY_METHODS`) and run `./scripts/sidecar-test-fast.sh` in CI.
+Register readonly methods in `integration_test.rs` (`P0_METHODS` / `READONLY_GAP_FAST`) and run `./scripts/sidecar-test-fast.sh` in CI.
 
 ---
 
-## Housekeeping (end of wave)
+## Housekeeping (end of slice)
 
 - [ ] `scripts/generate-rpc-manifest.sh` if any RPC signature changes (unlikely except error shape)
 - [ ] `scripts/check-api-rpc-contract.sh` — typed `api.ts` exports
@@ -209,11 +208,11 @@ Register readonly methods in `integration_test.rs` (`WAVE5_READONLY_METHODS`) an
 
 | ID | Slice | Description |
 |----|-------|-------------|
-| `w5-hypr-types` | A | DTOs + fixtures + shape tests + TS types |
-| `w5-hypr-dispatch` | B | Allowlist + structured errors + bar audit |
-| `w5-hypr-events` | C | Socket listener + `Hyprland.StateChanged` + bar WS |
-| `w5-media-bar` | D | MPRIS status + api.ts + MediaBlock controls |
-| `w5-housekeeping` | — | manifest, BACKEND_TODO, coverage baseline, README |
+| `hypr-types` | A | DTOs + fixtures + shape tests + TS types |
+| `hypr-dispatch` | B | Allowlist + structured errors + bar audit |
+| `hypr-events` | C | Socket listener + `Hyprland.StateChanged` + bar WS |
+| `media-bar` | D | MPRIS status + api.ts + MediaBlock controls |
+| `housekeeping` | — | manifest, BACKEND_TODO, coverage baseline, README |
 
 Work **one ID per PR** when possible; Slice B before widening `Dispatch` usage in UI.
 
@@ -250,11 +249,11 @@ Work **one ID per PR** when possible; Slice B before widening `Dispatch` usage i
 | **§2.8** Hyprland | Typed JSON, `Dispatch` allowlist, `GetMonitors`, event → WS, unit fixtures, integration tests |
 | **§2.10** MPRIS / media | `GetNowPlaying` accuracy, transport (via `Audio.Media.*` + UI), fixture tests |
 | **§6.1** P0 smoke | `Hyprland.GetWorkspaces` (and related) shape coverage |
-| **§0.7** Test infrastructure | New fixtures dir `hyprland/`, wave5 integration modules |
+| **§0.7** Test infrastructure | New fixtures dir `hyprland/`, `hyprland_rpc_shapes.rs`, `hyprland_internal_test.rs` |
 | **§5** Client sync | `api.ts`, `api-types.ts`, bar components (partial `sidecar.ts` GTK later) |
 | **§0.1** (housekeeping) | Binary path documentation touch-up |
 
-**Not addressed this wave:** §3.3–3.5 (new services), §2.5–2.7, §2.9 shell/polkit, §3.13 dashboard, §2.21 automation fixes, §1 contract table (unless discovered blocking bar).
+**Not addressed this slice:** §3.3–3.5 (new services), §2.5–2.7, §2.9 shell/polkit, §3.13 dashboard, §2.21 automation fixes, §1 contract table (unless discovered blocking bar).
 
 ---
 
@@ -262,10 +261,10 @@ Work **one ID per PR** when possible; Slice B before widening `Dispatch` usage i
 
 1. **Event granularity:** Single `Hyprland.StateChanged` vs separate `Workspace` / `ActiveWindow` / `Clients` events for finer React Query keys?
 2. **Kill / close in allowlist:** Should `killactive` be allowed from bar UI, or only focus/switch workspace in v1?
-3. **`Session.Lock`:** Switch from `loginctl lock-session` to `hyprlock` per ADR — include in Wave 5 housekeeping or defer?
+3. **`Session.Lock`:** Switch from `loginctl lock-session` to `hyprlock` per ADR — shipped in [shell_platform.md](shell_platform.md).
 4. **`Media.*` vs `Audio.Media.*`:** Keep both with docs, or deprecate `Media.GetNowPlaying` in manifest for single namespace?
 5. **Repo canonical path:** Confirm `Engineering/Productivity/ags` vs `~/.config/ags` for CI and `AURA_SIDECAR` defaults on Chris’s machine.
-6. **Calendar bar tile:** Subscribe to a future `Calendar.EventsChanged` in Wave 6, or add read poll invalidation when Wave 4 reminder fires?
+6. **Calendar bar tile:** `Calendar.EventsChanged` — see [shell_platform.md](shell_platform.md).
 
 ---
 

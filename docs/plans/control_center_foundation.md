@@ -1,7 +1,7 @@
-# Wave 3 — Control Center foundation (Notifications, Keybinds, CC aggregates)
+# Control Center foundation (Notifications, Keybinds, CC aggregates)
 
 **Status:** Implemented (2026-05-28)  
-**Depends on:** Wave 1 (Storage, Network, Power), Wave 2 (Bluetooth, Audio, Packages), P0 contract + notify bus  
+**Depends on:** P0 services (Storage, Network, Power, Bluetooth, Audio, Packages), contract + notify bus  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §7 steps 5–6, [ARCHITECTURE_DECISIONS.md](../ARCHITECTURE_DECISIONS.md) §1 (notifications), §6 (keybinds)
 
 ---
@@ -18,15 +18,15 @@ Hyprland file policy (unchanged): only edit **`hyprland_aura.conf`** at repo roo
 
 ---
 
-## Out of scope (Wave 3)
+## Out of scope
 
 | Item | Reason |
 |------|--------|
 | Communication hub / Matrix bridges | Separate app (ADR) |
-| Calendar CalDAV/Google sync | Wave 4+ |
-| VPN state machine / per-app routing | Large slice; own wave |
-| Offensive `Security.Offensive.*` surface | Feature flag + review later |
-| Vicinae / Capture / Settings services | Wave 4–5 per BACKEND_TODO |
+| Calendar CalDAV/Google sync | [calendar_sync_todos.md](calendar_sync_todos.md) |
+| VPN state machine / per-app routing | [vpn_service.md](vpn_service.md) |
+| Offensive `Security.Offensive.*` surface | [offensive_security.md](offensive_security.md) |
+| Vicinae / Capture / Settings services | [launcher_vicinae.md](launcher_vicinae.md), [shell_platform.md](shell_platform.md) |
 | Keybinds **live editor** in React | UI stays reference + optional `Keybinds.List` read-only first |
 | Wiring DND schedule to OS daemon in v1 | Sidecar stores Aura prefs; daemon DND is best-effort via swaync/mako if exposed |
 
@@ -118,13 +118,13 @@ sequenceDiagram
 | D.2 Security tests | Fixture-based tests for `probe_firewall_enabled` / encryption line parser. |
 | D.3 Performance push | Optional background poll (30s) emitting `Performance.MetricsChanged` when CPU/mem/disk delta &gt; threshold; debounced. |
 | D.4 Performance tests | Unit test `read_cpu_temp_c` with sysfs fixture path injection or temp file mock. |
-| D.5 UI | `PerformancePane` + `SecurityPane`: `connectWs` invalidate queries on respective events (same pattern as Wave 2 Bluetooth). |
+| D.5 UI | `PerformancePane` + `SecurityPane`: `connectWs` invalidate queries on respective events (same pattern as Bluetooth pane). |
 
 **Acceptance:** P0 methods unchanged; WS reduces stale metrics without waiting 5s poll only.
 
 ---
 
-## Housekeeping (end of wave)
+## Housekeeping (end of slice)
 
 - [ ] Register new services in `build_registry()`; run `scripts/generate-rpc-manifest.sh` + `scripts/check-api-rpc-contract.sh`
 - [ ] Add P0/P1 methods to `integration_test.rs`: `Notifications.List`, `Keybinds.List`, shape tests
@@ -139,13 +139,13 @@ sequenceDiagram
 
 | ID | Slice | Description |
 |----|-------|-------------|
-| `w3-notify-dbus` | A | notifications.rs: zbus subscriber + store + List/Dismiss/Clear + WS |
-| `w3-notify-ui` | A | api.ts types + NotificationsPane inbox + DND via RPC |
-| `w3-keybinds-parse` | B | keybinds.rs: parse + List/Validate + fixtures |
-| `w3-keybinds-write` | B | aura-binds.conf write path + backup + Reload |
-| `w3-logs-level` | C | journal JSON parser + filters + fixtures |
-| `w3-cc-aggregates` | D | Security probes + Performance WS + pane hooks |
-| `w3-housekeeping` | — | manifest, BACKEND_TODO, README, full test suite |
+| `notify-dbus` | A | notifications.rs: zbus subscriber + store + List/Dismiss/Clear + WS |
+| `notify-ui` | A | api.ts types + NotificationsPane inbox + DND via RPC |
+| `keybinds-parse` | B | keybinds.rs: parse + List/Validate + fixtures |
+| `keybinds-write` | B | aura-binds.conf write path + backup + Reload |
+| `logs-level` | C | journal JSON parser + filters + fixtures |
+| `cc-aggregates` | D | Security probes + Performance WS + pane hooks |
+| `housekeeping` | — | manifest, BACKEND_TODO, README, full test suite |
 
 Work **one ID per PR** or sequential commits; do not skip tests for A/B.
 
@@ -163,16 +163,13 @@ Work **one ID per PR** or sequential commits; do not skip tests for A/B.
 
 ---
 
-## Wave 4 preview (not in this wave)
+## Follow-up plans (not in this slice)
 
-Per [BACKEND_TODO.md](../BACKEND_TODO.md) §7 step 7–8:
-
-1. **Automation + Productivity** — workflow CRUD, `ListRules`/`Trigger` aliases, timer WS, storage-backed tasks.
-2. **Hyprland shell** — `Dispatch` allowlist, workspace/window **event** stream over WS (bar live updates).
-3. **Brightness + session** — OSD path, `Session.Lock` → hyprlock, `Apps.Launch` allowlist.
-4. **Calendar** — CRUD + reminders → notification service.
-
-Pick **one** of (1) or (2) as Wave 4 headline depending on whether Control Center automations or bar compositor sync is higher priority.
+| Plan | Focus |
+|------|--------|
+| [control_center_depth.md](control_center_depth.md) | Automation, Productivity, DevOps, Calendar CRUD |
+| [compositor_bar_live.md](compositor_bar_live.md) | Hyprland WS, dispatch allowlist, media transport |
+| [shell_platform.md](shell_platform.md) | Settings, Capture, calendar push, contract gate |
 
 ---
 

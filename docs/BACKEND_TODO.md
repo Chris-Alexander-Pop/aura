@@ -632,10 +632,13 @@ Full rationale, host probe results, and notification guidance: **[ARCHITECTURE_D
 
 | Date | Item completed | Notes |
 |------|----------------|-------|
-| 2026-05-29 | Wave 5 — Hyprland typed RPCs, dispatch allowlist, WS bar sync, media transport | See `docs/plans/wave_5_compositor_bar_live.md` |
-| 2026-05-29 | Wave 4 — DevOps, Automation, Productivity, Calendar | See `docs/plans/wave_4_control_center_depth.md` |
-| 2026-05-28 | Wave 3 — Notifications, Keybinds, Logs/Security/Performance | |
+| 2026-05-30 | Shell platform — Settings, Capture, contract gate, Calendar WS, Session.Lock | [docs/plans/shell_platform.md](plans/shell_platform.md) |
+| 2026-05-29 | Compositor bar — Hyprland typed RPCs, dispatch allowlist, WS, media transport | [docs/plans/compositor_bar_live.md](plans/compositor_bar_live.md) |
+| 2026-05-29 | Control Center depth — DevOps, Automation, Productivity, Calendar | [docs/plans/control_center_depth.md](plans/control_center_depth.md) |
+| 2026-05-28 | Control Center foundation — Notifications, Keybinds, Logs/Security/Performance | [docs/plans/control_center_foundation.md](plans/control_center_foundation.md) |
 | 2026-05-28 | Test harness + ~47% coverage | `sidecar-test-fast.sh`, contract tests |
+
+**Remaining work:** see [docs/plans/README.md](plans/README.md).
 
 ---
 

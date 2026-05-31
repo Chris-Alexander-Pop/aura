@@ -17,7 +17,7 @@
 
 ## Known technical gaps (concise)
 
-- **Keybind management:** `keybinds.rs` service exists (Wave 3); UI supports live load + `aura-binds.conf` writes. Full editor UX still evolving.
+- **Keybind management:** `keybinds.rs` service exists; UI supports live load + `aura-binds.conf` writes. Full editor UX still evolving.
 - **Depth vs breadth:** many sidecar services exist; the corresponding **UIs** are still mostly **stubs** except where noted in the control center. Details belong in the relevant [docs/roadmap/](roadmap/) page, not duplicated here.
 - **Stack & product decisions:** resolved choices (Arch-only packages, Podman, notifications D-Bus, etc.) live in [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md); implementation backlog in [BACKEND_TODO.md](BACKEND_TODO.md).
 

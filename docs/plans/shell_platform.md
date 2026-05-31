@@ -1,7 +1,7 @@
-# Wave 6 — Shell platform (P0 contracts, Settings, Capture, Calendar push)
+# Shell platform (P0 contracts, Settings, Capture, Calendar push)
 
 **Status:** Implemented (2026-05-30)  
-**Depends on:** Wave 5 (Hyprland WS, `notify` bus, typed `api-types.ts`), Wave 4 (Calendar CRUD + reminder tick), contract scripts (`check-api-rpc-contract.sh`, `rpc-manifest.json`)  
+**Depends on:** [compositor_bar_live.md](compositor_bar_live.md), [control_center_depth.md](control_center_depth.md), contract scripts (`check-api-rpc-contract.sh`, `rpc-manifest.json`)  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §1, §3.4–3.5, §2.9 (partial), §2.23 (push), §6.1–6.2, §0.1; [top-dropdown.md](../roadmap/top-dropdown.md) (settings schema prerequisite)
 
 **Repo:** `/home/user/Engineering/Productivity/ags` (canonical)
@@ -10,36 +10,36 @@
 
 ## Goal
 
-Close the **platform gaps** that block a coherent shell experience after Waves 4–5:
+Close the **platform gaps** that block a coherent shell experience after control-center depth and compositor bar work:
 
 1. **P0 API contract gate** — every `api.ts` method resolves cleanly; `rpc_contract_test` and pane smoke tests green on CI stub env.
 2. **`settings.rs`** — persist Aura layout/theme/panel prefs in SQLite; expose `Settings.Get` / `Set` / `GetSchema` for the control center (replace read-only aggregation-only story).
 3. **`capture.rs`** — grim/slurp screenshots and wf-recorder recording with allowlisted command assembly (no surprise exec in tests).
-4. **`Calendar.EventsChanged`** — WebSocket invalidation for calendar bar tile + control center (finish Wave 5 open question #6).
+4. **`Calendar.EventsChanged`** — WebSocket invalidation for calendar bar tile + control center.
 5. **Session lock** — `Session.Lock` → `hyprlock` per ADR (small, safe follow-up).
 
-This wave is **shell infrastructure**, not launcher/Vicinae, VPN state machine, or dashboard aggregation.
+This slice is **shell infrastructure**, not launcher/Vicinae, VPN state machine, or dashboard aggregation.
 
 ---
 
-## Non-goals (Wave 6)
+## Non-goals
 
 | Item | Reason / defer to |
 |------|-------------------|
-| `launcher.rs` / Vicinae (`§3.3`) | Needs Vicinae socket/RPC product contract — **Wave 7** |
-| `dashboard.rs` / `Dashboard.GetQuickStatus` (`§3.13`) | Requires Settings schema + module registry — **Wave 7–8** |
-| VPN connect/disconnect state machine (`§2.7`) | Privileged, large — dedicated wave |
+| `launcher.rs` / Vicinae (`§3.3`) | [launcher_vicinae.md](launcher_vicinae.md) |
+| `dashboard.rs` / `Dashboard.GetQuickStatus` (`§3.13`) | [dashboard_aggregation.md](dashboard_aggregation.md) |
+| VPN connect/disconnect state machine (`§2.7`) | Privileged, large — dedicated plan |
 | `todos.rs` (`§3.6`) | CalDAV/NL parsing scope — after Settings |
 | `vault.rs` (`§3.7`) | P3 greenfield |
 | `Communication` hub depth (`§2.22`) | ADR: separate app; keep stub counts only |
-| Multi-monitor `Brightness.*` rewrite (`§2.5`) | Sidebar OSD wave |
+| Multi-monitor `Brightness.*` rewrite (`§2.5`) | Sidebar OSD plan |
 | Hyprland rules / multitasking UI (`§3.12`) | Extends `hyprland.rs` later |
-| Full Google/CalDAV sync (`§2.23`) | OAuth + sync is **Wave 8+** |
-| §2.17 offensive security expansion | Feature-flag wave |
+| Full Google/CalDAV sync (`§2.23`) | [calendar_sync_todos.md](calendar_sync_todos.md) |
+| §2.17 offensive security expansion | [offensive_security.md](offensive_security.md) |
 
 ---
 
-## Prerequisites (Waves 4–5)
+## Prerequisites
 
 | Prerequisite | Why |
 |--------------|-----|
@@ -47,7 +47,7 @@ This wave is **shell infrastructure**, not launcher/Vicinae, VPN state machine, 
 | `notify::emit` + `connectWs` in UI | `Calendar.EventsChanged` |
 | `sidecar/tests/common/mod.rs` deny-list | Capture/Session mutating RPCs stay off default harness |
 | `SettingsPane.tsx` exists (read-only aggregates) | Becomes consumer of real `Settings.*` RPCs |
-| Wave 5 bar `CalendarPreviewBlock` | WS invalidation target |
+| Bar `CalendarPreviewBlock` | WS invalidation target |
 
 ---
 
@@ -86,7 +86,7 @@ flowchart LR
 
 ## Test file policy
 
-**Do not** add `waveN_*` test crates. Name tests by **domain**, matching the existing layout under `sidecar/tests/`:
+**Do not** add numbered bucket test crates. Name tests by **domain**, matching the existing layout under `sidecar/tests/`:
 
 | Pattern | Examples already in repo |
 |---------|--------------------------|
@@ -97,7 +97,7 @@ flowchart LR
 | `server_http_test.rs` | WebSocket push delivery |
 | `#[cfg(test)]` in service module | Pure logic (merge, argv builders, debounce) — no registry needed |
 
-Extend existing files where the behavior belongs; add a new integration crate only when it is a distinct domain (e.g. `settings_storage_test.rs`), not a wave bucket.
+Extend existing files where the behavior belongs; add a new integration crate only when it is a distinct domain (e.g. `settings_storage_test.rs`), not a catch-all bucket.
 
 ---
 
@@ -186,7 +186,7 @@ Extend existing files where the behavior belongs; add a new integration crate on
 
 ### Slice D — Calendar WebSocket push — **P1**
 
-**Problem:** Wave 4 reminder tick writes notifications but bar/calendar panes still poll ([Wave 5 open Q6](../plans/wave_5_compositor_bar_live.md)).
+**Problem:** Calendar reminder tick writes notifications but bar/calendar panes may still poll until WS invalidation lands (see [compositor_bar_live.md](compositor_bar_live.md) open questions).
 
 | Task | Details |
 |------|---------|
@@ -203,7 +203,7 @@ Extend existing files where the behavior belongs; add a new integration crate on
 
 ### Slice E — Session lock (`hyprlock`) — **P2** (small)
 
-**Problem:** ADR specifies `hyprlock`; `Session.Lock` may still use `loginctl` ([§2.9](../BACKEND_TODO.md), Wave 5 open Q3).
+**Problem:** ADR specifies `hyprlock`; `Session.Lock` may still use `loginctl` ([§2.9](../BACKEND_TODO.md)).
 
 | Task | Details |
 |------|---------|
@@ -232,7 +232,7 @@ Extend existing files where the behavior belongs; add a new integration crate on
 
 ---
 
-## Housekeeping (end of wave)
+## Housekeeping (end of slice)
 
 - [ ] `scripts/generate-rpc-manifest.sh` + `check-api-rpc-contract.sh`
 - [ ] Update [BACKEND_TODO.md](../BACKEND_TODO.md) §1, §3.4, §3.5, §2.9, §2.23, §9 progress log
@@ -246,12 +246,12 @@ Extend existing files where the behavior belongs; add a new integration crate on
 
 | ID | Slice | Description |
 |----|-------|-------------|
-| `w6-contract` | A | P0 contract + `rpc_contract_test` green |
-| `w6-settings` | B | `settings.rs` + SettingsPane persistence |
-| `w6-capture` | C | `capture.rs` + argv tests |
-| `w6-calendar-ws` | D | `Calendar.EventsChanged` + UI invalidation |
-| `w6-session-lock` | E | `hyprlock` for `Session.Lock` |
-| `w6-housekeeping` | — | docs, manifest, coverage |
+| `contract-gate` | A | P0 contract + `rpc_contract_test` green |
+| `settings-svc` | B | `settings.rs` + SettingsPane persistence |
+| `capture-svc` | C | `capture.rs` + argv tests |
+| `calendar-ws` | D | `Calendar.EventsChanged` + UI invalidation |
+| `session-lock` | E | `hyprlock` for `Session.Lock` |
+| `housekeeping` | — | docs, manifest, coverage |
 
 Work **A first** (unblocks CI), then **B** (unblocks future dropdown), **D** (quick win), **C**, **E**.
 
