@@ -12,3 +12,4 @@ rg -o 'registry\.register\("([^"]+)"' "$ROOT/sidecar/src/services" --no-filename
   | jq -R -s 'split("\n") | map(select(length > 0))' > "$TMP"
 mv "$TMP" "$OUT"
 echo "Wrote $OUT ($(jq 'length' "$OUT") methods)"
+"${ROOT}/scripts/generate-openapi.sh"

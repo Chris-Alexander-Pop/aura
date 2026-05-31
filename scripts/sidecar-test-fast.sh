@@ -11,6 +11,7 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 "${ROOT}/scripts/generate-rpc-manifest.sh"
+"${ROOT}/scripts/generate-openapi.sh"
 "${ROOT}/scripts/check-api-rpc-contract.sh"
 
 cd "${ROOT}/sidecar"

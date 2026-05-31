@@ -17,7 +17,16 @@ System packages (Arch): `libssl-dev` / `openssl` + `pkg-config` for `openssl-sys
 ```bash
 ./target/debug/ags-sidecar
 # HTTP: http://127.0.0.1:9080/api/Power.GetBatteryState
+# API docs (Swagger UI): http://127.0.0.1:9080/docs
+# OpenAPI spec: http://127.0.0.1:9080/api/openapi.json
 # CLI helper: ./target/debug/ags-sidecar client Power.GetBatteryState
+```
+
+Regenerate the OpenAPI spec after adding RPC methods:
+
+```bash
+./scripts/generate-rpc-manifest.sh
+./scripts/generate-openapi.sh
 ```
 
 ### Environment variables

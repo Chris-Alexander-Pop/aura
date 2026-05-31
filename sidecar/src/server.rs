@@ -7,8 +7,8 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path, State,
     },
-    http::Method,
-    response::{IntoResponse, Response},
+    http::{header, Method},
+    response::{Html, IntoResponse, Response},
     routing::get,
     Json, Router,
 };
@@ -60,6 +60,8 @@ pub fn app_router(state: AppState, ui_dist: &std::path::Path) -> Router {
 
     Router::new()
         .route("/ws", get(ws_handler))
+        .route("/docs", get(docs_handler))
+        .route("/api/openapi.json", get(openapi_handler))
         .route("/api/meta", get(meta_handler))
         .route("/api/:method", get(handle_get).post(handle_post))
         .nest_service("/", ServeDir::new(ui_dist))
@@ -99,6 +101,18 @@ pub async fn run(registry: Arc<Mutex<ServiceRegistry>>, notify_tx: NotifyTx) -> 
 }
 
 // ── REST handlers ────────────────────────────────────────────────────────────
+
+async fn openapi_handler() -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        crate::openapi::OPENAPI_JSON,
+    )
+        .into_response()
+}
+
+async fn docs_handler() -> Html<&'static str> {
+    Html(crate::openapi::DOCS_HTML)
+}
 
 async fn meta_handler() -> Response {
     #[cfg(feature = "offensive-security")]

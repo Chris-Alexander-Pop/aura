@@ -122,6 +122,50 @@ async fn ws_push_round_trip(
 }
 
 #[tokio::test]
+async fn http_get_openapi_json() {
+    let (notify_tx, _) = tokio::sync::broadcast::channel(8);
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let body: serde_json::Value = client
+        .get(format!("http://{addr}/api/openapi.json"))
+        .send()
+        .await
+        .expect("GET openapi")
+        .json()
+        .await
+        .expect("json");
+
+    assert_eq!(body["openapi"], "3.1.0");
+    assert!(body["paths"]["/api/{method}"].is_object());
+    assert!(body["paths"]["/api/meta"].is_object());
+    assert!((body["x-rpc-methods"].as_array().unwrap().len()) >= 280);
+
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn http_get_docs_html() {
+    let (notify_tx, _) = tokio::sync::broadcast::channel(8);
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .get(format!("http://{addr}/docs"))
+        .send()
+        .await
+        .expect("GET docs");
+    assert!(res.status().is_success());
+    let html = res.text().await.expect("html");
+    assert!(html.contains("swagger-ui"));
+    assert!(html.contains("/api/openapi.json"));
+
+    server_task.abort();
+}
+
+#[tokio::test]
 async fn http_get_sidecar_get_version() {
     assert_safe_rpc_method("Sidecar.GetVersion");
     let (notify_tx, _) = tokio::sync::broadcast::channel(8);
