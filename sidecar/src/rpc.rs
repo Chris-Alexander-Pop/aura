@@ -119,16 +119,44 @@ pub fn create_error_response(
     code: i32,
     message: String,
 ) -> JsonRpcResponse {
+    create_error_response_with_data(id, code, message, None)
+}
+
+pub fn create_error_response_with_data(
+    id: Option<serde_json::Value>,
+    code: i32,
+    message: String,
+    data: Option<serde_json::Value>,
+) -> JsonRpcResponse {
     JsonRpcResponse {
         jsonrpc: "2.0".to_string(),
         result: None,
         error: Some(JsonRpcError {
             code,
             message,
-            data: None,
+            data,
         }),
         id,
     }
+}
+
+/// Map registry errors to JSON-RPC responses (`METHOD_NOT_FOUND` vs `INTERNAL_ERROR`).
+pub fn error_response_for_registry_err(
+    id: Option<serde_json::Value>,
+    err: &anyhow::Error,
+) -> JsonRpcResponse {
+    if let Some(not_found) = err.downcast_ref::<crate::services::MethodNotFound>() {
+        return create_error_response_with_data(
+            id,
+            error_codes::METHOD_NOT_FOUND,
+            not_found.to_string(),
+            Some(serde_json::json!({
+                "code": "method_not_found",
+                "method": not_found.0,
+            })),
+        );
+    }
+    create_error_response(id, error_codes::INTERNAL_ERROR, err.to_string())
 }
 
 pub fn create_success_response(
@@ -147,6 +175,8 @@ pub fn create_success_response(
 mod tests {
     use super::*;
     use crate::build_registry;
+    use crate::services::MethodNotFound;
+    use crate::types::error_codes;
     use serde_json::json;
     use std::io::Cursor;
     use tokio::sync::mpsc;
@@ -160,6 +190,16 @@ mod tests {
         let err = create_error_response(Some(json!(2)), -32603, "boom".into());
         assert!(err.result.is_none());
         assert_eq!(err.error.unwrap().message, "boom");
+    }
+
+    #[test]
+    fn error_response_for_unknown_method_is_structured() {
+        let err = anyhow::Error::new(MethodNotFound("Foo.Bar".into()));
+        let response = error_response_for_registry_err(Some(json!(3)), &err);
+        let error = response.error.expect("error");
+        assert_eq!(error.code, error_codes::METHOD_NOT_FOUND);
+        assert_eq!(error.data.as_ref().unwrap()["method"], "Foo.Bar");
+        assert_eq!(error.data.as_ref().unwrap()["code"], "method_not_found");
     }
 
     #[tokio::test]
@@ -200,11 +240,7 @@ mod tests {
                 let result = registry.handle_request(request).await;
                 let response = match result {
                     Ok(value) => create_success_response(id, value),
-                    Err(e) => create_error_response(
-                        id,
-                        error_codes::INTERNAL_ERROR,
-                        e.to_string(),
-                    ),
+                    Err(e) => error_response_for_registry_err(id, &e),
                 };
                 let _ = response_tx.send(response);
             }

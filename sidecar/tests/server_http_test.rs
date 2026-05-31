@@ -201,3 +201,17 @@ async fn websocket_receives_calendar_events_changed() {
     .await;
     assert_eq!(v["params"]["reason"], "create");
 }
+
+#[tokio::test]
+async fn websocket_receives_power_battery_state() {
+    let notify_tx = test_notify_bus();
+    let v = ws_push_round_trip(
+        &notify_tx,
+        "Power.BatteryState",
+        json!({ "percent": 72, "charging": false, "time_remaining": "3h" }),
+    )
+    .await;
+    assert_eq!(v["params"]["percent"], 72);
+    assert_eq!(v["params"]["charging"], false);
+    assert_eq!(v["params"]["time_remaining"], "3h");
+}

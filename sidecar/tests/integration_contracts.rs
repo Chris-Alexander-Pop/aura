@@ -5,6 +5,7 @@ mod common;
 
 use ags_sidecar::contract_parsers::{
     bluetoothctl_device_not_found, build_network_status_from_nmcli, compute_time_remaining_from_sysfs,
+    parse_battery_charging,
     cpu_usage_from_samples, format_minutes, format_time_from_energy, git_status_dirty,
     parse_controller_list_line, parse_cron_line, parse_ddc_vcp_brightness, parse_device_info,
     parse_device_line, parse_devices, parse_devices_list_address, parse_df_storage_usage,
@@ -409,6 +410,39 @@ fn contract_power_zero_time_to_empty_sysfs_branch() {
     assert_eq!(
         compute_time_remaining_from_sysfs(false, None, Some(0), None, None),
         "Unknown"
+    );
+}
+
+#[test]
+fn contract_power_supply_sysfs_fixture_discharging() {
+    let status = load_fixture("power_supply/status_discharging.txt");
+    assert!(!parse_battery_charging(Some(status.trim())));
+    let energy: u64 = load_fixture("power_supply/energy_now.txt")
+        .trim()
+        .parse()
+        .expect("energy_now");
+    let power: u64 = load_fixture("power_supply/power_now.txt")
+        .trim()
+        .parse()
+        .expect("power_now");
+    assert_eq!(
+        compute_time_remaining_from_sysfs(false, None, None, Some(energy), Some(power)),
+        "3h"
+    );
+    let capacity: u8 = load_fixture("power_supply/capacity.txt")
+        .trim()
+        .parse()
+        .expect("capacity");
+    assert_eq!(capacity, 72);
+}
+
+#[test]
+fn contract_power_supply_sysfs_fixture_charging_time_to_full() {
+    let status = load_fixture("power_supply/status_charging.txt");
+    assert!(parse_battery_charging(Some(status.trim())));
+    assert_eq!(
+        compute_time_remaining_from_sysfs(true, Some(3600), None, None, None),
+        "1h"
     );
 }
 

@@ -4,7 +4,10 @@
 
 mod common;
 
-use common::{call_method, call_rpc, test_registry};
+use common::{
+    call_method, call_rpc, is_denied_rpc_method, is_safe_readonly_rpc, load_api_ts_methods,
+    test_registry,
+};
 use common::setup_temp_storage_db;
 use serde_json::{json, Value};
 
@@ -717,6 +720,19 @@ const READONLY_GAP_SLOW_HOST: &[&str] = &[
     "Weather.GetHourly",
 ];
 
+fn api_ts_rpc_params(method: &str) -> Option<Value> {
+    match method {
+        "Calendar.GetEvents" => Some(json!({ "days": 7 })),
+        "Calendar.GetUpcomingEvents" => Some(json!({ "limit": 5, "days": 14 })),
+        "Keybinds.List" => None,
+        "Notifications.List" => Some(json!({ "limit": 5 })),
+        "Brightness.Get" => Some(json!({ "monitor": "eDP-1" })),
+        "Process.ListTop" => Some(json!({ "limit": 5 })),
+        "Automation.GetWorkflowHistory" => Some(json!({ "workflow_id": "fixture" })),
+        _ => readonly_rpc_params(method),
+    }
+}
+
 fn readonly_rpc_params(method: &str) -> Option<Value> {
     match method {
         "Packages.Search" => Some(json!({ "query": "linux" })),
@@ -806,6 +822,33 @@ async fn assert_readonly_gap_methods_resolve(methods: &[&str]) {
 #[tokio::test]
 async fn readonly_gap_methods_resolve() {
     assert_readonly_gap_methods_resolve(READONLY_GAP_FAST).await;
+}
+
+/// One `call_method` per read-safe `ui/src/lib/api.ts` RPC (skips deny-list and mutating verbs).
+#[tokio::test]
+async fn api_ts_readonly_methods_resolve() {
+    let registry = test_registry();
+    let methods: Vec<String> = load_api_ts_methods()
+        .into_iter()
+        .filter(|m| is_safe_readonly_rpc(m) && !is_denied_rpc_method(m))
+        .collect();
+    assert!(!methods.is_empty(), "expected read-only api.ts RPC methods");
+
+    for method in methods {
+        let params = resolve_readonly_params(&registry, &method)
+            .await
+            .or_else(|| api_ts_rpc_params(&method));
+        let result = call_method(&registry, &method, params).await;
+        if readonly_gap_optional_skip(&method, &result) {
+            continue;
+        }
+        assert!(
+            result.is_ok(),
+            "api.ts method {} failed: {:?}",
+            method,
+            result.err()
+        );
+    }
 }
 
 #[tokio::test]

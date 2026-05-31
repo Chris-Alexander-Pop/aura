@@ -1,4 +1,5 @@
 use crate::services::ServiceRegistry;
+use crate::services::MethodNotFound;
 use crate::types::JsonRpcRequest;
 use anyhow::Result;
 use axum::{
@@ -130,6 +131,19 @@ async fn call_service(state: AppState, method: String, params: Option<Value>) ->
     match result {
         Ok(value) => Json(json!({ "ok": true, "data": value })).into_response(),
         Err(e) => {
+            if let Some(not_found) = e.downcast_ref::<MethodNotFound>() {
+                tracing::debug!("Unknown RPC method: {}", not_found.0);
+                return (
+                    axum::http::StatusCode::NOT_FOUND,
+                    Json(json!({
+                        "ok": false,
+                        "error": not_found.to_string(),
+                        "code": "method_not_found",
+                        "method": not_found.0,
+                    })),
+                )
+                    .into_response();
+            }
             let msg = e.to_string();
             tracing::warn!("Service error for {}: {}", method, msg);
             (

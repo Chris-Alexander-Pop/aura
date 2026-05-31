@@ -20,6 +20,7 @@ pub mod communication;
 pub mod fitness;
 pub mod hyprland;
 pub mod shell;
+pub mod lock;
 pub mod mpris;
 pub mod processes;
 pub mod notifications;
@@ -31,7 +32,20 @@ use crate::types::JsonRpcRequest;
 use anyhow::Result;
 use serde_json;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
+
+/// Unknown JSON-RPC method (maps to `error_codes::METHOD_NOT_FOUND`).
+#[derive(Debug, Clone)]
+pub struct MethodNotFound(pub String);
+
+impl fmt::Display for MethodNotFound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Method not found: {}", self.0)
+    }
+}
+
+impl std::error::Error for MethodNotFound {}
 
 pub type AsyncHandler = Arc<
     dyn Fn(Option<serde_json::Value>) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<serde_json::Value>> + Send>> + Send + Sync,
@@ -66,7 +80,7 @@ impl ServiceRegistry {
         if let Some(handler) = self.handlers.get(&method) {
             handler(params).await
         } else {
-            anyhow::bail!("Method not found: {}", method);
+            Err(anyhow::Error::new(MethodNotFound(method)))
         }
     }
 }

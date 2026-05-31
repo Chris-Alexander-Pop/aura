@@ -1,7 +1,7 @@
 use ags_sidecar::build_registry;
 use ags_sidecar::notify;
-use ags_sidecar::rpc::{create_error_response, create_success_response, RpcServer};
-use ags_sidecar::types::{error_codes, JsonRpcRequest, JsonRpcResponse};
+use ags_sidecar::rpc::{create_success_response, error_response_for_registry_err, RpcServer};
+use ags_sidecar::types::{JsonRpcRequest, JsonRpcResponse};
 use anyhow::Result;
 use serde_json;
 use std::env;
@@ -47,11 +47,7 @@ async fn run_server() -> Result<()> {
             let result = registry.handle_request(request).await;
             let response = match result {
                 Ok(value) => create_success_response(request_id, value),
-                Err(e) => create_error_response(
-                    request_id,
-                    error_codes::INTERNAL_ERROR,
-                    e.to_string(),
-                ),
+                Err(e) => error_response_for_registry_err(request_id, &e),
             };
             let _ = response_tx.send(response);
         }

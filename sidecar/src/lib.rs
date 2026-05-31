@@ -33,6 +33,7 @@ pub fn build_registry() -> ServiceRegistry {
     services::fitness::register(&mut registry);
     services::hyprland::register(&mut registry);
     services::shell::register(&mut registry);
+    services::lock::register(&mut registry);
     services::mpris::register(&mut registry);
     services::processes::register(&mut registry);
     services::notifications::register(&mut registry);
@@ -103,6 +104,10 @@ pub mod contract_parsers {
             energy_now,
             power_now,
         )
+    }
+
+    pub fn parse_battery_charging(status: Option<&str>) -> bool {
+        crate::services::power::parse_battery_charging(status)
     }
 
     pub fn parse_devices(output: &str) -> (Vec<AudioDevice>, Vec<AudioDevice>) {

@@ -127,6 +127,9 @@ const DENIED_EXACT: &[&str] = &[
     "Capture.RecordStop",
     "Settings.Set",
     "Settings.Reset",
+    "Lock.SetConfig",
+    "Lock.TestFingerprint",
+    "Sleep.Inhibit",
     "Productivity.CancelTimer",
     "Productivity.CreatePomodoro",
     "Productivity.CreateTask",
@@ -171,6 +174,8 @@ pub fn denied_rpc_reason(method: &str) -> Option<&'static str> {
         "Session.Lock" | "Session.Logout" | "Session.PowerOff" | "Session.Reboot" | "Session.Suspend" => {
             Some("session / power action")
         }
+        "Lock.SetConfig" | "Lock.TestFingerprint" => Some("mutates lock screen prefs or runs fingerprint verify"),
+        "Sleep.Inhibit" => Some("holds logind sleep inhibitor"),
         "Vpn.Connect" | "Vpn.Disconnect" => Some("mutates VPN connection"),
         m if m.starts_with("Session.") => Some("session / power action"),
         m if m.starts_with("Security.Offensive.") => Some("offensive security tooling"),
@@ -305,6 +310,47 @@ pub fn assert_json_object_keys(value: &Value, keys: &[&str]) {
     for key in keys {
         assert!(obj.contains_key(*key), "missing key {key}");
     }
+}
+
+/// Load RPC method names referenced in `ui/src/lib/api.ts`.
+pub fn load_api_ts_methods() -> std::collections::BTreeSet<String> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ui/src/lib/api.ts");
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let re = regex::Regex::new(
+        r#""((?:Power|Network|Bluetooth|Audio|System|Weather|Vpn|Calendar|Packages|Notifications|Keybinds|Logs|Security|Performance|DevOps|Productivity|Automation|Communication|Fitness|Brightness|Hyprland|Session|Aura|Apps|Media|Process|Settings|Capture)\.[A-Za-z]+)""#,
+    )
+    .expect("api method regex");
+    re.captures_iter(&text)
+        .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
+        .collect()
+}
+
+/// Heuristic: read-only RPC safe for default integration `call_method` sweeps.
+pub fn is_safe_readonly_rpc(method: &str) -> bool {
+    if is_denied_rpc_method(method) {
+        return false;
+    }
+    let verb = method.rsplit('.').next().unwrap_or("");
+    const MUTATING: &[&str] = &[
+        "Set", "Create", "Delete", "Update", "Install", "Remove", "Upgrade", "Connect",
+        "Disconnect", "Forget", "Toggle", "Enable", "Disable", "Launch", "Kill", "Start",
+        "Stop", "Restart", "Apply", "Load", "Save", "Import", "Clear", "Dismiss", "Invoke",
+        "Run", "Pull", "Pair", "Sync", "Mark", "Send", "Mute", "Capture", "Add", "Reload",
+        "Refresh", "Route", "Follow", "Export", "Unset", "PowerOff", "Logout", "Lock",
+        "Reboot", "Suspend", "ScanPorts", "Trigger", "Inhibit", "TestFingerprint",
+    ];
+    if MUTATING.iter().any(|v| verb == *v || verb.starts_with(v)) {
+        return false;
+    }
+    verb.starts_with("Get")
+        || verb.starts_with("List")
+        || verb.starts_with("Validate")
+        || verb.starts_with("Scan")
+        || verb.starts_with("Search")
+        || verb.starts_with("Filter")
+        || verb == "IsEnabled"
+        || verb == "ExportIcs"
 }
 
 /// Collect RPC method names invoked via [`call_method`] / [`call_rpc`] in integration test sources.
