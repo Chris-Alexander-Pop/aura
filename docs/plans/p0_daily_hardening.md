@@ -1,6 +1,6 @@
 # P0 daily-use hardening (Power, Network, Audio, Brightness, System)
 
-**Status:** Planned  
+**Status:** Implemented (2026-05-31)  
 **Depends on:** [control_center_foundation.md](control_center_foundation.md), [foundation_contracts.md](foundation_contracts.md) (fixtures)  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §2.1–2.6, §2.5, §6.1
 

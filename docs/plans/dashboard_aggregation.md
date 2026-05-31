@@ -1,6 +1,6 @@
 # Dashboard and sidebar aggregation
 
-**Status:** Planned  
+**Status:** Implemented (2026-05-31)  
 **Depends on:** [shell_platform.md](shell_platform.md) (`Settings.*` module ids), compositor bar WS patterns  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §3.13, [top-dropdown.md](../roadmap/top-dropdown.md), [sidebar.md](../roadmap/sidebar.md)
 
