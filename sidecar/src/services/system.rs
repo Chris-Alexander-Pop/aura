@@ -3,7 +3,7 @@ use crate::types::SystemStats;
 use crate::utils::process;
 use anyhow::Result;
 use serde_json;
-use sysinfo::{System, SystemExt};
+use sysinfo::{CpuExt, System, SystemExt};
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
 
@@ -30,8 +30,12 @@ pub fn register(registry: &mut ServiceRegistry) {
         sys.refresh_cpu();
         sys.refresh_memory();
 
-        // Calculate CPU usage
         let cpu_usage = calculate_cpu_usage().await;
+        let cpu_usage = if cpu_usage > 0.0 {
+            cpu_usage
+        } else {
+            cpu_usage_from_sysinfo(&sys)
+        };
 
         // Get RAM usage
         let mem_total = sys.total_memory();
@@ -61,6 +65,16 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         Ok(serde_json::to_value(stats)?)
     });
+}
+
+/// Average per-core usage from sysinfo (0.0–1.0) after `refresh_cpu`.
+fn cpu_usage_from_sysinfo(sys: &System) -> f64 {
+    let cpus = sys.cpus();
+    if cpus.is_empty() {
+        return 0.0;
+    }
+    let sum: f64 = cpus.iter().map(|c| c.cpu_usage() as f64).sum();
+    (sum / cpus.len() as f64 / 100.0).max(0.0).min(1.0)
 }
 
 async fn calculate_cpu_usage() -> f64 {
@@ -260,5 +274,11 @@ mod tests {
         assert!((parse_nvidia_gpu_utilization("42\n").unwrap() - 0.42).abs() < f64::EPSILON);
         assert!(parse_nvidia_gpu_utilization("\n").is_none());
         assert!((parse_sysfs_gpu_busy_percent("80\n").unwrap() - 0.8).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn cpu_usage_from_sysinfo_empty_cpus() {
+        let sys = System::new();
+        assert_eq!(cpu_usage_from_sysinfo(&sys), 0.0);
     }
 }

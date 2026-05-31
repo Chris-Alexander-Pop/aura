@@ -1,0 +1,2 @@
+intel_backlight,backlight,12121,50%,24242
+eDP-1,backlight,80,80%,100

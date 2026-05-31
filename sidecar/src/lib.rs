@@ -39,6 +39,7 @@ pub fn build_registry() -> ServiceRegistry {
     services::notifications::register(&mut registry);
     services::keybinds::register(&mut registry);
     services::settings::register(&mut registry);
+    services::dashboard::register(&mut registry);
     services::capture::register(&mut registry);
     registry
 }
@@ -292,6 +293,14 @@ pub mod contract_parsers {
 
     pub fn parse_ddc_vcp_brightness(output: &str) -> Option<f64> {
         crate::services::brightness::parse_ddc_vcp_brightness(output)
+    }
+
+    pub fn parse_brightnessctl_list(output: &str) -> Vec<(String, f64)> {
+        crate::services::brightness::parse_brightnessctl_list(output)
+    }
+
+    pub fn parse_brightnessctl_machine_line(line: &str) -> Option<(String, f64)> {
+        crate::services::brightness::parse_brightnessctl_machine_line(line)
     }
 
     pub fn build_list_top_json(

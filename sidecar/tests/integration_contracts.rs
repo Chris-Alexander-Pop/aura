@@ -7,7 +7,8 @@ use ags_sidecar::contract_parsers::{
     bluetoothctl_device_not_found, build_network_status_from_nmcli, compute_time_remaining_from_sysfs,
     parse_battery_charging,
     cpu_usage_from_samples, format_minutes, format_time_from_energy, git_status_dirty,
-    parse_controller_list_line, parse_cron_line, parse_ddc_vcp_brightness, parse_device_info,
+    parse_brightnessctl_list, parse_brightnessctl_machine_line, parse_controller_list_line,
+    parse_cron_line, parse_ddc_vcp_brightness, parse_device_info,
     parse_device_line, parse_devices, parse_devices_list_address, parse_df_storage_usage,
     parse_docker_image_line, parse_networks, parse_pacman_q, parse_pacman_qu, parse_pacman_search,
     parse_powerprofilesctl_output, parse_proc_stat_cpu, parse_saved_connections,
@@ -381,6 +382,26 @@ fn contract_devops_timers_images_git_cron_fixtures() {
 fn contract_brightness_ddc_vcp_fixture() {
     let b = parse_ddc_vcp_brightness(&load_fixture("brightness/ddcutil_getvcp.txt")).expect("vcp");
     assert!((b - 0.5).abs() < f64::EPSILON);
+}
+
+#[test]
+fn contract_brightness_brightnessctl_list_fixture() {
+    let devices = parse_brightnessctl_list(&load_fixture("brightness/brightnessctl_list.txt"));
+    assert_eq!(devices.len(), 2);
+    assert_eq!(devices[0].0, "intel_backlight");
+    assert!((devices[0].1 - 0.5).abs() < f64::EPSILON);
+    assert_eq!(devices[1].0, "eDP-1");
+}
+
+#[test]
+fn contract_brightness_brightnessctl_machine_fixture() {
+    let text = load_fixture("brightness/brightnessctl_machine.txt");
+    let parsed: Vec<_> = text
+        .lines()
+        .filter_map(parse_brightnessctl_machine_line)
+        .collect();
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(parsed[0].0, "intel_backlight");
 }
 
 #[test]
