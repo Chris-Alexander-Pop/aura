@@ -1,5 +1,5 @@
 use crate::services::ServiceRegistry;
-use crate::utils::{process, storage};
+use crate::utils::{privileged, process, storage};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -304,6 +304,110 @@ pub(crate) async fn probe_fprintd_available() -> bool {
         .unwrap_or(false)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FingerprintEntry {
+    pub id: u32,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PasswordPolicyStatus {
+    pub max_days_between_change: Option<u32>,
+    pub min_days_between_change: Option<u32>,
+    pub warn_days_before_expiry: Option<u32>,
+    pub password_expired: bool,
+    pub account_locked: bool,
+}
+
+/// Parse `fprintd-list` fingerprint lines (`#N: name`).
+pub fn parse_fprintd_list(output: &str) -> Vec<FingerprintEntry> {
+    let mut entries = Vec::new();
+    for line in output.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix('#') else {
+            continue;
+        };
+        let Some((id_part, name)) = rest.split_once(':') else {
+            continue;
+        };
+        if let Ok(id) = id_part.trim().parse::<u32>() {
+            entries.push(FingerprintEntry {
+                id,
+                name: name.trim().to_string(),
+            });
+        }
+    }
+    entries
+}
+
+/// Parse `chage -l` password aging fields.
+pub fn parse_chage_l(output: &str) -> PasswordPolicyStatus {
+    let mut max_days = None;
+    let mut min_days = None;
+    let mut warn_days = None;
+    let mut password_expired = false;
+
+    for line in output.lines() {
+        let lower = line.to_lowercase();
+        if lower.contains("maximum number of days between password change") {
+            max_days = line
+                .split(':')
+                .nth(1)
+                .and_then(|v| v.trim().parse().ok());
+        } else if lower.contains("minimum number of days between password change") {
+            min_days = line
+                .split(':')
+                .nth(1)
+                .and_then(|v| v.trim().parse().ok());
+        } else if lower.contains("number of days of warning before password expires") {
+            warn_days = line
+                .split(':')
+                .nth(1)
+                .and_then(|v| v.trim().parse().ok());
+        } else if lower.contains("password expires") {
+            if let Some(v) = line.split(':').nth(1) {
+                password_expired = v.trim().eq_ignore_ascii_case("password must be changed");
+            }
+        }
+    }
+
+    PasswordPolicyStatus {
+        max_days_between_change: max_days,
+        min_days_between_change: min_days,
+        warn_days_before_expiry: warn_days,
+        password_expired,
+        account_locked: false,
+    }
+}
+
+/// Parse `passwd -S` status line (`user STATUS ...`).
+pub fn parse_passwd_s(output: &str) -> PasswordPolicyStatus {
+    let mut policy = PasswordPolicyStatus {
+        max_days_between_change: None,
+        min_days_between_change: None,
+        warn_days_before_expiry: None,
+        password_expired: false,
+        account_locked: false,
+    };
+    let line = output.lines().next().unwrap_or("");
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() >= 2 {
+        match parts[1] {
+            "P" => {}
+            "L" => policy.account_locked = true,
+            "NP" => {}
+            "LK" => policy.account_locked = true,
+            _ => {}
+        }
+    }
+    if parts.len() >= 6 {
+        policy.min_days_between_change = parts[3].parse().ok();
+        policy.max_days_between_change = parts[4].parse().ok();
+        policy.warn_days_before_expiry = parts[5].parse().ok();
+    }
+    policy
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Security.GetFirewallStatus", |_params| async move {
         if let Ok(output) = process::exec_command(&["ufw", "status"]).await {
@@ -316,24 +420,29 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Security.EnableFirewall", |_params| async move {
-        // Try ufw first
-        if process::exec_command(&["ufw", "enable"]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else if process::exec_command(&["systemctl", "start", "firewalld"]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
+        let enabled = if process::exec_command(&["command", "-v", "ufw"]).await.is_ok() {
+            privileged::run_privileged(&["ufw", "enable"]).await?;
+            probe_firewall_enabled().await
+        } else if process::exec_command(&["command", "-v", "firewall-cmd"]).await.is_ok() {
+            privileged::run_privileged(&["systemctl", "start", "firewalld"]).await?;
+            probe_firewall_enabled().await
         } else {
-            anyhow::bail!("Failed to enable firewall")
-        }
+            anyhow::bail!("no supported firewall tool found")
+        };
+        Ok(serde_json::json!({ "success": enabled, "enabled": enabled }))
     });
 
     registry.register("Security.DisableFirewall", |_params| async move {
-        if process::exec_command(&["ufw", "disable"]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
-        } else if process::exec_command(&["systemctl", "stop", "firewalld"]).await.is_ok() {
-            Ok(serde_json::json!({ "success": true }))
+        let disabled = if process::exec_command(&["command", "-v", "ufw"]).await.is_ok() {
+            privileged::run_privileged(&["ufw", "disable"]).await?;
+            !probe_firewall_enabled().await
+        } else if process::exec_command(&["command", "-v", "firewall-cmd"]).await.is_ok() {
+            privileged::run_privileged(&["systemctl", "stop", "firewalld"]).await?;
+            !probe_firewall_enabled().await
         } else {
-            anyhow::bail!("Failed to disable firewall")
-        }
+            anyhow::bail!("no supported firewall tool found")
+        };
+        Ok(serde_json::json!({ "success": disabled, "enabled": !disabled }))
     });
 
     registry.register("Security.GetFirewallRules", |_params| async move {
@@ -483,6 +592,36 @@ pub fn register(registry: &mut ServiceRegistry) {
             "clamav_installed": probe_clamav_installed().await,
             "fprintd_available": probe_fprintd_available().await,
         }))
+    });
+
+    registry.register("Security.ListFingerprints", |_params| async move {
+        if !probe_fprintd_available().await {
+            return Ok(serde_json::json!([]));
+        }
+        let output = process::exec_command(&["fprintd-list"]).await?;
+        Ok(serde_json::to_value(parse_fprintd_list(&output))?)
+    });
+
+    registry.register("Security.GetPasswordPolicy", |_params| async move {
+        let user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
+        if let Ok(output) = process::exec_command(&["chage", "-l", &user]).await {
+            return Ok(serde_json::to_value(parse_chage_l(&output))?);
+        }
+        let output = process::exec_command(&["passwd", "-S", &user]).await?;
+        Ok(serde_json::to_value(parse_passwd_s(&output))?)
+    });
+
+    registry.register("Security.RunClamScan", |params| async move {
+        let path: String = params
+            .as_ref()
+            .and_then(|p| p.get("path").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or_else(|| ".".to_string());
+        if !probe_clamav_installed().await {
+            anyhow::bail!("clamscan not installed");
+        }
+        let output = privileged::run_privileged(&["clamscan", "-r", &path]).await?;
+        Ok(serde_json::json!({ "success": true, "output": output }))
     });
 
     // ========================================================================
@@ -2268,5 +2407,21 @@ mod parser_tests {
         assert!(mixed_enc);
         assert_eq!(mixed_devs.len(), 1);
         assert!(mixed_devs[0].contains("nvme"));
+    }
+
+    #[test]
+    fn parse_fprintd_list_fixture() {
+        let entries = parse_fprintd_list(&fixture("fprintd_list.txt"));
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "right-index-finger");
+        assert_eq!(entries[1].id, 1);
+    }
+
+    #[test]
+    fn parse_chage_l_fixture() {
+        let policy = parse_chage_l(&fixture("chage_l.txt"));
+        assert_eq!(policy.max_days_between_change, Some(99999));
+        assert_eq!(policy.warn_days_before_expiry, Some(7));
+        assert!(!policy.password_expired);
     }
 }

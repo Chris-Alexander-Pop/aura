@@ -2,8 +2,19 @@
 
 mod common;
 
-use common::{call_method, test_registry};
+use ags_sidecar::services::processes::kill_confirmation_token;
+use common::{call_method, is_denied_rpc_method, test_registry};
 use serde_json::json;
+
+#[test]
+fn process_kill_blocked_in_fast_harness() {
+    assert!(is_denied_rpc_method("Process.Kill"));
+}
+
+#[test]
+fn kill_confirmation_token_format() {
+    assert_eq!(kill_confirmation_token(100), "confirm-kill-100");
+}
 
 #[tokio::test]
 async fn process_list_top_row_contract() {

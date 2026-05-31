@@ -135,6 +135,28 @@ async fn security_get_vpn_connections_array() {
 }
 
 #[tokio::test]
+async fn security_list_fingerprints_array_or_empty() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Security.ListFingerprints", None)
+        .await
+        .expect("Security.ListFingerprints");
+    let arr = value.as_array().expect("array");
+    for row in arr {
+        assert_json_object_keys(row, &["id", "name"]);
+    }
+}
+
+#[tokio::test]
+async fn security_get_password_policy_shape() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Security.GetPasswordPolicy", None)
+        .await
+        .expect("Security.GetPasswordPolicy");
+    assert!(value.get("max_days_between_change").is_some());
+    assert!(value.get("password_expired").and_then(|v| v.as_bool()).is_some());
+}
+
+#[tokio::test]
 async fn security_get_ssh_connections_or_missing_ss() {
     let registry = test_registry();
     match call_method(&registry, "Security.GetSshConnections", None).await {

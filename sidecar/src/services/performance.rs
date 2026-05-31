@@ -1,6 +1,7 @@
 use crate::notify;
+use crate::services::processes::{self, ProcessRow};
 use crate::services::ServiceRegistry;
-use crate::utils::process;
+use crate::utils::{privileged, process};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -125,8 +126,9 @@ pub fn register(registry: &mut ServiceRegistry) {
         let mem_used = sys.used_memory();
         let mem_free = sys.free_memory();
         // Note: cached_memory and buffered_memory may not be available in all sysinfo versions
-        let mem_cached = 0; // sys.cached_memory() if available
-        let mem_buffers = 0; // sys.buffered_memory() if available
+        let (mem_cached_kb, mem_buffers_kb) = read_meminfo_cached_buffers_kb().await.unwrap_or((0, 0));
+        let mem_cached = mem_cached_kb;
+        let mem_buffers = mem_buffers_kb;
         let swap_total = sys.total_swap();
         let swap_used = sys.used_swap();
 
@@ -134,8 +136,8 @@ pub fn register(registry: &mut ServiceRegistry) {
             total_mb: mem_total / 1024 / 1024,
             used_mb: mem_used / 1024 / 1024,
             free_mb: mem_free / 1024 / 1024,
-            cached_mb: mem_cached / 1024 / 1024,
-            buffers_mb: mem_buffers / 1024 / 1024,
+            cached_mb: mem_cached / 1024,
+            buffers_mb: mem_buffers / 1024,
             swap_total_mb: swap_total / 1024 / 1024,
             swap_used_mb: swap_used / 1024 / 1024,
         };
@@ -170,7 +172,8 @@ pub fn register(registry: &mut ServiceRegistry) {
                 "/sys/devices/system/cpu/cpu{}/cpufreq/scaling_governor",
                 i
             );
-            let _ = tokio::fs::write(&governor_path, &governor).await;
+            let script = format!("echo '{}' > '{}'", governor.replace('\'', ""), governor_path);
+            privileged::run_privileged(&["sh", "-c", &script]).await?;
         }
 
         Ok(serde_json::json!({ "success": true }))
@@ -211,25 +214,13 @@ pub fn register(registry: &mut ServiceRegistry) {
         Ok(serde_json::json!({ "success": true }))
     });
 
-    registry.register("Performance.GetProcesses", |_params| async move {
-        let mut sys = SYSTEM.write().await;
-        sys.refresh_processes();
-
-        let mut processes = Vec::new();
-        for (pid, process) in sys.processes() {
-            processes.push(ProcessInfo {
-                pid: pid.as_u32(),
-                name: process.name().to_string(),
-                cpu_percent: process.cpu_usage() as f64,
-                memory_mb: process.memory() / 1024,
-                status: format!("{:?}", process.status()),
-            });
-        }
-
-        // Sort by CPU usage
-        processes.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap());
-
-        Ok(serde_json::to_value(&processes)?)
+    registry.register("Performance.GetProcesses", |params| async move {
+        let limit = processes::list_top_limit_from_params(params.as_ref());
+        let rows: Vec<ProcessInfo> = processes::collect_top_process_rows(limit)
+            .into_iter()
+            .map(process_row_to_info)
+            .collect();
+        Ok(serde_json::to_value(&rows)?)
     });
 
     registry.register("Performance.KillProcess", |params| async move {
@@ -400,6 +391,35 @@ async fn schedule_metrics_emit() {
         }
         notify::emit("Performance.MetricsChanged", json!({}));
     });
+}
+
+fn process_row_to_info(row: ProcessRow) -> ProcessInfo {
+    ProcessInfo {
+        pid: row.pid,
+        name: row.name,
+        cpu_percent: row.cpu_percent,
+        memory_mb: row.memory_mb,
+        status: row.status,
+    }
+}
+
+/// Read `Cached` and `Buffers` from `/proc/meminfo` (kB).
+pub(crate) fn parse_meminfo_cached_buffers_kb(output: &str) -> (u64, u64) {
+    let mut cached_kb = 0u64;
+    let mut buffers_kb = 0u64;
+    for line in output.lines() {
+        if let Some(rest) = line.strip_prefix("Cached:") {
+            cached_kb = rest.trim().trim_end_matches(" kB").parse().unwrap_or(0);
+        } else if let Some(rest) = line.strip_prefix("Buffers:") {
+            buffers_kb = rest.trim().trim_end_matches(" kB").parse().unwrap_or(0);
+        }
+    }
+    (cached_kb, buffers_kb)
+}
+
+async fn read_meminfo_cached_buffers_kb() -> Result<(u64, u64)> {
+    let content = tokio::fs::read_to_string("/proc/meminfo").await?;
+    Ok(parse_meminfo_cached_buffers_kb(&content))
 }
 
 async fn read_cpu_temp_c() -> Result<f64> {
@@ -655,6 +675,14 @@ mod tests {
         assert_eq!(services.len(), 3);
         assert!(services[0].active);
         assert!(!services[2].active);
+    }
+
+    #[test]
+    fn parse_meminfo_cached_buffers_fixture() {
+        let text = include_str!("../../tests/fixtures/performance/meminfo.txt");
+        let (cached, buffers) = parse_meminfo_cached_buffers_kb(text);
+        assert_eq!(cached, 4096000);
+        assert_eq!(buffers, 512000);
     }
 
     #[test]

@@ -10,7 +10,8 @@ use ags_sidecar::contract_parsers::{
     parse_brightnessctl_list, parse_brightnessctl_machine_line, parse_controller_list_line,
     parse_cron_line, parse_ddc_vcp_brightness, parse_device_info,
     parse_device_line, parse_devices, parse_devices_list_address, parse_df_storage_usage,
-    parse_docker_image_line, parse_networks, parse_pacman_q, parse_pacman_qu, parse_pacman_search,
+    parse_docker_image_line, package_dependency_graph_from_qi, parse_networks, parse_pacman_q,
+    parse_pacman_qu, parse_pacman_search,
     parse_powerprofilesctl_output, parse_proc_stat_cpu, parse_saved_connections,
     parse_sensors_cpu_temp, parse_show_block_json, parse_streams, parse_systemd_timer_line,
 };
@@ -256,6 +257,14 @@ fn contract_packages_search_json_shape() {
     let pkgs = parse_pacman_search(&text);
     assert_eq!(pkgs.len(), 2);
     assert!(!pkgs[0].installed);
+}
+
+#[test]
+fn contract_packages_qi_dependency_graph() {
+    let qi = load_fixture("packages/pacman_qi_pacman.txt");
+    let graph = package_dependency_graph_from_qi("pacman", &qi);
+    assert_eq!(graph.depends.len(), 4);
+    assert_eq!(graph.required_by, vec!["aura", "yay"]);
 }
 
 #[test]

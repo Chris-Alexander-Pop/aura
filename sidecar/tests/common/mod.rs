@@ -22,6 +22,8 @@ const DENIED_EXACT: &[&str] = &[
     "Aura.ToggleWindow",
     "Brightness.Set",
     "Hyprland.Dispatch",
+    "Launcher.Pin",
+    "Launcher.Run",
     "Keybinds.Export",
     "Keybinds.Import",
     "Keybinds.Reload",
@@ -83,6 +85,7 @@ const DENIED_EXACT: &[&str] = &[
     "Security.DisableFirewall",
     "Security.EnableFirewall",
     "Security.RemoveFirewallRule",
+    "Security.RunClamScan",
     "Security.ScanPorts",
     "Audio.Refresh",
     "Audio.CreateLoopback",
@@ -154,6 +157,8 @@ const DENIED_EXACT: &[&str] = &[
 pub fn denied_rpc_reason(method: &str) -> Option<&'static str> {
     match method {
         "Apps.Launch" => Some("spawns arbitrary desktop application"),
+        "Launcher.Run" => Some("spawns gtk-launch for a desktop application"),
+        "Launcher.Pin" => Some("mutates launcher pin list in SQLite"),
         "Aura.ToggleWindow" => Some("toggles AGS WebKit shell windows"),
         "Audio.SetStreamMute" | "Audio.SetStreamVolume" => Some("mutates PipeWire stream volume"),
         "Bluetooth.Connect" | "Bluetooth.Disconnect" => Some("changes Bluetooth device connection"),
@@ -171,6 +176,7 @@ pub fn denied_rpc_reason(method: &str) -> Option<&'static str> {
         | "Notifications.SetDnd" | "Notifications.SetRules" => Some("mutates notification store or DND"),
         "Power.SetProfile" => Some("changes system power profile"),
         "Process.Kill" => Some("sends signal to user process"),
+        "Security.RunClamScan" => Some("runs ClamAV scan on host paths"),
         "Session.Lock" | "Session.Logout" | "Session.PowerOff" | "Session.Reboot" | "Session.Suspend" => {
             Some("session / power action")
         }
@@ -203,6 +209,12 @@ pub fn assert_safe_rpc_method(method: &str) {
 use std::sync::Mutex;
 
 static STORAGE_TEST_LOCK: Mutex<()> = Mutex::new(());
+static LAUNCHER_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Serialize launcher tests that override `AURA_LAUNCHER_DESKTOP_DIRS`.
+pub fn launcher_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    LAUNCHER_TEST_LOCK.lock().unwrap()
+}
 
 pub struct StorageTestDb {
     _guard: std::sync::MutexGuard<'static, ()>,

@@ -658,6 +658,8 @@ const READONLY_GAP_FAST: &[&str] = &[
     "Productivity.GetPomodoroStatus",
     "Productivity.GetScreenTime",
     "Productivity.GetTasks",
+    "Launcher.Query",
+    "Launcher.Recent",
 ];
 
 /// Optional host sweep (~5 min): subprocess-heavy CLI, HTTP, docker/k8s, journalctl, pacman, security probes.
@@ -693,7 +695,9 @@ const READONLY_GAP_SLOW_HOST: &[&str] = &[
     "Packages.GetAurPackages",
     "Packages.GetFlatpakPackages",
     "Packages.GetInstalled",
+    "Packages.GetAutoUpdatePolicy",
     "Packages.GetPackageDependencies",
+    "Packages.GetReverseDependencies",
     "Packages.GetPackageFiles",
     "Packages.GetPackageInfo",
     "Packages.GetSnapPackages",
@@ -714,7 +718,9 @@ const READONLY_GAP_SLOW_HOST: &[&str] = &[
     "Security.GetSshConnections",
     "Security.GetSshStatus",
     "Security.GetSudoLogs",
+    "Security.GetPasswordPolicy",
     "Security.GetVpnConnections",
+    "Security.ListFingerprints",
     "Weather.Get",
     "Weather.GetForecast",
     "Weather.GetHourly",
@@ -736,9 +742,10 @@ fn api_ts_rpc_params(method: &str) -> Option<Value> {
 fn readonly_rpc_params(method: &str) -> Option<Value> {
     match method {
         "Packages.Search" => Some(json!({ "query": "linux" })),
-        "Packages.GetPackageInfo" | "Packages.GetPackageFiles" | "Packages.GetPackageDependencies" => {
-            Some(json!({ "name": "pacman" }))
-        }
+        "Packages.GetPackageInfo"
+        | "Packages.GetPackageFiles"
+        | "Packages.GetPackageDependencies"
+        | "Packages.GetReverseDependencies" => Some(json!({ "name": "pacman" })),
         "Logs.GetApplicationLogs" => Some(json!({ "app_name": "systemd", "lines": 5 })),
         "Logs.SearchLogs" => Some(json!({ "query": "Started", "lines": 5 })),
         "Logs.FilterLogs" | "Logs.GetSystemLogs" => Some(json!({ "lines": 5 })),

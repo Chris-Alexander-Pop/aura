@@ -4,7 +4,8 @@ mod common;
 
 use ags_sidecar::contract_parsers::{
     filter_certificate_filenames, firewall_status_from_firewalld, firewall_status_from_ufw,
-    firewall_status_none, keyring_status_json, parse_encryption_devices, parse_failed_login_lines,
+    firewall_status_none, keyring_status_json, parse_chage_l, parse_encryption_devices,
+    parse_failed_login_lines, parse_fprintd_list,
     parse_nmap_xml_ports, parse_ssh_connections, parse_ss_listening_ports, parse_sudo_log_lines,
     parse_ufw_numbered_rules, ssh_status_json, vpn_connections_from_pgrep,
 };
@@ -163,4 +164,18 @@ fn contract_vpn_connections_from_pgrep() {
 fn contract_nmap_invalid_port_fixture() {
     let ports = parse_nmap_xml_ports(&load_fixture("security/nmap_invalid_port.xml")).expect("xml");
     assert!(ports.is_empty());
+}
+
+#[test]
+fn contract_fprintd_list_fixture() {
+    let entries = parse_fprintd_list(&load_fixture("security/fprintd_list.txt"));
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].name, "right-index-finger");
+}
+
+#[test]
+fn contract_chage_l_password_policy_fixture() {
+    let policy = parse_chage_l(&load_fixture("security/chage_l.txt"));
+    assert_eq!(policy.max_days_between_change, Some(99999));
+    assert_eq!(policy.warn_days_before_expiry, Some(7));
 }

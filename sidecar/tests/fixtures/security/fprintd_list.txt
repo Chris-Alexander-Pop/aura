@@ -1,0 +1,6 @@
+found 1 devices
+Device at /org/net/reactivated/Fprint/Device/0
+Using device /org/net/reactivated/Fprint/Device/0
+Fingerprints for user alice on Example Fingerprint Reader:
+    #0: right-index-finger
+    #1: left-index-finger
