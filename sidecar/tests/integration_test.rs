@@ -736,6 +736,9 @@ fn api_ts_rpc_params(method: &str) -> Option<Value> {
         "Brightness.Get" => Some(json!({ "monitor": "eDP-1" })),
         "Process.ListTop" => Some(json!({ "limit": 5 })),
         "Automation.GetWorkflowHistory" => Some(json!({ "workflow_id": "fixture" })),
+        "Launcher.Query" => Some(json!({ "query": "" })),
+        "Sidebar.GetTileData" => Some(json!({ "tile": "network" })),
+        "Todos.ParseDueDate" => Some(json!({ "text": "tomorrow" })),
         _ => readonly_rpc_params(method),
     }
 }

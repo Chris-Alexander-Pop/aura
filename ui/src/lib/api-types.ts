@@ -408,6 +408,276 @@ export function parseAuraSettings(raw: unknown): AuraSettingsView | null {
   }
 }
 
+// ── Launcher (matches launcher.rs) ───────────────────────────────────────────
+
+export interface LauncherAppView {
+  id: string
+  name: string
+  pinned: boolean
+  score?: number
+  comment?: string
+  exec?: string
+  icon?: string
+}
+
+export interface LauncherQueryView {
+  results: LauncherAppView[]
+}
+
+export interface LauncherRecentView {
+  items: LauncherAppView[]
+}
+
+export function parseLauncherApp(raw: unknown): LauncherAppView | null {
+  if (!isRecord(raw)) return null
+  const id = raw.id
+  const name = raw.name
+  if (typeof id !== "string" || typeof name !== "string") return null
+  return {
+    id,
+    name,
+    pinned: raw.pinned === true,
+    score: optionalFiniteInt(raw.score),
+    comment: optionalString(raw.comment),
+    exec: optionalString(raw.exec),
+    icon: optionalString(raw.icon),
+  }
+}
+
+export function adaptLauncherQuery(data: unknown): LauncherQueryView {
+  if (!isRecord(data)) return { results: [] }
+  const results = Array.isArray(data.results) ? data.results : []
+  return {
+    results: results.map(parseLauncherApp).filter((x): x is LauncherAppView => x != null),
+  }
+}
+
+export function adaptLauncherRecent(data: unknown): LauncherRecentView {
+  if (!isRecord(data)) return { items: [] }
+  const items = Array.isArray(data.items) ? data.items : []
+  return {
+    items: items.map(parseLauncherApp).filter((x): x is LauncherAppView => x != null),
+  }
+}
+
+// ── Todos (matches todos.rs) ──────────────────────────────────────────────────
+
+export interface TodoItemView {
+  id: string
+  title: string
+  description: string
+  project_id: string | null
+  due_at: number | null
+  completed: boolean
+  reminder_minutes: number | null
+  created_at: number
+  updated_at: number
+}
+
+export interface TodoProjectView {
+  id: string
+  name: string
+  color: string
+}
+
+export function parseTodoItem(raw: unknown): TodoItemView | null {
+  if (!isRecord(raw)) return null
+  const id = raw.id
+  const title = raw.title
+  if (typeof id !== "string" || typeof title !== "string") return null
+  const created = finiteNumber(raw.created_at)
+  const updated = finiteNumber(raw.updated_at)
+  if (created === null || updated === null) return null
+  return {
+    id,
+    title,
+    description: typeof raw.description === "string" ? raw.description : "",
+    project_id: typeof raw.project_id === "string" ? raw.project_id : null,
+    due_at: raw.due_at === null || raw.due_at === undefined ? null : finiteNumber(raw.due_at),
+    completed: raw.completed === true,
+    reminder_minutes:
+      raw.reminder_minutes === null || raw.reminder_minutes === undefined
+        ? null
+        : optionalFiniteInt(raw.reminder_minutes) ?? null,
+    created_at: created,
+    updated_at: updated,
+  }
+}
+
+export function adaptTodoList(data: unknown): TodoItemView[] {
+  if (!Array.isArray(data)) return []
+  return data.map(parseTodoItem).filter((x): x is TodoItemView => x != null)
+}
+
+export function parseTodoProject(raw: unknown): TodoProjectView | null {
+  if (!isRecord(raw)) return null
+  const id = raw.id
+  const name = raw.name
+  const color = raw.color
+  if (typeof id !== "string" || typeof name !== "string" || typeof color !== "string") return null
+  return { id, name, color }
+}
+
+export function adaptTodoProjects(data: unknown): TodoProjectView[] {
+  if (!Array.isArray(data)) return []
+  return data.map(parseTodoProject).filter((x): x is TodoProjectView => x != null)
+}
+
+export interface TodoParseDueDateView {
+  parsed: boolean
+  due_at: number | null
+}
+
+export function adaptTodoParseDueDate(data: unknown): TodoParseDueDateView {
+  if (!isRecord(data)) return { parsed: false, due_at: null }
+  const due =
+    data.due_at === null || data.due_at === undefined ? null : finiteNumber(data.due_at)
+  return { parsed: data.parsed === true, due_at: due }
+}
+
+// ── Vault (matches vault.rs) ──────────────────────────────────────────────────
+
+export interface VaultRemoteView {
+  name: string
+  remote_type?: string
+}
+
+export interface VaultListView {
+  remotes: VaultRemoteView[]
+  rclone_available: boolean
+}
+
+export interface VaultBackupStatusView {
+  state: string
+  engine: string | null
+  last_success_at: number | null
+  last_error: string | null
+  in_progress: boolean
+}
+
+export function adaptVaultList(data: unknown): VaultListView {
+  if (!isRecord(data)) return { remotes: [], rclone_available: false }
+  const remotes = Array.isArray(data.remotes) ? data.remotes : []
+  const parsed: VaultRemoteView[] = []
+  for (const r of remotes) {
+    if (!isRecord(r) || typeof r.name !== "string") continue
+    const remote: VaultRemoteView = { name: r.name }
+    const rt = optionalString(r.remote_type)
+    if (rt) remote.remote_type = rt
+    parsed.push(remote)
+  }
+  return {
+    remotes: parsed,
+    rclone_available: data.rclone_available === true,
+  }
+}
+
+export function adaptVaultBackupStatus(data: unknown): VaultBackupStatusView {
+  if (!isRecord(data)) {
+    return {
+      state: "unknown",
+      engine: null,
+      last_success_at: null,
+      last_error: null,
+      in_progress: false,
+    }
+  }
+  const last =
+    data.last_success_at === null || data.last_success_at === undefined
+      ? null
+      : finiteNumber(data.last_success_at)
+  return {
+    state: typeof data.state === "string" ? data.state : "unknown",
+    engine: typeof data.engine === "string" ? data.engine : null,
+    last_success_at: last,
+    last_error: typeof data.last_error === "string" ? data.last_error : null,
+    in_progress: data.in_progress === true,
+  }
+}
+
+// ── Dashboard / Sidebar (matches dashboard.rs) ───────────────────────────────
+
+export interface DashboardQuickStatusView {
+  battery: { percent: number; charging: boolean; time_remaining: string }
+  network: {
+    wifi_enabled: boolean
+    connection_type?: string
+    ethernet_connected?: boolean
+    active_connection?: string
+    local_ip?: string
+    public_ip?: string
+  }
+  bluetooth: { powered: boolean; connected_count: number }
+  dnd: DndPrefsView
+  next_event: CalendarEvent | null
+  power_profile: string
+  dropdown_modules: string[]
+}
+
+export function adaptDashboardQuickStatus(data: unknown): DashboardQuickStatusView | null {
+  if (!isRecord(data)) return null
+  const battery = data.battery
+  const network = data.network
+  const bluetooth = data.bluetooth
+  const dnd = data.dnd
+  if (!isRecord(battery) || !isRecord(network) || !isRecord(bluetooth) || !isRecord(dnd)) {
+    return null
+  }
+  const pct = finiteNumber(battery.percent)
+  if (pct === null || typeof battery.time_remaining !== "string") return null
+  const nextRaw = data.next_event
+  const next_event =
+    nextRaw === null || nextRaw === undefined ? null : parseCalendarEvent(nextRaw)
+  const profile = data.power_profile
+  const modules = data.dropdown_modules
+  if (typeof profile !== "string" || !Array.isArray(modules)) return null
+  if (!modules.every((x) => typeof x === "string")) return null
+  return {
+    battery: {
+      percent: pct,
+      charging: battery.charging === true,
+      time_remaining: battery.time_remaining,
+    },
+    network: network as DashboardQuickStatusView["network"],
+    bluetooth: {
+      powered: bluetooth.powered === true,
+      connected_count: optionalFiniteInt(bluetooth.connected_count) ?? 0,
+    },
+    dnd: adaptDndPrefs(dnd),
+    next_event,
+    power_profile: profile,
+    dropdown_modules: modules as string[],
+  }
+}
+
+export interface SidebarTileDataView {
+  tile: string
+  data: Record<string, unknown>
+}
+
+export function adaptSidebarTileData(data: unknown): SidebarTileDataView | null {
+  if (!isRecord(data)) return null
+  const tile = data.tile
+  const tileData = data.data
+  if (typeof tile !== "string" || !isRecord(tileData)) return null
+  return { tile, data: tileData }
+}
+
+// ── Capture (matches capture.rs) ─────────────────────────────────────────────
+
+export interface CaptureDevicesView {
+  audio: unknown[]
+  video: unknown[]
+}
+
+export function adaptCaptureDevices(data: unknown): CaptureDevicesView {
+  if (!isRecord(data)) return { audio: [], video: [] }
+  return {
+    audio: Array.isArray(data.audio) ? data.audio : [],
+    video: Array.isArray(data.video) ? data.video : [],
+  }
+}
+
 export function adaptDndPrefs(data: unknown): DndPrefsView {
   if (!isRecord(data)) {
     return {

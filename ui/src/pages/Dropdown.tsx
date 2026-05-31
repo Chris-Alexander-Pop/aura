@@ -137,11 +137,13 @@ function MiniStats() {
 
 export default function Dropdown() {
   const qc = useQueryClient()
-  const { data: net } = useQuery({ queryKey: ["network-status"], queryFn: api.getNetworkStatus, refetchInterval: 8000 })
-  const { data: batt } = useQuery({ queryKey: ["batt"], queryFn: api.getBatteryState, refetchInterval: 10000 })
+  const { data: quick } = useQuery({
+    queryKey: ["dashboard-quick-status"],
+    queryFn: api.dashboardGetQuickStatus,
+    refetchInterval: 8000,
+  })
   const { data: adapters } = useQuery({ queryKey: ["bt-ad"], queryFn: api.getBluetoothAdapters, refetchInterval: 8000 })
   const { data: devices } = useQuery({ queryKey: ["bt-dev"], queryFn: api.getBluetoothDevices, refetchInterval: 8000 })
-  const { data: prof } = useQuery({ queryKey: ["pwr"], queryFn: api.getPowerProfile, refetchInterval: 15_000 })
 
   const [prefsTick, setPrefsTick] = useState(0)
   useEffect(() => {
@@ -189,16 +191,18 @@ export default function Dropdown() {
 
   const cyclePowerProfile = useCallback(async () => {
     const order: PowerProfile[] = ["balanced", "performance", "saver"]
-    const cur = prof?.profile ?? "balanced"
+    const cur = (quick?.power_profile ?? "balanced") as PowerProfile
     const i = Math.max(0, order.indexOf(cur))
     await api.setPowerProfile(order[(i + 1) % order.length])
-    await qc.invalidateQueries({ queryKey: ["pwr"] })
-  }, [prof?.profile, qc])
+    await qc.invalidateQueries({ queryKey: ["dashboard-quick-status"] })
+  }, [quick?.power_profile, qc])
 
   useEffect(() => {
     connectWs()
   }, [])
 
+  const batt = quick?.battery
+  const net = quick?.network
   const lowBatt = !!(batt && !batt.charging && batt.percent <= 20)
   const battIcon =
     batt == null || batt.percent < 0
@@ -209,7 +213,7 @@ export default function Dropdown() {
           ? "battery_5_bar"
           : "battery_2_bar"
 
-  const profile = prof?.profile ?? "balanced"
+  const profile = (quick?.power_profile ?? "balanced") as PowerProfile
   const battLabel = batt ? `${batt.percent}% · ${POWER_ABBR[profile]}` : "Batt"
 
   const dndChipLabel =

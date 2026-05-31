@@ -6,9 +6,25 @@ import {
   adaptPackageUpdates,
   adaptPerformanceMetrics,
   adaptSecurityStatus,
+  adaptCaptureDevices,
+  adaptDashboardQuickStatus,
+  adaptLauncherQuery,
+  adaptLauncherRecent,
+  adaptTodoList,
+  adaptTodoParseDueDate,
+  adaptTodoProjects,
+  adaptVaultBackupStatus,
+  adaptVaultList,
+  adaptSidebarTileData,
   parseAuraSettings,
   parseCalendarEvents,
   type AuraSettingsView,
+  type DashboardQuickStatusView,
+  type LauncherAppView,
+  type TodoItemView,
+  type TodoProjectView,
+  type VaultBackupStatusView,
+  type VaultListView,
   type DndPrefsView,
   type LogEntryView,
   type NotificationItemView,
@@ -83,7 +99,13 @@ export type WorkflowRunView = {
 
 export type {
   CalendarEvent,
+  DashboardQuickStatusView,
   DndPrefsView,
+  LauncherAppView,
+  TodoItemView,
+  TodoProjectView,
+  VaultBackupStatusView,
+  VaultListView,
   LogEntryView,
   NotificationItemView,
   PackageUpdateView,
@@ -316,6 +338,73 @@ export const api = {
       ...(limit != null ? { limit } : {}),
     }),
   processKill: (pid: number) => call<{ ok: boolean }>("Process.Kill", { pid }),
+
+  // Launcher
+  launcherQuery: (query: string) =>
+    callData("Launcher.Query", { query }).then(adaptLauncherQuery),
+  launcherRun: (id: string) => call<{ ok: boolean }>("Launcher.Run", { id }),
+  launcherRecent: () => callData("Launcher.Recent").then(adaptLauncherRecent),
+  launcherPin: (id: string, pinned: boolean) =>
+    call<{ ok: boolean; id: string; pinned: boolean }>("Launcher.Pin", { id, pinned }),
+
+  // Todos
+  todosList: (opts?: { project_id?: string; include_completed?: boolean }) =>
+    callData("Todos.List", opts ?? {}).then(adaptTodoList),
+  todosCreate: (opts: {
+    title: string
+    description?: string
+    project_id?: string
+    due_at?: number
+    due_text?: string
+    reminder_minutes?: number
+  }) => call<TodoItemView>("Todos.Create", opts),
+  todosUpdate: (opts: {
+    id: string
+    title?: string
+    description?: string
+    project_id?: string | null
+    due_at?: number | null
+    completed?: boolean
+    reminder_minutes?: number | null
+  }) => call<TodoItemView>("Todos.Update", opts),
+  todosDelete: (id: string) => call<{ deleted: boolean }>("Todos.Delete", { id }),
+  todosListProjects: () => callData("Todos.ListProjects").then(adaptTodoProjects),
+  todosParseDueDate: (text: string) =>
+    callData("Todos.ParseDueDate", { text }).then(adaptTodoParseDueDate),
+
+  // Vault (read-only)
+  vaultList: () => callData("Vault.List").then(adaptVaultList),
+  vaultBackupStatus: () => callData("Vault.Backup.Status").then(adaptVaultBackupStatus),
+
+  // Dashboard / Sidebar
+  dashboardGetQuickStatus: () =>
+    callData("Dashboard.GetQuickStatus").then((data) => {
+      const status = adaptDashboardQuickStatus(data)
+      if (!status) throw new Error("Invalid Dashboard.GetQuickStatus payload")
+      return status
+    }),
+  sidebarGetTileData: (tile: string) =>
+    callData("Sidebar.GetTileData", { tile }).then((data) => {
+      const tileData = adaptSidebarTileData(data)
+      if (!tileData) throw new Error("Invalid Sidebar.GetTileData payload")
+      return tileData
+    }),
+
+  // Capture
+  captureScreenshot: (opts: {
+    mode: "region" | "window" | "full"
+    output: "clipboard" | "file"
+    path?: string
+  }) => call<{ ok: boolean; tool_missing?: boolean; tool?: string; error?: string }>(
+    "Capture.Screenshot",
+    opts
+  ),
+  captureRecordStart: () =>
+    call<{ ok: boolean; tool_missing?: boolean; tool?: string; path?: string }>(
+      "Capture.RecordStart"
+    ),
+  captureRecordStop: () => call<{ ok: boolean; stopped?: boolean }>("Capture.RecordStop"),
+  captureListDevices: () => callData("Capture.ListDevices").then(adaptCaptureDevices),
 }
 
 export default api

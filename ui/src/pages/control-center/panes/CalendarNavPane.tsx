@@ -27,6 +27,7 @@ export function CalendarNavPane() {
   const qc = useQueryClient()
   const [title, setTitle] = useState("")
   const [hoursFromNow, setHoursFromNow] = useState(1)
+  const [todoTitle, setTodoTitle] = useState("")
 
   useEffect(() => {
     connectWs()
@@ -41,6 +42,16 @@ export function CalendarNavPane() {
     queryKey: ["calendar-upcoming", "control-center-pane"],
     queryFn: () => api.getCalendarUpcoming(20),
     refetchInterval: 300_000,
+  })
+
+  const {
+    data: todos,
+    isLoading: todosLoading,
+    refetch: refetchTodos,
+  } = useQuery({
+    queryKey: ["todos", "control-center-pane"],
+    queryFn: () => api.todosList({ include_completed: false }),
+    refetchInterval: 120_000,
   })
 
   const createMut = useMutation({
@@ -63,6 +74,17 @@ export function CalendarNavPane() {
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteCalendarEvent(id),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["calendar-upcoming"] }),
+  })
+
+  const createTodoMut = useMutation({
+    mutationFn: () =>
+      api.todosCreate({
+        title: todoTitle.trim() || "New task",
+      }),
+    onSuccess: () => {
+      setTodoTitle("")
+      void qc.invalidateQueries({ queryKey: ["todos"] })
+    },
   })
 
   const events = data ?? []
@@ -158,7 +180,50 @@ export function CalendarNavPane() {
             <span className="text-subtext1">Open</span> for the full calendar view.
           </p>
         </div>
-      ) : (
+      ) : null}
+
+      <div className="glass-card p-4 flex flex-col gap-2">
+        <p className="text-xs font-medium text-text">Tasks</p>
+        <input
+          className="rounded-xl border border-surface0/80 bg-base/80 px-3 py-2 text-sm"
+          placeholder="Todo title"
+          value={todoTitle}
+          onChange={(e) => setTodoTitle(e.target.value)}
+        />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="btn-surface text-sm"
+            disabled={createTodoMut.isPending}
+            onClick={() => createTodoMut.mutate()}
+          >
+            Add task
+          </button>
+          <button
+            type="button"
+            className="btn-surface text-xs"
+            disabled={todosLoading}
+            onClick={() => refetchTodos()}
+          >
+            Refresh
+          </button>
+        </div>
+        {todosLoading ? (
+          <div className="skeleton h-10 rounded-xl" />
+        ) : (todos ?? []).length === 0 ? (
+          <p className="text-xs text-subtext0">No open tasks.</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {(todos ?? []).slice(0, 8).map((t) => (
+              <li key={t.id} className="text-sm text-text truncate">
+                {t.title}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {!isLoading && !isError && upcoming.length > 0 ? (
         <ul className="flex flex-col gap-2">
           {upcoming.map((e) => {
             const title = e.title.trim() || "Untitled event"
@@ -190,7 +255,7 @@ export function CalendarNavPane() {
             )
           })}
         </ul>
-      )}
+      ) : null}
     </motion.div>
   )
 }
