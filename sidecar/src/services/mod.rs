@@ -28,6 +28,7 @@ pub mod keybinds;
 pub mod settings;
 pub mod dashboard;
 pub mod capture;
+pub mod launcher;
 
 use crate::types::JsonRpcRequest;
 use anyhow::Result;

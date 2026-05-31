@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Aura Test App
+Comment=Fixture for launcher tests
+Exec=echo aura-test
+Icon=utilities-terminal
+Categories=Utility;
+Keywords=aura;test;

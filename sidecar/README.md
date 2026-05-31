@@ -28,6 +28,8 @@ System packages (Arch): `libssl-dev` / `openssl` + `pkg-config` for `openssl-sys
 | `AURA_STORAGE_DB` | SQLite path for `Storage.*` and namespaced prefs (tests use a temp file) |
 | `RUST_LOG` | Tracing filter, e.g. `ags_sidecar=debug` (see `tracing_subscriber`) |
 | `AURA_HYPRLAND_EVENTS` | Set `0` to disable Hyprland socket2 push listener |
+| `AURA_LAUNCHER_DESKTOP_DIRS` | Colon-separated directories of `.desktop` files (tests use `tests/fixtures/desktop`) |
+| `VICINAE_SOCKET` | *(planned)* Unix socket path for Vicinae daemon RPC — `Vicinae.Exec` not implemented yet |
 
 ## Binary resolution (GTK / `src/lib/sidecar.ts`)
 

@@ -41,6 +41,7 @@ pub fn build_registry() -> ServiceRegistry {
     services::settings::register(&mut registry);
     services::dashboard::register(&mut registry);
     services::capture::register(&mut registry);
+    services::launcher::register(&mut registry);
     registry
 }
 
@@ -156,6 +157,31 @@ pub mod contract_parsers {
         crate::services::packages::parse_pacman_search(output)
     }
 
+    pub fn package_dependency_graph_from_qi(
+        name: &str,
+        qi_output: &str,
+    ) -> crate::services::packages::PackageDependencyGraph {
+        crate::services::packages::package_dependency_graph_from_qi(name, qi_output)
+    }
+
+    pub fn parse_pactree_reverse(output: &str) -> Vec<String> {
+        crate::services::packages::parse_pactree_reverse(output)
+    }
+
+    pub fn parse_fprintd_list(
+        output: &str,
+    ) -> Vec<crate::services::security::FingerprintEntry> {
+        crate::services::security::parse_fprintd_list(output)
+    }
+
+    pub fn parse_chage_l(output: &str) -> crate::services::security::PasswordPolicyStatus {
+        crate::services::security::parse_chage_l(output)
+    }
+
+    pub fn parse_meminfo_cached_buffers_kb(output: &str) -> (u64, u64) {
+        crate::services::performance::parse_meminfo_cached_buffers_kb(output)
+    }
+
     pub fn format_minutes(minutes: u64) -> String {
         crate::services::power::format_minutes(minutes)
     }
@@ -248,6 +274,16 @@ pub mod contract_parsers {
 
     pub fn parse_wireguard_conf(conf: &str) -> crate::services::vpn::WireGuardConfigSummary {
         crate::services::vpn::parse_wireguard_conf(conf)
+    }
+
+    pub fn parse_iface_ipv4(ip_output: &str, iface: &str) -> Option<String> {
+        crate::services::vpn::parse_iface_ipv4(ip_output, iface)
+    }
+
+    pub fn load_vpn_profile_defs_from_dir(
+        config_dir: &std::path::Path,
+    ) -> Vec<crate::types::VpnProfile> {
+        crate::services::vpn::load_public_profiles_from_dir(config_dir)
     }
 
     pub fn parse_proc_stat_cpu(content: &str) -> Option<(u64, u64)> {
