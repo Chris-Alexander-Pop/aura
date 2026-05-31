@@ -1,6 +1,6 @@
 # Control Center service hardening
 
-**Status:** Planned  
+**Status:** Implemented (2026-05-31)  
 **Depends on:** [control_center_foundation.md](control_center_foundation.md), [p0_daily_hardening.md](p0_daily_hardening.md) (fixtures)  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §2.11–2.18, §2.12, §2.15–2.16
 

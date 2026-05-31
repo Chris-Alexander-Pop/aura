@@ -1,6 +1,6 @@
 # VPN service (profiles, connect, status)
 
-**Status:** Planned  
+**Status:** Implemented (2026-05-31)  
 **Depends on:** [p0_daily_hardening.md](p0_daily_hardening.md) (Network keyring), [foundation_contracts.md](foundation_contracts.md) (polkit helper)  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §2.7, ADR per-app VPN phases
 

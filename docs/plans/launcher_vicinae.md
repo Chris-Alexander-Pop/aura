@@ -1,6 +1,6 @@
 # Launcher and Vicinae integration
 
-**Status:** Planned  
+**Status:** Implemented (2026-05-31, Vicinae deferred)  
 **Depends on:** [shell_platform.md](shell_platform.md) (`Settings.*` for layout), [foundation_contracts.md](foundation_contracts.md)  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §3.3, [ARCHITECTURE_DECISIONS.md](../ARCHITECTURE_DECISIONS.md) (Vicinae socket)
 
