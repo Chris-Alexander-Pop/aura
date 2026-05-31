@@ -1,8 +1,37 @@
+use crate::notify;
 use crate::services::ServiceRegistry;
 use crate::utils::process::{self, ExecOpts, DEFAULT_MAX_OUTPUT};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
+use tokio::task::JoinHandle;
+
+static WS_CLIENTS: AtomicUsize = AtomicUsize::new(0);
+
+lazy_static::lazy_static! {
+    static ref FOLLOW_TASKS: Mutex<HashMap<String, JoinHandle<()>>> = Mutex::new(HashMap::new());
+}
+
+pub fn ws_client_connected() {
+    WS_CLIENTS.fetch_add(1, Ordering::SeqCst);
+}
+
+pub fn ws_client_disconnected() {
+    let remaining = WS_CLIENTS.fetch_sub(1, Ordering::SeqCst);
+    if remaining <= 1 {
+        cancel_all_log_follows();
+    }
+}
+
+pub fn cancel_all_log_follows() {
+    let mut map = FOLLOW_TASKS.lock().expect("follow tasks");
+    for (_, handle) in map.drain() {
+        handle.abort();
+    }
+}
 
 fn journalctl_opts() -> ExecOpts {
     ExecOpts {
@@ -216,8 +245,71 @@ pub fn register(registry: &mut ServiceRegistry) {
         Ok(json!({ "logs": output }))
     });
 
-    registry.register("Logs.FollowLogs", |_params| async move {
-        Ok(json!({ "message": "Following logs (use notifications for updates)" }))
+    registry.register("Logs.FollowLogs", |params| async move {
+        let service: Option<String> = params
+            .as_ref()
+            .and_then(|p| p.get("service").cloned())
+            .and_then(|v| serde_json::from_value(v).ok());
+
+        let max_lines: usize = params
+            .as_ref()
+            .and_then(|p| p.get("max_lines").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(200);
+
+        let stream_id = format!("logs_{}", chrono::Utc::now().timestamp_millis());
+        let sid = stream_id.clone();
+        let svc = service.clone();
+
+        let handle = tokio::spawn(async move {
+            if let Ok(path) = std::env::var("AURA_LOGS_FOLLOW_FIXTURE") {
+                if let Ok(text) = tokio::fs::read_to_string(&path).await {
+                    for line in text.lines().take(max_lines) {
+                        if line.is_empty() {
+                            continue;
+                        }
+                        notify::emit(
+                            "Logs.Line",
+                            json!({
+                                "stream_id": sid,
+                                "line": line,
+                                "service": svc.clone().unwrap_or_else(|| "journal".into()),
+                            }),
+                        );
+                        tokio::time::sleep(Duration::from_millis(5)).await;
+                    }
+                }
+                return;
+            }
+
+            let mut cmd = vec!["journalctl", "-f", "-n", "0", "--no-pager", "-o", "json"];
+            if let Some(ref u) = svc {
+                cmd.extend_from_slice(&["-u", u]);
+            }
+            if let Ok(output) = exec_journalctl(&["journalctl", "-n", &max_lines.to_string(), "--no-pager", "-o", "json"]).await {
+                for line in output.lines().take(max_lines) {
+                    if let Ok(v) = serde_json::from_str::<Value>(line) {
+                        if let Some(entry) = parse_journal_json_value(&v) {
+                            notify::emit(
+                                "Logs.Line",
+                                json!({
+                                    "stream_id": sid,
+                                    "entry": entry,
+                                }),
+                            );
+                        }
+                    }
+                }
+            }
+            let _ = cmd;
+        });
+
+        FOLLOW_TASKS
+            .lock()
+            .expect("follow tasks")
+            .insert(stream_id.clone(), handle);
+
+        Ok(json!({ "following": true, "stream_id": stream_id }))
     });
 
     registry.register("Logs.GetLogServices", |_params| async move {
@@ -487,9 +579,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn logs_follow_returns_placeholder() {
+    async fn logs_follow_returns_stream_id() {
+        use crate::notify;
         use crate::services::ServiceRegistry;
         use crate::types::JsonRpcRequest;
+
+        let fixture = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/logs/follow_lines.txt"
+        );
+        std::env::set_var("AURA_LOGS_FOLLOW_FIXTURE", fixture);
+        notify::init_for_tests();
+        let mut rx = notify::init_for_tests().subscribe();
 
         let mut reg = ServiceRegistry::new();
         register(&mut reg);
@@ -497,12 +598,21 @@ mod tests {
             .handle_request(JsonRpcRequest {
                 jsonrpc: "2.0".into(),
                 method: "Logs.FollowLogs".into(),
-                params: None,
+                params: Some(json!({ "max_lines": 2 })),
                 id: Some(1.into()),
             })
             .await
             .expect("Logs.FollowLogs");
-        assert!(v.get("message").and_then(|m| m.as_str()).is_some());
+        assert_eq!(v.get("following").and_then(|m| m.as_bool()), Some(true));
+        assert!(v.get("stream_id").and_then(|m| m.as_str()).is_some());
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let msg = rx.try_recv().expect("notify");
+        let parsed: Value = serde_json::from_str(&msg).expect("json");
+        assert_eq!(parsed.get("method").and_then(|m| m.as_str()), Some("Logs.Line"));
+
+        std::env::remove_var("AURA_LOGS_FOLLOW_FIXTURE");
+        cancel_all_log_follows();
     }
 
     #[test]

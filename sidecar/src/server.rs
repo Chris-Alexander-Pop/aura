@@ -60,6 +60,7 @@ pub fn app_router(state: AppState, ui_dist: &std::path::Path) -> Router {
 
     Router::new()
         .route("/ws", get(ws_handler))
+        .route("/api/meta", get(meta_handler))
         .route("/api/:method", get(handle_get).post(handle_post))
         .nest_service("/", ServeDir::new(ui_dist))
         .layer(cors)
@@ -98,6 +99,19 @@ pub async fn run(registry: Arc<Mutex<ServiceRegistry>>, notify_tx: NotifyTx) -> 
 }
 
 // ── REST handlers ────────────────────────────────────────────────────────────
+
+async fn meta_handler() -> Response {
+    #[cfg(feature = "offensive-security")]
+    let offensive_enabled = true;
+    #[cfg(not(feature = "offensive-security"))]
+    let offensive_enabled = false;
+
+    Json(json!({
+        "offensiveEnabled": offensive_enabled,
+        "version": env!("CARGO_PKG_VERSION"),
+    }))
+    .into_response()
+}
 
 async fn handle_get(
     State(state): State<AppState>,
@@ -144,6 +158,20 @@ async fn call_service(state: AppState, method: String, params: Option<Value>) ->
                 )
                     .into_response();
             }
+            #[cfg(feature = "offensive-security")]
+            if let Some(limited) =
+                e.downcast_ref::<crate::services::offensive_policy::RateLimited>()
+            {
+                return (
+                    axum::http::StatusCode::TOO_MANY_REQUESTS,
+                    Json(json!({
+                        "ok": false,
+                        "error": limited.to_string(),
+                        "code": "rate_limited",
+                    })),
+                )
+                    .into_response();
+            }
             let msg = e.to_string();
             tracing::warn!("Service error for {}: {}", method, msg);
             (
@@ -165,6 +193,7 @@ async fn ws_handler(
 }
 
 async fn handle_ws(mut socket: WebSocket, state: AppState) {
+    crate::services::logs::ws_client_connected();
     let mut rx = state.notify_tx.subscribe();
 
     loop {
@@ -187,4 +216,5 @@ async fn handle_ws(mut socket: WebSocket, state: AppState) {
             }
         }
     }
+    crate::services::logs::ws_client_disconnected();
 }

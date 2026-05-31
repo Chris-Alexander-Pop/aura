@@ -29,7 +29,11 @@ struct WeatherDesc {
 lazy_static::lazy_static! {
     static ref CACHED_WEATHER: Arc<RwLock<Option<serde_json::Value>>> = Arc::new(RwLock::new(None));
     static ref LAST_UPDATE: Arc<RwLock<Option<std::time::Instant>>> = Arc::new(RwLock::new(None));
+    static ref LAST_FETCH: Arc<RwLock<Option<std::time::Instant>>> = Arc::new(RwLock::new(None));
 }
+
+const WEATHER_CACHE_TTL_SECS: u64 = 900;
+const WEATHER_RATE_LIMIT_SECS: u64 = 60;
 
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Weather.Get", |params| async move {
@@ -37,17 +41,28 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|p| p.get("city").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
 
-        // Check cache (15 minute TTL); tests set AURA_WEATHER_SKIP_CACHE=1
+        // In-memory cache + rate limit; tests set AURA_WEATHER_SKIP_CACHE=1
         if !weather_skip_cache() {
             let last_update = LAST_UPDATE.read().await;
             if let Some(instant) = *last_update {
-                if instant.elapsed().as_secs() < 900 {
+                if instant.elapsed().as_secs() < WEATHER_CACHE_TTL_SECS {
                     if let Some(cached) = CACHED_WEATHER.read().await.as_ref() {
                         return Ok(cached.clone());
                     }
                 }
             }
             drop(last_update);
+
+            let min_interval = weather_rate_limit_secs();
+            let last_fetch = LAST_FETCH.read().await;
+            if let Some(instant) = *last_fetch {
+                if instant.elapsed().as_secs() < min_interval {
+                    if let Some(cached) = CACHED_WEATHER.read().await.as_ref() {
+                        return Ok(cached.clone());
+                    }
+                }
+            }
+            drop(last_fetch);
         }
 
         // Determine city
@@ -75,7 +90,7 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         let weather_json = current_weather_json(&weather_data.current_condition[0]);
 
-        // Update cache
+        *LAST_FETCH.write().await = Some(std::time::Instant::now());
         *CACHED_WEATHER.write().await = Some(weather_json.clone());
         *LAST_UPDATE.write().await = Some(std::time::Instant::now());
 
@@ -202,11 +217,23 @@ fn weather_skip_cache() -> bool {
     std::env::var("AURA_WEATHER_SKIP_CACHE").ok().as_deref() == Some("1")
 }
 
+fn weather_rate_limit_secs() -> u64 {
+    if std::env::var("AURA_WEATHER_API_KEY").is_ok() {
+        30
+    } else {
+        WEATHER_RATE_LIMIT_SECS
+    }
+}
+
 /// wttr JSON fetch; integration tests set `AURA_WEATHER_WTTR_URL` to a mock HTTP endpoint.
 async fn fetch_wttr_json(city_name: &str) -> anyhow::Result<WttrResponse> {
     let url = std::env::var("AURA_WEATHER_WTTR_URL")
         .unwrap_or_else(|_| format!("https://wttr.in/{}?format=j1", city_name));
-    let response = reqwest::get(&url).await?;
+    let mut req = reqwest::Client::new().get(&url);
+    if let Ok(key) = std::env::var("AURA_WEATHER_API_KEY") {
+        req = req.header("Authorization", format!("Bearer {key}"));
+    }
+    let response = req.send().await?;
     Ok(response.json().await?)
 }
 

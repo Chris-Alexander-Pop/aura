@@ -216,3 +216,64 @@ async fn websocket_receives_power_battery_state() {
     assert_eq!(v["params"]["charging"], false);
     assert_eq!(v["params"]["time_remaining"], "3h");
 }
+
+#[tokio::test]
+async fn http_get_api_meta_offensive_disabled_by_default() {
+    let (notify_tx, _) = tokio::sync::broadcast::channel(8);
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let body: serde_json::Value = client
+        .get(format!("http://{addr}/api/meta"))
+        .send()
+        .await
+        .expect("GET meta")
+        .json()
+        .await
+        .expect("json");
+
+    assert_eq!(body["offensiveEnabled"], false);
+
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn websocket_receives_logs_line_after_follow_logs() {
+    let fixture = format!(
+        "{}/tests/fixtures/logs/follow_lines.txt",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    std::env::set_var("AURA_LOGS_FOLLOW_FIXTURE", &fixture);
+
+    let _ = test_registry();
+    let notify_tx = ags_sidecar::notify::init_for_tests();
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry.clone(), notify_tx.clone()).await;
+
+    let ws_url = format!("ws://{addr}/ws");
+    let (ws, _) = connect_async(&ws_url).await.expect("ws connect");
+    let (mut sink, mut stream) = ws.split();
+    ws_wait_until_ready(&mut sink, &mut stream).await;
+
+    let client = reqwest::Client::new();
+    let body: serde_json::Value = client
+        .post(format!("http://{addr}/api/Logs.FollowLogs"))
+        .json(&json!({ "max_lines": 2 }))
+        .send()
+        .await
+        .expect("POST FollowLogs")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["data"]["following"], true);
+
+    let v = ws_recv_method(&mut stream, "Logs.Line").await;
+    assert!(v.get("params").and_then(|p| p.get("line")).is_some());
+
+    drop(sink);
+    drop(stream);
+    server_task.abort();
+    std::env::remove_var("AURA_LOGS_FOLLOW_FIXTURE");
+}
