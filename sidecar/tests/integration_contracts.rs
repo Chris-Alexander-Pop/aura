@@ -12,6 +12,7 @@ use ags_sidecar::contract_parsers::{
     parse_device_line, parse_devices, parse_devices_list_address, parse_df_storage_usage,
     parse_docker_image_line, package_dependency_graph_from_qi, parse_networks, parse_pacman_q,
     parse_pacman_qu, parse_pacman_search,
+    map_nmcli_connect_error, nmcli_connect_output_success, parse_pactl_list_sinks,
     parse_powerprofilesctl_output, parse_proc_stat_cpu, parse_saved_connections,
     parse_sensors_cpu_temp, parse_show_block_json, parse_streams, parse_systemd_timer_line,
 };
@@ -123,6 +124,22 @@ fn contract_network_wifi_empty_scan() {
 }
 
 #[test]
+fn contract_network_nmcli_connect_fixtures() {
+    let success = load_fixture("nmcli/connect_success.txt");
+    assert!(nmcli_connect_output_success(&success));
+    let not_found = load_fixture("nmcli/connect_error_not_found.txt");
+    assert_eq!(
+        map_nmcli_connect_error(&not_found),
+        "Wi‑Fi network not in range — scan again"
+    );
+    let secrets = load_fixture("nmcli/connect_error_secrets.txt");
+    assert_eq!(
+        map_nmcli_connect_error(&secrets),
+        "Password required for this network"
+    );
+}
+
+#[test]
 fn contract_network_saved_connections_json_shape() {
     let text = load_fixture("network/nmcli_saved_connections.txt");
     let saved = parse_saved_connections(&text);
@@ -139,7 +156,7 @@ fn contract_network_saved_connections_json_shape() {
 fn contract_audio_wpctl_devices_json_shape() {
     let text = load_fixture("audio/wpctl_status.txt");
     let (sinks, sources) = parse_devices(&text);
-    assert_eq!(sinks.len(), 1);
+    assert_eq!(sinks.len(), 2);
     assert_eq!(sources.len(), 1);
     assert!(sinks[0].muted);
     assert!(sinks[0].is_default);
@@ -166,6 +183,14 @@ fn contract_audio_wpctl_multiple_defaults() {
     assert!((sinks[1].volume - 0.75).abs() < f64::EPSILON);
     assert_eq!(sources.len(), 1);
     assert!(sources[0].is_default);
+}
+
+#[test]
+fn contract_audio_pactl_list_sinks_fixture() {
+    let sinks = parse_pactl_list_sinks(&load_fixture("audio/pactl_list_sinks.txt"));
+    assert_eq!(sinks.len(), 2);
+    assert_eq!(sinks[0].description, "Headphones");
+    assert_eq!(sinks[1].index, 55);
 }
 
 #[test]
@@ -483,6 +508,19 @@ fn contract_power_battery_time_remaining_strings() {
     assert_eq!(format_minutes(45), "45m");
     assert_eq!(format_time_from_energy(30_000_000, 10_000_000), "3h");
     assert_eq!(format_time_from_energy(30_000_000, 0), "Unknown");
+}
+
+#[test]
+fn contract_power_supply_capacity_only_sysfs() {
+    let capacity: u8 = load_fixture("power_supply/capacity.txt")
+        .trim()
+        .parse()
+        .expect("capacity");
+    assert_eq!(capacity, 72);
+    assert_eq!(
+        compute_time_remaining_from_sysfs(false, None, Some(0), None, None),
+        "Unknown"
+    );
 }
 
 /// Read-only live `nmcli` Wi‑Fi list (no rescan/connect). Run:

@@ -1,0 +1,1 @@
+Device 'wlan0' successfully activated with 'Home-5G'.

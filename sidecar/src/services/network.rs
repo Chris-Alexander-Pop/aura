@@ -1,8 +1,13 @@
+//! NetworkManager Wi‑Fi via `nmcli`.
+//!
+//! **Deferred:** captive portal detection (`Network.GetCaptivePortal` / HTTP 204 probe) and
+//! 802.1X enterprise join — use NetworkManager profiles or the control-panel roadmap.
+
 use crate::notify;
 use crate::services::ServiceRegistry;
 use crate::types::{AccessPoint, NetworkStatus};
 use crate::utils::{keyring, process};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
@@ -120,24 +125,20 @@ pub fn register(registry: &mut ServiceRegistry) {
             None => keyring::lookup_wifi_password(&ssid).await?,
         };
 
-        let result = if let Some(ref pass) = password {
-            if pass.is_empty() {
-                connect_open_or_saved(&ssid).await
-            } else {
-                process::exec_command(&[
-                    "nmcli",
-                    "dev",
-                    "wifi",
-                    "connect",
-                    &ssid,
-                    "password",
-                    pass,
-                ])
-                .await
-                .map(|_| ())
+        if let Some(sec) = scan_security_for_ssid(&ssid).await {
+            if is_enterprise_security(&sec) {
+                return Ok(serde_json::json!({
+                    "success": false,
+                    "error": map_nmcli_connect_error(
+                        "802.1X enterprise Wi‑Fi is not supported yet; configure the profile in NetworkManager",
+                    ),
+                }));
             }
-        } else {
-            connect_open_or_saved(&ssid).await
+        }
+
+        let result = match password.as_deref() {
+            Some(pass) if !pass.is_empty() => connect_wifi_with_password(&ssid, pass).await,
+            _ => connect_open_or_saved(&ssid).await,
         };
 
         match result {
@@ -148,7 +149,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             }
             Err(e) => Ok(serde_json::json!({
                 "success": false,
-                "error": e.to_string(),
+                "error": map_nmcli_connect_error(&e.to_string()),
             })),
         }
     });
@@ -207,12 +208,141 @@ pub(crate) async fn snapshot_network_status() -> NetworkStatus {
     state.status.clone()
 }
 
-async fn connect_open_or_saved(ssid: &str) -> Result<()> {
-    if process::exec_command(&["nmcli", "dev", "wifi", "connect", ssid])
-        .await
-        .is_ok()
+async fn scan_security_for_ssid(ssid: &str) -> Option<String> {
+    let state = STATE.read().await;
+    state
+        .networks
+        .iter()
+        .find(|n| n.ssid == ssid)
+        .map(|n| n.security.clone())
+}
+
+/// Map raw `nmcli` / process errors to short UI-facing messages.
+pub fn map_nmcli_connect_error(raw: &str) -> String {
+    let msg = extract_nmcli_error_message(raw);
+    let lower = msg.to_lowercase();
+    if lower.contains("802.1x") || lower.contains("802-1x") || lower.contains("enterprise") {
+        return "802.1X enterprise Wi‑Fi is not supported yet; configure the profile in NetworkManager"
+            .to_string();
+    }
+    if lower.contains("no network with ssid") {
+        return "Wi‑Fi network not in range — scan again".to_string();
+    }
+    if lower.contains("secrets were required") {
+        return "Password required for this network".to_string();
+    }
+    if lower.contains("passwords or encryption keys")
+        || lower.contains("wrong password")
+        || lower.contains("invalid secrets")
     {
+        return "Incorrect Wi‑Fi password".to_string();
+    }
+    if lower.contains("wifi is disabled") || lower.contains("radio wifi is disabled") {
+        return "Wi‑Fi is turned off — enable Wi‑Fi and try again".to_string();
+    }
+    if lower.contains("device") && lower.contains("not ready") {
+        return "Wi‑Fi adapter is not ready — try again in a moment".to_string();
+    }
+    if msg.is_empty() {
+        "NetworkManager rejected the connection".to_string()
+    } else {
+        msg
+    }
+}
+
+fn extract_nmcli_error_message(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let after_cmd = trimmed
+        .strip_prefix("Command failed: nmcli - ")
+        .or_else(|| trimmed.strip_prefix("Command failed: nmcli "))
+        .unwrap_or(trimmed);
+    after_cmd
+        .trim()
+        .trim_start_matches("Error: ")
+        .to_string()
+}
+
+/// True when scan security string indicates an open / OWE transition network.
+pub fn is_open_security(security: &str) -> bool {
+    let s = security.trim();
+    s.is_empty() || s == "--" || s.eq_ignore_ascii_case("open") || s.contains("OWE")
+}
+
+/// True for 802.1X / WPA-Enterprise style networks (not joinable via password-only RPC).
+pub fn is_enterprise_security(security: &str) -> bool {
+    let s = security.to_uppercase();
+    s.contains("802.1X")
+        || s.contains("802-1X")
+        || s.contains("EAP")
+        || s.contains("ENTERPRISE")
+        || s.contains("WPA-EAP")
+}
+
+/// WPA3-SAE appears in nmcli SECURITY column; join still uses `password` with NetworkManager.
+pub fn is_wpa3_security(security: &str) -> bool {
+    let s = security.to_uppercase();
+    s.contains("WPA3") || s.contains("SAE")
+}
+
+/// Typical success stdout from `nmcli dev wifi connect` / `connection up`.
+pub fn nmcli_connect_output_success(output: &str) -> bool {
+    let lower = output.to_lowercase();
+    lower.contains("successfully activated") || lower.contains("connection successfully activated")
+}
+
+async fn connect_wifi_with_password(ssid: &str, pass: &str) -> Result<()> {
+    let security = scan_security_for_ssid(ssid).await;
+    if security.as_ref().is_some_and(|s| is_open_security(s)) {
+        return connect_open_or_saved(ssid).await;
+    }
+
+    let mut last_err = String::new();
+    let primary = [
+        "nmcli",
+        "dev",
+        "wifi",
+        "connect",
+        ssid,
+        "password",
+        pass,
+    ];
+    match process::exec_command(&primary).await {
+        Ok(out) if nmcli_connect_output_success(&out) || out.is_empty() => return Ok(()),
+        Ok(_) => return Ok(()),
+        Err(e) => last_err = e.to_string(),
+    }
+
+    if security.as_ref().is_some_and(|s| is_wpa3_security(s)) {
+        let fallback = [
+            "nmcli",
+            "dev",
+            "wifi",
+            "connect",
+            ssid,
+            "password",
+            pass,
+            "key-mgmt",
+            "wpa-psk",
+        ];
+        match process::exec_command(&fallback).await {
+            Ok(out) if nmcli_connect_output_success(&out) || out.is_empty() => return Ok(()),
+            Ok(_) => return Ok(()),
+            Err(e) => last_err = e.to_string(),
+        }
+    }
+
+    if connect_open_or_saved(ssid).await.is_ok() {
         return Ok(());
+    }
+
+    bail!(map_nmcli_connect_error(&last_err))
+}
+
+async fn connect_open_or_saved(ssid: &str) -> Result<()> {
+    if let Ok(out) = process::exec_command(&["nmcli", "dev", "wifi", "connect", ssid]).await {
+        if nmcli_connect_output_success(&out) || out.is_empty() {
+            return Ok(());
+        }
     }
     process::exec_command(&["nmcli", "connection", "up", ssid]).await?;
     Ok(())
@@ -619,5 +749,54 @@ mod tests {
         merge_ethernet_from_device_list(fixture, &mut ctype, &mut eth);
         assert!(eth);
         assert_eq!(ctype, "ethernet");
+    }
+
+    #[test]
+    fn map_nmcli_connect_error_not_found_fixture() {
+        let raw = include_str!("../../tests/fixtures/nmcli/connect_error_not_found.txt");
+        assert_eq!(
+            map_nmcli_connect_error(raw),
+            "Wi‑Fi network not in range — scan again"
+        );
+    }
+
+    #[test]
+    fn map_nmcli_connect_error_secrets_fixture() {
+        let raw = include_str!("../../tests/fixtures/nmcli/connect_error_secrets.txt");
+        assert_eq!(
+            map_nmcli_connect_error(raw),
+            "Password required for this network"
+        );
+    }
+
+    #[test]
+    fn nmcli_connect_success_fixture() {
+        let out = include_str!("../../tests/fixtures/nmcli/connect_success.txt");
+        assert!(nmcli_connect_output_success(out));
+    }
+
+    #[test]
+    fn security_classifiers() {
+        assert!(is_open_security("--"));
+        assert!(is_open_security("open"));
+        assert!(is_wpa3_security("WPA3"));
+        assert!(is_enterprise_security("WPA2 802.1X"));
+        assert!(!is_enterprise_security("WPA2"));
+    }
+
+    #[test]
+    fn parse_saved_connections_skips_short_lines_and_non_wifi() {
+        let input = "short:line\nEthernet:uuid:802-3-ethernet:yes\nCafe:u2:wifi:yes\n";
+        let saved = parse_saved_connections(input);
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].name, "Cafe");
+    }
+
+    #[test]
+    fn parse_saved_connections_accepts_802_11_wireless_type() {
+        let input = "Guest:uuid-g:802-11-wireless:no\n";
+        let saved = parse_saved_connections(input);
+        assert_eq!(saved.len(), 1);
+        assert!(!saved[0].autoconnect);
     }
 }
