@@ -152,8 +152,11 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Calendar.SyncCalendars", |_params| async move {
-        // TODO(Slice C): CalDAV/Google OAuth via keyring; read-only sync first.
-        Ok(serde_json::json!({ "success": true, "synced": 0 }))
+        crate::services::caldav::sync_caldav_read_only().await
+    });
+
+    registry.register("Calendar.SyncCalDav", |_params| async move {
+        crate::services::caldav::sync_caldav_read_only().await
     });
 
     registry.register("Calendar.GetUpcomingEvents", |params| async move {
@@ -467,9 +470,11 @@ mod tests {
         let mut count = 0;
         while let Ok(raw) = rx.try_recv() {
             let v: serde_json::Value = serde_json::from_str(&raw).expect("json");
-            assert_eq!(v["method"], "Calendar.EventsChanged");
-            count += 1;
+            if v["method"] == "Calendar.EventsChanged" {
+                count += 1;
+            }
         }
         assert!(count <= 1, "expected at most one debounced emit, got {count}");
+        assert!(count >= 1, "expected at least one Calendar.EventsChanged");
     }
 }

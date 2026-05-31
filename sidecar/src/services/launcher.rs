@@ -43,7 +43,7 @@ pub struct DesktopEntry {
     pub keywords: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LauncherResult {
     id: String,
@@ -383,7 +383,49 @@ async fn recent_items() -> Result<Vec<LauncherResult>> {
     Ok(items)
 }
 
+async fn vicinae_query(socket_path: &str, query: &str, limit: usize) -> Result<Vec<LauncherResult>> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::UnixStream;
+
+    let payload = json!({ "query": query, "limit": limit }).to_string() + "\n";
+    let mut stream = UnixStream::connect(socket_path).await?;
+    stream.write_all(payload.as_bytes()).await?;
+    stream.shutdown().await?;
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).await?;
+    let response: serde_json::Value = serde_json::from_slice(&buf)?;
+    let results_value = response
+        .get("results")
+        .cloned()
+        .unwrap_or_else(|| json!([]));
+    Ok(serde_json::from_value(results_value)?)
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
+    registry.register("Launcher.VicinaeQuery", |params| async move {
+        let query = params
+            .as_ref()
+            .and_then(|p| p.get("query"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let limit = params
+            .as_ref()
+            .and_then(|p| p.get("limit"))
+            .and_then(|v| v.as_u64())
+            .map(|n| n as usize)
+            .unwrap_or(DEFAULT_QUERY_LIMIT)
+            .clamp(1, MAX_QUERY_LIMIT);
+
+        if let Ok(socket_path) = std::env::var("VICINAE_SOCKET") {
+            if let Ok(results) = vicinae_query(&socket_path, query, limit).await {
+                return Ok(json!({ "results": results, "source": "vicinae" }));
+            }
+        }
+
+        let results = query_entries_async(query, limit).await?;
+        Ok(json!({ "results": results, "source": "desktop" }))
+    });
+
     registry.register("Launcher.Query", |params| async move {
         let query = params
             .as_ref()
