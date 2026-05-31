@@ -1,6 +1,9 @@
+//! P0 smoke, storage round-trips, and readonly gap sweeps (fast + `#[ignore]` slow host batch).
+//!
+//! Per-service JSON shape tests live in `tests/*_rpc_shapes.rs` and `tests/*_storage_test.rs`.
+
 mod common;
 
-use ags_sidecar::services::notifications::record_notification;
 use common::{call_method, call_rpc, test_registry};
 use common::setup_temp_storage_db;
 use serde_json::{json, Value};
@@ -354,8 +357,8 @@ async fn performance_get_metrics_shape() {
     }
 }
 
-/// Read-only RPCs for shell, media, hyprland, and wave-4 services (no connect/kill/capture).
-const WAVE4_READONLY_METHODS: &[&str] = &[
+/// Bulk smoke: read-only RPCs across shell, compositor, media, and control-center services.
+const READONLY_BULK_SMOKE_METHODS: &[&str] = &[
     "Sidecar.GetVersion",
     "Packages.GetInstalled",
     "Brightness.Get",
@@ -382,12 +385,21 @@ const WAVE4_READONLY_METHODS: &[&str] = &[
     "Communication.GetNotificationSettings",
     "Weather.GetLocations",
     "Weather.GetAlerts",
+    "Settings.Get",
+    "Settings.GetSchema",
+    "Capture.ListDevices",
+    "Automation.ListRules",
+    "Notifications.List",
+    "Notifications.GetDnd",
+    "Audio.Media.GetPlayers",
+    "Productivity.GetTasks",
+    "DevOps.GetDockerContainers",
 ];
 
 #[tokio::test]
-async fn wave4_readonly_methods_resolve() {
+async fn readonly_bulk_smoke_methods_resolve() {
     let registry = test_registry();
-    for method in WAVE4_READONLY_METHODS {
+    for method in READONLY_BULK_SMOKE_METHODS {
         let result = call_method(&registry, method, None).await;
         assert!(
             result.is_ok(),
@@ -802,79 +814,3 @@ async fn readonly_gap_methods_resolve_slow_host() {
     assert_readonly_gap_methods_resolve(READONLY_GAP_SLOW_HOST).await;
 }
 
-
-#[tokio::test]
-async fn wave3_logs_get_entry_schema() {
-    let registry = test_registry();
-    let value = call_rpc(
-        &registry,
-        "Logs.Get",
-        Some(json!({ "lines": 5 })),
-    )
-    .await
-    .expect("Logs.Get");
-    let entries = value.as_array().expect("array");
-    if let Some(row) = entries.first() {
-        assert!(row.get("message").and_then(|v| v.as_str()).is_some());
-        assert!(row.get("level").and_then(|v| v.as_str()).is_some());
-        assert!(row.get("timestamp").and_then(|v| v.as_str()).is_some());
-        assert!(row.get("service").and_then(|v| v.as_str()).is_some());
-    }
-}
-
-#[tokio::test]
-async fn wave3_keybinds_list_entry_schema() {
-    let registry = test_registry();
-    let value = call_rpc(&registry, "Keybinds.List", None)
-        .await
-        .expect("Keybinds.List");
-    let entries = value.as_array().expect("array");
-    if let Some(row) = entries.first() {
-        let obj = row.as_object().expect("object");
-        for key in ["combo", "action", "bind_type", "file", "line", "category"] {
-            assert!(obj.contains_key(key), "missing keybind field {key}");
-        }
-    }
-}
-
-#[tokio::test]
-async fn wave3_notifications_list_item_schema() {
-    record_notification(
-        Some(42),
-        "contract-test".into(),
-        1,
-        "Summary".into(),
-        "Body text".into(),
-        None,
-        1,
-        vec![],
-    )
-    .await;
-
-    let registry = test_registry();
-    let value = call_rpc(
-        &registry,
-        "Notifications.List",
-        Some(json!({ "limit": 10, "app_name": "contract-test" })),
-    )
-    .await
-    .expect("Notifications.List");
-    let items = value.as_array().expect("array");
-    let item = items
-        .iter()
-        .find(|n| n.get("app_name").and_then(|v| v.as_str()) == Some("contract-test"))
-        .expect("recorded notification");
-    for key in [
-        "id",
-        "app_name",
-        "summary",
-        "body",
-        "urgency",
-        "timestamp",
-        "actions",
-        "closed",
-    ] {
-        assert!(item.get(key).is_some(), "missing notification field {key}");
-    }
-    assert!(item.get("actions").and_then(|v| v.as_array()).is_some());
-}

@@ -379,6 +379,35 @@ export function parseHyprActiveWindow(raw: unknown): HyprActiveWindow | null {
   }
 }
 
+// ── Aura settings (matches settings.rs) ─────────────────────────────────────
+
+export interface AuraSettingsView {
+  bar_section_order: string[]
+  cc_enabled_panes: string[]
+  theme: string
+  dropdown_modules: string[]
+}
+
+export function parseAuraSettings(raw: unknown): AuraSettingsView | null {
+  if (!isRecord(raw)) return null
+  const bar = raw.bar_section_order
+  const cc = raw.cc_enabled_panes
+  const theme = raw.theme
+  const dropdown = raw.dropdown_modules
+  if (!Array.isArray(bar) || !Array.isArray(cc) || typeof theme !== "string") return null
+  if (!Array.isArray(dropdown)) return null
+  if (!bar.every((x) => typeof x === "string") || !cc.every((x) => typeof x === "string")) {
+    return null
+  }
+  if (!dropdown.every((x) => typeof x === "string")) return null
+  return {
+    bar_section_order: bar as string[],
+    cc_enabled_panes: cc as string[],
+    theme,
+    dropdown_modules: dropdown as string[],
+  }
+}
+
 export function adaptDndPrefs(data: unknown): DndPrefsView {
   if (!isRecord(data)) {
     return {

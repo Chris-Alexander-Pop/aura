@@ -24,6 +24,8 @@ pub mod mpris;
 pub mod processes;
 pub mod notifications;
 pub mod keybinds;
+pub mod settings;
+pub mod capture;
 
 use crate::types::JsonRpcRequest;
 use anyhow::Result;

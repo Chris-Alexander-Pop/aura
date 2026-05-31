@@ -13,10 +13,9 @@
 | `integration_test` | 46 | pass (1 ignored: `readonly_gap_methods_resolve_slow_host`) |
 | `rpc_contract_test` | 15 | pass |
 | `server_http_test` | 6 | pass |
-| `wave3_rpc_shapes` | 9 | pass |
-| `wave4_rpc_shapes` | 10 | pass |
-| `wave5_hyprland_*` + `wave5_media_shapes` | 13+ | pass (fixture + shape tests) |
-| `wave12_rpc_shapes` | 7 | pass |
+| `*_rpc_shapes` (per service) | 40+ | pass |
+| `hyprland_internal_test` | 4 | pass |
+| `*_storage_test` (automation, calendar, productivity) | 3 | pass |
 | Binary (`main.rs`) | 0 | `test = false` on `[[bin]]` |
 | Doc tests | 0 | — |
 | **Total test functions** | **250** | **248 passed, 2 ignored** (default `cargo test`) |
@@ -159,7 +158,7 @@ CLI/tools the sidecar invokes via `utils/process::exec_command`, `Command::new`,
 | **playerctl** | metadata, transport | No | Partial — `Media.GetNowPlaying` | |
 | **pacman** | `-Q`, `-Qu`, `-Ss`, … | Yes | Partial + slow gap | `parse_pacman_qu` validates version-shaped lines |
 | **journalctl** | `-n`, `-o json`, `--grep` | Yes | Partial — `Logs.Get`; more in slow gap | |
-| **hyprctl** | `-j` workspaces/clients | No | Partial — workspaces + wave4 bulk | |
+| **hyprctl** | `-j` workspaces/clients | No | Partial — `hyprland_rpc_shapes` + bulk smoke | |
 | **powerprofilesctl** | `get` / `set` | Yes | Yes — `Power.GetProfile` | |
 | **HTTP (weather)** | `wttr.in`, etc. | Yes | `Weather.Get*` in slow gap + shape test | |
 | **docker/podman/kubectl** | DevOps RPCs | Partial | `DevOps.GetStatus` + slow gap | |

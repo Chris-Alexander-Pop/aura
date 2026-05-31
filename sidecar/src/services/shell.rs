@@ -35,7 +35,9 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Session.Lock", |_p| async move {
-        process::exec_command_detached(&["loginctl", "lock-session"]).await?;
+        let argv = resolve_lock_argv();
+        let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+        process::exec_command_detached(&refs).await?;
         Ok(json!({"ok": true}))
     });
 
@@ -96,6 +98,20 @@ pub(crate) fn app_launch_argv(app_id: &str) -> Option<Vec<&'static str>> {
     APP_MAP.get(app_id).cloned()
 }
 
+/// Prefer `hyprlock` when installed; fall back to `loginctl lock-session`.
+pub fn resolve_lock_argv() -> Vec<String> {
+    if std::process::Command::new("which")
+        .arg("hyprlock")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        vec!["hyprlock".into()]
+    } else {
+        vec!["loginctl".into(), "lock-session".into()]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{app_launch_argv, aura_window_allowed};
@@ -115,5 +131,15 @@ mod tests {
         assert_eq!(app_launch_argv("terminal"), Some(vec!["kitty"]));
         assert_eq!(app_launch_argv("browser"), Some(vec!["firefox"]));
         assert!(app_launch_argv("unknown-app").is_none());
+    }
+
+    #[test]
+    fn resolve_lock_argv_is_nonempty() {
+        let argv = super::resolve_lock_argv();
+        assert!(!argv.is_empty());
+        assert!(
+            argv[0] == "hyprlock"
+                || (argv[0] == "loginctl" && argv.get(1).map(String::as_str) == Some("lock-session"))
+        );
     }
 }

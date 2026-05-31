@@ -41,11 +41,21 @@ Equivalent manual run from `sidecar/`:
 
 ```bash
 cargo test --lib
-cargo test --test integration_contracts
-cargo test --test rpc_contract_test
-cargo test --test server_http_test
-cargo test --test integration_test
+cargo test --tests
 ```
+
+## Layout
+
+| File pattern | Purpose |
+|--------------|---------|
+| `integration_contracts.rs` | Golden CLI fixture parsers (no RPC) |
+| `rpc_contract_test.rs` | Manifest / API contract parity |
+| `server_http_test.rs` | Axum HTTP + WebSocket push |
+| `integration_test.rs` | P0 smoke, storage helpers, readonly gap sweeps |
+| `{service}_rpc_shapes.rs` | Read-only `Service.Method` JSON shape tests |
+| `{service}_storage_test.rs` | Mutating CRUD via temp DB (`call_method_unchecked`) |
+| `hyprland_internal_test.rs` | Dispatch allowlist + socket2 event parsing (no compositor) |
+| `security_*.rs` | Security service contracts and RPC guards |
 
 `readonly_gap_methods_resolve` covers the **fast** readonly gap set (`READONLY_GAP_FAST`). The **slow** set (`READONLY_GAP_SLOW_HOST`, subprocess/HTTP/docker/journalctl/pacman/security) is in:
 
@@ -82,7 +92,7 @@ See `sidecar/README.md` for `cargo-llvm-cov` install steps.
 When raising coverage toward 90%, prefer **small tests that hit one decision branch** rather than large integration loops:
 
 - **Unit / contract** — parser or helper with a fixture under `tests/fixtures/` (`integration_contracts.rs`, `#[cfg(test)]` in the service module).
-- **Integration shape** — one `#[tokio::test]` per RPC with explicit JSON field assertions (see dedicated tests in `integration_test.rs`).
+- **Integration shape** — one `#[tokio::test]` per RPC in `tests/{service}_rpc_shapes.rs` with explicit JSON field assertions.
 - **Bulk resolve loops** — only for panic-free smoke; split slow host batches into `#[ignore]` (see `readonly_gap_methods_resolve_slow_host`).
 
 Avoid duplicating the same branch in both a fixture unit test and a 70-method host sweep unless the integration path adds real wiring value.

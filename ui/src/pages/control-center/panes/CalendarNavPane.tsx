@@ -1,7 +1,8 @@
 import { motion } from "framer-motion"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import api, { type CalendarEvent } from "@/lib/api"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { getNavItem } from "../navigation"
 
 /** Sidecar may use seconds or milliseconds for unix timestamps. */
@@ -27,10 +28,19 @@ export function CalendarNavPane() {
   const [title, setTitle] = useState("")
   const [hoursFromNow, setHoursFromNow] = useState(1)
 
+  useEffect(() => {
+    connectWs()
+    const off = useWsStore.getState().on("Calendar.EventsChanged", () => {
+      void qc.invalidateQueries({ queryKey: ["calendar-upcoming"] })
+      void qc.invalidateQueries({ queryKey: ["cal"] })
+    })
+    return off
+  }, [qc])
+
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["calendar-upcoming", "control-center-pane"],
     queryFn: () => api.getCalendarUpcoming(20),
-    refetchInterval: 60_000,
+    refetchInterval: 300_000,
   })
 
   const createMut = useMutation({

@@ -1,3 +1,5 @@
+//! Mutating `Productivity.*` task CRUD against a temporary storage DB (`call_method_unchecked`).
+
 mod common;
 
 use ags_sidecar::build_registry;
@@ -12,7 +14,7 @@ async fn productivity_task_round_trip_and_stats() {
     let task = call_method_unchecked(
         &registry,
         "Productivity.CreateTask",
-        Some(json!({ "title": "Write tests", "description": "wave4" })),
+        Some(json!({ "title": "Write tests", "description": "integration" })),
     )
     .await
     .unwrap();

@@ -4,14 +4,14 @@
 
 mod common;
 
-use ags_sidecar::notify;
 use ags_sidecar::server;
 use common::{assert_safe_rpc_method, call_method, test_registry};
 use futures_util::{SinkExt, StreamExt};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::sync::Arc;
+use std::time::Duration;
 use tempfile::TempDir;
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 async fn spawn_ephemeral_server(
@@ -42,6 +42,83 @@ fn with_temp_storage_db<F: FnOnce()>(f: F) {
     std::env::set_var("AURA_STORAGE_DB", db.to_string_lossy().to_string());
     f();
     let _ = std::fs::remove_file(&db);
+}
+
+/// Per-test notify bus (do not share `notify::init_for_tests` across parallel WS tests).
+fn test_notify_bus() -> broadcast::Sender<String> {
+    let (tx, _) = broadcast::channel(32);
+    tx
+}
+
+type WsStream = futures_util::stream::SplitStream<
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+>;
+
+async fn ws_wait_until_ready(
+    sink: &mut futures_util::stream::SplitSink<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        Message,
+    >,
+    stream: &mut WsStream,
+) {
+    sink.send(Message::Ping(vec![]))
+        .await
+        .expect("ws ping");
+    loop {
+        let frame = tokio::time::timeout(Duration::from_secs(5), stream.next())
+            .await
+            .expect("ping timeout")
+            .expect("stream open")
+            .expect("ws frame");
+        if matches!(frame, Message::Pong(_)) {
+            return;
+        }
+    }
+}
+
+async fn ws_recv_method(ws: &mut WsStream, method: &str) -> Value {
+    loop {
+        let frame = tokio::time::timeout(Duration::from_secs(5), ws.next())
+            .await
+            .expect("notify timeout")
+            .expect("stream open")
+            .expect("ws frame");
+        if let Message::Text(text) = frame {
+            let v: Value = serde_json::from_str(&text).expect("json");
+            if v.get("method").and_then(|m| m.as_str()) == Some(method) {
+                return v;
+            }
+        }
+    }
+}
+
+async fn ws_push_round_trip(
+    notify_tx: &broadcast::Sender<String>,
+    method: &str,
+    params: Value,
+) -> Value {
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx.clone()).await;
+
+    let ws_url = format!("ws://{addr}/ws");
+    let (ws, _) = connect_async(&ws_url).await.expect("ws connect");
+    let (mut sink, mut stream) = ws.split();
+    ws_wait_until_ready(&mut sink, &mut stream).await;
+
+    let payload = json!({ "method": method, "params": params }).to_string();
+    notify_tx
+        .send(payload)
+        .expect("broadcast send");
+
+    let v = ws_recv_method(&mut stream, method).await;
+    assert_eq!(v["method"], method);
+
+    drop(sink);
+    drop(stream);
+    server_task.abort();
+    v
 }
 
 #[tokio::test]
@@ -108,46 +185,19 @@ async fn http_post_storage_get_temp_db() {
 
 #[tokio::test]
 async fn websocket_receives_notify_emit() {
-    let notify_tx = notify::init_for_tests();
-    let registry = Arc::new(Mutex::new(test_registry()));
-    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx.clone()).await;
+    let notify_tx = test_notify_bus();
+    let v = ws_push_round_trip(&notify_tx, "Test.Push", json!({ "hello": true })).await;
+    assert_eq!(v["params"]["hello"], true);
+}
 
-    let ws_url = format!("ws://{addr}/ws");
-    let (mut ws, _) = connect_async(&ws_url).await.expect("ws connect");
-
-    // Ensure the server handler subscribed before we emit (broadcast drops early sends).
-    ws.send(Message::Ping(vec![])).await.expect("ping");
-    loop {
-        let frame = tokio::time::timeout(std::time::Duration::from_secs(2), ws.next())
-            .await
-            .expect("ping timeout")
-            .expect("stream item")
-            .expect("ws frame");
-        if matches!(frame, Message::Pong(_)) {
-            break;
-        }
-    }
-
-    notify::emit("Test.Push", json!({ "hello": true }));
-
-    let msg = loop {
-        let frame = tokio::time::timeout(std::time::Duration::from_secs(2), ws.next())
-            .await
-            .expect("notify timeout")
-            .expect("stream item")
-            .expect("ws frame");
-        if let Message::Text(_) = frame {
-            break frame;
-        }
-    };
-
-    if let Message::Text(text) = msg {
-        let v: serde_json::Value = serde_json::from_str(&text).expect("json");
-        assert_eq!(v["method"], "Test.Push");
-        assert_eq!(v["params"]["hello"], true);
-    } else {
-        panic!("expected text frame, got {:?}", msg);
-    }
-
-    server_task.abort();
+#[tokio::test]
+async fn websocket_receives_calendar_events_changed() {
+    let notify_tx = test_notify_bus();
+    let v = ws_push_round_trip(
+        &notify_tx,
+        "Calendar.EventsChanged",
+        json!({ "reason": "create" }),
+    )
+    .await;
+    assert_eq!(v["params"]["reason"], "create");
 }

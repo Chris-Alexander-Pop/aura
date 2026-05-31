@@ -37,6 +37,8 @@ pub fn build_registry() -> ServiceRegistry {
     services::processes::register(&mut registry);
     services::notifications::register(&mut registry);
     services::keybinds::register(&mut registry);
+    services::settings::register(&mut registry);
+    services::capture::register(&mut registry);
     registry
 }
 

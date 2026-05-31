@@ -1,11 +1,16 @@
+use crate::notify;
 use crate::services::notifications;
 use crate::services::ServiceRegistry;
 use crate::utils::storage;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json;
+use serde_json::{self, json};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Once;
 use tokio::time::Duration;
+
+static CALENDAR_EMIT_GEN: AtomicU64 = AtomicU64::new(0);
+const CALENDAR_EMIT_DEBOUNCE_MS: u64 = 200;
 
 static REMINDER_TICK: Once = Once::new();
 
@@ -95,6 +100,7 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         storage::init().await?;
         storage::set_kv("calendar_events", &event_id, &serde_json::to_value(&event)?).await?;
+        schedule_calendar_events_emit("create");
         Ok(serde_json::to_value(&event)?)
     });
 
@@ -118,6 +124,7 @@ pub fn register(registry: &mut ServiceRegistry) {
                     event_obj.insert(key.clone(), value.clone());
                 }
                 storage::set_kv("calendar_events", &event_id, &event_value).await?;
+                schedule_calendar_events_emit("update");
             }
         }
 
@@ -134,6 +141,9 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         storage::init().await?;
         let deleted = storage::delete_kv("calendar_events", &event_id).await?;
+        if deleted {
+            schedule_calendar_events_emit("delete");
+        }
         Ok(serde_json::json!({ "success": true, "deleted": deleted }))
     });
 
@@ -277,9 +287,35 @@ async fn check_calendar_reminders() -> Result<()> {
         )
         .await;
         storage::set_kv("calendar_reminders", &fired_key, &serde_json::json!(now)).await?;
+        schedule_calendar_events_emit("reminder");
     }
     Ok(())
 }
+
+fn schedule_calendar_events_emit(reason: &str) {
+    if tokio::runtime::Handle::try_current().is_err() {
+        return;
+    }
+    let gen = CALENDAR_EMIT_GEN.fetch_add(1, Ordering::Relaxed) + 1;
+    let reason = reason.to_string();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(CALENDAR_EMIT_DEBOUNCE_MS)).await;
+        if CALENDAR_EMIT_GEN.load(Ordering::Relaxed) != gen {
+            return;
+        }
+        notify::emit(
+            "Calendar.EventsChanged",
+            json!({ "reason": reason }),
+        );
+    });
+}
+
+/// Test hook — same debounce path as production CRUD/reminder handlers.
+#[cfg(test)]
+pub(crate) fn schedule_calendar_events_emit_for_tests(reason: &str) {
+    schedule_calendar_events_emit(reason);
+}
+
 
 pub(crate) fn events_from_storage_values(items: Vec<serde_json::Value>) -> Vec<CalendarEvent> {
     items
@@ -304,6 +340,8 @@ pub(crate) fn filter_events_by_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::OnceLock;
+    use tokio::sync::Mutex;
 
     fn sample_event(id: &str, start: i64, end: i64) -> CalendarEvent {
         CalendarEvent {
@@ -372,5 +410,25 @@ mod tests {
     #[test]
     fn events_from_storage_empty_namespace() {
         assert!(events_from_storage_values(vec![]).is_empty());
+    }
+
+    #[tokio::test]
+    async fn calendar_events_emit_debounce_coalesces() {
+        static DEBOUNCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = DEBOUNCE_LOCK.get_or_init(|| Mutex::new(())).lock().await;
+        let tx = crate::notify::init_for_tests();
+        let mut rx = tx.subscribe();
+
+        schedule_calendar_events_emit_for_tests("create");
+        schedule_calendar_events_emit_for_tests("update");
+        tokio::time::sleep(Duration::from_millis(CALENDAR_EMIT_DEBOUNCE_MS + 80)).await;
+
+        let mut count = 0;
+        while let Ok(raw) = rx.try_recv() {
+            let v: serde_json::Value = serde_json::from_str(&raw).expect("json");
+            assert_eq!(v["method"], "Calendar.EventsChanged");
+            count += 1;
+        }
+        assert!(count <= 1, "expected at most one debounced emit, got {count}");
     }
 }

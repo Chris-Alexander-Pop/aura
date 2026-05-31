@@ -122,6 +122,11 @@ const DENIED_EXACT: &[&str] = &[
     "Calendar.SetReminder",
     "Calendar.SyncCalendars",
     "Calendar.UpdateEvent",
+    "Capture.Screenshot",
+    "Capture.RecordStart",
+    "Capture.RecordStop",
+    "Settings.Set",
+    "Settings.Reset",
     "Productivity.CancelTimer",
     "Productivity.CreatePomodoro",
     "Productivity.CreateTask",
@@ -292,6 +297,14 @@ async fn dispatch_rpc(
         id: Some(Value::Number(1.into())),
     };
     registry.handle_request(request).await
+}
+
+/// Assert every key is present on a JSON object (integration shape tests).
+pub fn assert_json_object_keys(value: &Value, keys: &[&str]) {
+    let obj = value.as_object().expect("JSON object");
+    for key in keys {
+        assert!(obj.contains_key(*key), "missing key {key}");
+    }
 }
 
 /// Collect RPC method names invoked via [`call_method`] / [`call_rpc`] in integration test sources.

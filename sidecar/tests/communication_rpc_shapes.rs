@@ -1,0 +1,93 @@
+//! Read-only `Communication.*` RPC shapes and notification-settings storage branches.
+
+mod common;
+
+use common::{call_rpc, setup_temp_storage_db, test_registry};
+use serde_json::json;
+
+#[tokio::test]
+async fn communication_unread_and_notification_settings_schema() {
+    let _db = setup_temp_storage_db().await;
+    let registry = test_registry();
+
+    let unread = call_rpc(&registry, "Communication.GetUnread", None)
+        .await
+        .expect("Communication.GetUnread");
+    assert!(unread.is_object());
+    assert!(unread.as_object().unwrap().is_empty());
+
+    let default_settings = call_rpc(&registry, "Communication.GetNotificationSettings", None)
+        .await
+        .expect("GetNotificationSettings");
+    assert!(default_settings.is_object());
+
+    call_rpc(
+        &registry,
+        "Storage.Set",
+        Some(json!({
+            "namespace": "communication",
+            "key": "notification_settings",
+            "value": { "mute_all": false, "per_app": {} }
+        })),
+    )
+    .await
+    .expect("Storage.Set notification_settings");
+
+    let settings = call_rpc(&registry, "Communication.GetNotificationSettings", None)
+        .await
+        .expect("GetNotificationSettings loaded");
+    assert_eq!(settings.get("mute_all"), Some(&json!(false)));
+    assert!(settings.get("per_app").and_then(|v| v.as_object()).is_some());
+}
+
+#[tokio::test]
+async fn communication_stub_list_methods_and_settings_branches() {
+    let _db = setup_temp_storage_db().await;
+    let registry = test_registry();
+
+    let unread = call_rpc(&registry, "Communication.GetUnread", None)
+        .await
+        .expect("GetUnread");
+    assert!(unread.is_object());
+    assert!(unread.as_object().unwrap().is_empty());
+
+    for method in [
+        "Communication.GetMessages",
+        "Communication.GetContacts",
+        "Communication.GetConversations",
+        "Communication.GetActiveCalls",
+    ] {
+        let value = call_rpc(&registry, method, None).await.expect(method);
+        assert!(
+            value.as_array().map(|a| a.is_empty()).unwrap_or(false),
+            "{method} should be empty array stub"
+        );
+    }
+
+    let corrupt = call_rpc(&registry, "Communication.GetNotificationSettings", None)
+        .await
+        .expect("settings default");
+    assert!(corrupt.is_object());
+
+    call_rpc(
+        &registry,
+        "Storage.Set",
+        Some(json!({
+            "namespace": "communication",
+            "key": "notification_settings",
+            "value": "not-an-object"
+        })),
+    )
+    .await
+    .expect("Storage.Set corrupt settings");
+
+    let normalized = call_rpc(&registry, "Communication.GetNotificationSettings", None)
+        .await
+        .expect("settings normalized");
+    assert_eq!(normalized, json!({}));
+
+    let apps = call_rpc(&registry, "Communication.GetCommunicationApps", None)
+        .await
+        .expect("GetCommunicationApps");
+    assert!(apps.is_array());
+}

@@ -1,4 +1,4 @@
-//! Golden CLI output contracts for Wave 1–2 services (network, bluetooth, audio, packages, power).
+//! Golden CLI output contracts for foundation services (network, bluetooth, audio, packages, power).
 //! Uses the same parsers as production code via [`ags_sidecar::contract_parsers`]; no host mutation.
 
 mod common;

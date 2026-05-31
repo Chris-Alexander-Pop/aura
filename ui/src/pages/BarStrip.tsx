@@ -12,6 +12,7 @@ import {
   type HyprClient,
 } from "@/lib/api-types"
 import {
+  BAR_SECTION_IDS,
   DEFAULT_BAR_SECTION_ORDER,
   type BarSectionId,
 } from "@/components/bar/useBarLayoutStore"
@@ -267,10 +268,20 @@ function MediaBlock() {
 }
 
 function CalendarPreviewBlock() {
+  const qc = useQueryClient()
+  useEffect(() => {
+    connectWs()
+    const off = useWsStore.getState().on("Calendar.EventsChanged", () => {
+      void qc.invalidateQueries({ queryKey: ["cal"] })
+      void qc.invalidateQueries({ queryKey: ["calendar-upcoming"] })
+    })
+    return off
+  }, [qc])
+
   const { data: evs, isPending: calPending } = useQuery({
     queryKey: ["cal"],
     queryFn: () => api.fetchCalendarEvents(),
-    refetchInterval: 60_000,
+    refetchInterval: 300_000,
   })
   const preview = Array.isArray(evs) ? evs.slice(0, 2) : []
 
@@ -338,13 +349,26 @@ function ClockBlock() {
   )
 }
 
+function useBarSectionOrder(): BarSectionId[] {
+  const { data } = useQuery({
+    queryKey: ["aura-settings"],
+    queryFn: api.getAuraSettings,
+    staleTime: 60_000,
+  })
+  const raw = data?.settings.bar_section_order
+  if (!raw?.length) return DEFAULT_BAR_SECTION_ORDER
+  const allowed = new Set<string>(BAR_SECTION_IDS)
+  const filtered = raw.filter((id): id is BarSectionId => allowed.has(id))
+  return filtered.length > 0 ? filtered : DEFAULT_BAR_SECTION_ORDER
+}
+
 export default function BarStrip() {
   useEffect(() => {
     document.documentElement.classList.add("aura-bar-host")
     return () => document.documentElement.classList.remove("aura-bar-host")
   }, [])
 
-  const ordered = DEFAULT_BAR_SECTION_ORDER
+  const ordered = useBarSectionOrder()
 
   const onSegmentEnter = (id: StatusFlyoutId, centerY: number) =>
     postFlyoutMessage({ open: true, panel: id, y: centerY })

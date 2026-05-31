@@ -1,3 +1,5 @@
+//! Mutating `Automation.*` workflow CRUD against a temporary storage DB (`call_method_unchecked`).
+
 mod common;
 
 use ags_sidecar::build_registry;

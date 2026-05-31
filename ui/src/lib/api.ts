@@ -6,7 +6,9 @@ import {
   adaptPackageUpdates,
   adaptPerformanceMetrics,
   adaptSecurityStatus,
+  parseAuraSettings,
   parseCalendarEvents,
+  type AuraSettingsView,
   type DndPrefsView,
   type LogEntryView,
   type NotificationItemView,
@@ -14,6 +16,8 @@ import {
   type PerformanceMetricsView,
   type SecurityStatusView,
 } from "./api-types"
+
+export type { AuraSettingsView }
 
 const BASE = "/api"
 
@@ -275,6 +279,22 @@ export const api = {
     call<{ success: boolean }>("Audio.Media.Previous", {
       ...(playerName ? { player_name: playerName } : {}),
     }),
+
+  // Aura settings (SQLite-backed shell prefs)
+  getAuraSettings: () =>
+    call<{ settings: AuraSettingsView; schema_version: number }>("Settings.Get").then((data) => {
+      const settings = parseAuraSettings(data.settings)
+      if (!settings) throw new Error("Invalid Settings.Get payload")
+      return { settings, schema_version: data.schema_version }
+    }),
+  setAuraSettings: (partial: Partial<AuraSettingsView>) =>
+    call<{ settings: AuraSettingsView }>("Settings.Set", { partial }).then((data) => {
+      const settings = parseAuraSettings(data.settings)
+      if (!settings) throw new Error("Invalid Settings.Set payload")
+      return { settings }
+    }),
+  getAuraSettingsSchema: () => call<Record<string, unknown>>("Settings.GetSchema"),
+  resetAuraSettings: () => call<{ ok: boolean }>("Settings.Reset"),
 
   // Processes (task manager)
   processListTop: (limit?: number) =>

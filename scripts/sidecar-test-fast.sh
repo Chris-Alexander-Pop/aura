@@ -12,7 +12,4 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}/sidecar"
 
 cargo test --lib
-cargo test --test integration_contracts
-cargo test --test rpc_contract_test
-cargo test --test server_http_test
-cargo test --test integration_test
+cargo test --tests

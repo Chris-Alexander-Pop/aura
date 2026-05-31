@@ -13,7 +13,7 @@
 | Item | Status |
 |------|--------|
 | Registered RPC methods | ~**309** (`sidecar/rpc-manifest.json`) |
-| Integration tests | **250+** test fns — contracts, RPC guard, wave4 slice tests, fast vs slow host sweep |
+| Integration tests | **250+** test fns — contracts, RPC guard, per-service `*_rpc_shapes.rs`, fast vs slow host sweep |
 | `ui/src/lib/api.ts` vs sidecar | **Contract script** — `scripts/check-api-rpc-contract.sh` |
 | Dedicated services missing | **Launcher/Vicinae**, **Capture**, **Settings/Config**, **Vault**, **Todos** (see §3) |
 | Storage layer | SQLite KV with **list/delete/scan** |
@@ -203,7 +203,7 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 - [x] `Dispatch` allowlist (prevent arbitrary command injection)
 - [x] `GetMonitors` for multi-monitor bar
 - [x] Event subscription → WebSocket (`Hyprland.StateChanged` via socket2; `AURA_HYPRLAND_EVENTS=0` to disable)
-- [x] Unit tests: parse hyprctl JSON fixtures (`tests/fixtures/hyprland/`, `wave5_*` tests)
+- [x] Unit tests: parse hyprctl JSON fixtures (`tests/fixtures/hyprland/`, `hyprland_*` tests)
 - [ ] Integration tests with live `hyprctl` on CI host (optional; fixtures cover parsers)
 
 ### 2.9 Shell / session (`shell.rs`) — P1
@@ -218,7 +218,7 @@ For each service: **(a)** real system integration, **(b)** typed responses, **(c
 
 - [x] `Media.GetNowPlaying` — `playerctl status` + metadata; `playing`/`paused`/`player_name`
 - [x] Play/pause/next/prev wired in `api.ts` → `Audio.Media.*` (bar controls)
-- [x] Tests with fixtures (`playerctl_status.txt`, `wave5_media_shapes.rs`)
+- [x] Tests with fixtures (`playerctl_status.txt`, `audio_rpc_shapes.rs`)
 
 ### 2.11 Processes (`processes.rs`) — P1
 

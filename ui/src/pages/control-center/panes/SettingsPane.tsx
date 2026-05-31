@@ -1,9 +1,10 @@
 import type { ReactNode } from "react"
 import { motion } from "framer-motion"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import api, { type PowerProfile } from "@/lib/api"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import api, { type AuraSettingsView, type PowerProfile } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { getNavItem } from "../navigation"
+import { ALL_NAV_ITEMS, getNavItem } from "../navigation"
+const THEME_OPTIONS = ["dark", "light", "catppuccin-mocha", "catppuccin-frappe"] as const
 
 function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
@@ -114,6 +115,21 @@ export function SettingsPane() {
     refetchInterval: 3000,
   })
 
+  const auraSettings = useQuery({
+    queryKey: ["aura-settings"],
+    queryFn: api.getAuraSettings,
+  })
+
+  const saveAura = useMutation({
+    mutationFn: (partial: Partial<AuraSettingsView>) => api.setAuraSettings(partial),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["aura-settings"] }),
+  })
+
+  const resetAura = useMutation({
+    mutationFn: () => api.resetAuraSettings(),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["aura-settings"] }),
+  })
+
   async function applyPowerProfile(profile: PowerProfile) {
     await api.setPowerProfile(profile)
     await qc.invalidateQueries({ queryKey: ["settings", "power-profile"] })
@@ -148,6 +164,113 @@ export function SettingsPane() {
           cards below are read-mostly summaries plus power profile.
         </p>
       </div>
+
+      <SettingsCard
+        title="Aura preferences"
+        icon="tune"
+        footer={<p className="text-[10px] text-subtext1">Settings.Get / Settings.Set — bar layout, theme, control center modules</p>}
+      >
+        {auraSettings.isLoading ? (
+          <div className="skeleton h-24 rounded-lg" />
+        ) : auraSettings.data ? (
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="text-xs text-subtext0 mb-2">Theme</p>
+              <div className="flex flex-wrap gap-2">
+                {THEME_OPTIONS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={saveAura.isPending}
+                    onClick={() => void saveAura.mutateAsync({ theme: t })}
+                    className={cn(
+                      "toggle-chip text-xs",
+                      auraSettings.data.settings.theme === t && "active"
+                    )}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-subtext0 mb-2">Bar sections (order)</p>
+              <div className="flex flex-col gap-1">
+                {auraSettings.data.settings.bar_section_order.map((id, idx) => (
+                  <div key={id} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-text font-medium">{id}</span>
+                    <span className="flex gap-1">
+                      <button
+                        type="button"
+                        className="toggle-chip px-2 py-0.5"
+                        disabled={idx === 0 || saveAura.isPending}
+                        onClick={() => {
+                          const order = [...auraSettings.data!.settings.bar_section_order]
+                          ;[order[idx - 1], order[idx]] = [order[idx], order[idx - 1]]
+                          void saveAura.mutateAsync({ bar_section_order: order })
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="toggle-chip px-2 py-0.5"
+                        disabled={
+                          idx >= auraSettings.data.settings.bar_section_order.length - 1 ||
+                          saveAura.isPending
+                        }
+                        onClick={() => {
+                          const order = [...auraSettings.data!.settings.bar_section_order]
+                          ;[order[idx + 1], order[idx]] = [order[idx], order[idx + 1]]
+                          void saveAura.mutateAsync({ bar_section_order: order })
+                        }}
+                      >
+                        ↓
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-subtext0 mb-2">Control center panes</p>
+              <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                {ALL_NAV_ITEMS.map((item) => {
+                  const enabled = auraSettings.data.settings.cc_enabled_panes.includes(item.id)
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      disabled={saveAura.isPending}
+                      onClick={() => {
+                        const set = new Set(auraSettings.data!.settings.cc_enabled_panes)
+                        if (enabled) set.delete(item.id)
+                        else set.add(item.id)
+                        void saveAura.mutateAsync({
+                          cc_enabled_panes: Array.from(set),
+                        })
+                      }}
+                      className={cn("toggle-chip text-[10px]", enabled && "active")}
+                    >
+                      {item.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="toggle-chip text-xs self-start"
+              disabled={resetAura.isPending}
+              onClick={() => void resetAura.mutateAsync()}
+            >
+              Reset Aura settings
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs text-subtext0">Could not load Aura settings from sidecar</p>
+        )}
+      </SettingsCard>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <SettingsCard title="Power profile" icon="bolt" footer={<p className="text-[10px] text-subtext1">Writes via Power.SetProfile</p>}>

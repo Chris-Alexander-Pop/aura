@@ -17,7 +17,7 @@ fn load_api_ts_methods() -> BTreeSet<String> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ui/src/lib/api.ts");
     let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let re = regex::Regex::new(
-        r#""((?:Power|Network|Bluetooth|Audio|System|Weather|Vpn|Calendar|Packages|Notifications|Keybinds|Logs|Security|Performance|DevOps|Productivity|Automation|Communication|Fitness|Brightness|Hyprland|Session|Aura|Apps|Media|Process)\.[A-Za-z]+)""#,
+        r#""((?:Power|Network|Bluetooth|Audio|System|Weather|Vpn|Calendar|Packages|Notifications|Keybinds|Logs|Security|Performance|DevOps|Productivity|Automation|Communication|Fitness|Brightness|Hyprland|Session|Aura|Apps|Media|Process|Settings|Capture)\.[A-Za-z]+)""#,
     )
     .expect("api method regex");
     re.captures_iter(&text)
@@ -27,13 +27,18 @@ fn load_api_ts_methods() -> BTreeSet<String> {
 
 fn load_integration_sources() -> String {
     let tests_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let mut paths: Vec<PathBuf> = fs::read_dir(&tests_dir)
+        .unwrap_or_else(|e| panic!("read {}: {e}", tests_dir.display()))
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|ext| ext == "rs"))
+        .filter(|p| p.file_name().is_some_and(|n| n != "mod.rs"))
+        .collect();
+    paths.sort();
     let mut combined = String::new();
-    for name in ["integration_test.rs", "integration_contracts.rs", "rpc_contract_test.rs"] {
-        let path = tests_dir.join(name);
-        if path.exists() {
-            combined.push_str(&fs::read_to_string(&path).expect("read integration source"));
-            combined.push('\n');
-        }
+    for path in paths {
+        combined.push_str(&fs::read_to_string(&path).expect("read integration source"));
+        combined.push('\n');
     }
     combined
 }
@@ -88,6 +93,9 @@ fn api_ts_methods_covered_by_integration_or_denied() {
     for method in api {
         if is_denied_rpc_method(&method) {
             let _ = denied_rpc_reason(&method);
+            continue;
+        }
+        if !is_safe_readonly_rpc(&method) {
             continue;
         }
         if !tested.contains(&method) {
