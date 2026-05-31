@@ -253,9 +253,51 @@ sudo pacman -S swaync   # already installed; enable autostart in Hyprland
 
 ---
 
-## 20. Open items (still TBD at implementation time)
+## 20. Communication hub (P3 — deferred)
+
+| Decision | Detail |
+|----------|--------|
+| Scope | **No unified inbox in v1.** `Communication.GetUnread` returns a stub map; `GetMessages` / `GetConversations` are empty until a provider is chosen. |
+| Long-term | Matrix, email, or a separate “comms app” — not blocked on sidecar P0–P2. |
+| Sidecar | Keep read-only/stub RPCs; mutating bridge RPCs stay on the integration deny-list. |
+
+See [roadmap/](roadmap/) and [BACKEND_TODO.md](BACKEND_TODO.md) §3.9.
+
+---
+
+## 21. IDE / dev environment (P3 — deferred)
+
+| Decision | Detail |
+|----------|--------|
+| Scope | **No `IDE.*` RPC namespace yet.** Editors (Cursor, VS Code, Neovim) differ too much for one contract. |
+| Future | If added: read-only “open project / recent files” per editor adapter, not generic “run IDE”. |
+| Docs | Product slices live in [roadmap/](roadmap/); implementation waits on panel spec. |
+
+---
+
+## 22. Voice / exocortex (P4 — deferred)
+
+| Decision | Detail |
+|----------|--------|
+| Privacy | **Local-first** when implemented (e.g. whisper.cpp on GPU); cloud STT only with explicit opt-in. |
+| Sidecar | **No voice RPCs** until model path, wake word, and GTK/React UX are defined. |
+| Exocortex | Out of sidecar scope until product spec; do not half-ship in `Storage.*`. |
+
+---
+
+## 23. Gamemode / gaming overlay
+
+| Topic | Decision |
+|-------|----------|
+| Live RPCs | `GameMode.IsEnabled`, `Enable`/`Disable`/`Toggle` — Hyprland keyword tweaks via `hyprctl` |
+| Not integrated | Feral GameMode D-Bus, gamescope — see [gamemode.md](gamemode.md) |
+| UI | Bar indicator only when `GameMode.IsEnabled` reflects user intent (in-process flag today) |
+
+---
+
+## 24. Open items (still TBD at implementation time)
 
 - Exact Hyprland path for `aura-binds.conf` (under `~/.config/ags/hypr/` vs `~/.config/hypr/`)
-- Vicinae socket protocol (when binary API is known)
+- Vicinae socket JSON schema stability (see [integrations/vicinae.md](integrations/vicinae.md))
 - Local STT library choice for GPU path
 - Whether to autostart `swaync` from Aura or only document Hyprland user config

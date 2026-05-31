@@ -1,6 +1,6 @@
 # Control center and service polish
 
-**Status:** Planned  
+**Status:** Implemented  
 **Depends on:** [control_center_hardening.md](../control_center_hardening.md), [client_sync_api.md](client_sync_api.md) (for panes using new APIs)  
 **Aligns with:** [BACKEND_TODO.md](../../BACKEND_TODO.md) §2.12–2.21, §2.16, §2.18–2.19, §7 item 6
 

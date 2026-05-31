@@ -1,6 +1,6 @@
 # Greenfield stubs and platform backlog
 
-**Status:** Planned (mostly documentation + thin stubs)  
+**Status:** Implemented  
 **Aligns with:** [BACKEND_TODO.md](../../BACKEND_TODO.md) §3.9–3.11, §3.14, §4 cross-cutting, §7 items 8+
 
 ---

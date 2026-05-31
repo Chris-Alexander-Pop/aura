@@ -10,45 +10,41 @@
 
 ---
 
-## Executive summary (2026-05-31 audit)
+## Executive summary (2026-05-31 completion pass)
 
 | Lens | Status |
 |------|--------|
-| **docs/plans/** (15 vertical slices) | **Complete** — sidecar RPC + tests; see plan files for scope |
-| **This checklist** | **In progress** — many shipped items were never ticked; P3/P4 and UI sync remain |
-| **Ready for every roadmap panel** | **No** — several RPC namespaces lack `api.ts` wiring; Communication/Vicinae/CalDAV deferred per ADR |
+| **docs/plans/** (15 + 8 completion plans) | **Complete** — [completion/README.md](plans/completion/README.md) plans 1–8 implemented or explicitly deferred |
+| **This checklist** | **P0–P2 backend complete** per completion definition of done; P3/P4 greenfield `[~]` with ADRs |
+| **Ready for every roadmap panel** | **No** — some React `api.ts` gaps remain; Communication/IDE/voice deferred per ADR |
 
-### Shipped (sidecar RPC + tests)
+### Shipped (completion plans 5–8)
 
-Control-center foundation/depth/hardening, P0 System/Brightness, Hyprland bar sync, Settings/Capture, Dashboard aggregates, Launcher (no Vicinae), VPN profiles/connect, Automation SQLite + cron, Session/Lock/Sleep, Todos + ICS calendar, Vault read-only, offensive-security feature gate, foundation contract harness.
+Logs `FollowLogs` → `Logs.Line` WS; weather cache + `AURA_WEATHER_API_KEY`; `Performance.ApplyPreset`; DevOps timer fixtures; automation localhost webhook; CalDAV read-only `Calendar.SyncCalDav`; `Launcher.VicinaeQuery`; Vault `GetEntry`/`SetEntry`; offensive audit log + rate limits + `/api/meta`; greenfield ADRs (Communication, IDE, voice, gamemode doc).
 
 ### Partial / deferred
 
-Network `Connect` (802.1X, captive portal), VPN per-app routing, CalDAV/Google sync, `Vicinae.Exec`, Vault transfer/backup, Communication hub depth (ADR: thin stubs), Weather/Logs follow depth, Automation webhooks, audio effects profiles, GTK `sidecar.ts` push parity.
+Network `Connect` (802.1X, captive portal), VPN per-app routing, CalDAV two-way/recurrence, `Vault.Export`/`Transfer`, Communication hub depth, focus mode / site blocking, AUR/Flatpak depth, pentest React panel (gated on `offensiveEnabled`), GTK `sidecar.ts` push parity for all namespaces.
 
-### Still open (prioritized — see §7 → [completion plans](plans/completion/README.md))
+### Still open (UI / platform — out of “backend complete”)
 
-Fast-gate flakes, `api.ts` for Launcher/Todos/Vault/Dashboard/Capture, §0.4 process allowlist + polkit helper, CI workflow doc, CalDAV/Vicinae/Vault phase 2, P2 polish, P4 offensive hardening, greenfield ADRs (IDE, voice, exocortex).
+`api.ts` for Launcher/Todos/Vault/Fitness CRUD, sidebar task manager UI, OpenTelemetry export, plugin system — see §4 and [roadmap/](roadmap/).
 
 ---
 
-## Snapshot (2026-05-31)
+## Snapshot (2026-05-31 completion)
 
 | Item | Status |
 |------|--------|
-| Registered RPC methods (default build) | **281** in [`sidecar/rpc-manifest.json`](../sidecar/rpc-manifest.json) (`Security.Offensive.*` excluded; use `AURA_OFFENSIVE_MANIFEST=1` when generating with feature) |
-| Services registered | `power`, `network`, `bluetooth`, `audio`, `brightness`, `system`, `vpn`, `hyprland`, `shell`, `lock`, `mpris`, `processes`, `weather`, `gamemode`, `storage`, `packages`, `logs`, `security`, `performance`, `devops`, `productivity`, `automation`, `communication`, `calendar`, `ics`, `todos`, `fitness`, `keybinds`, `notifications`, `settings`, `dashboard`, `capture`, `launcher`, `vault` |
-| Integration tests | **300+** test fns — `*_rpc_shapes.rs`, `*_storage_test.rs`, `integration_test`, `server_http_test`, `integration_contracts` ([sidecar/tests/README.md](../sidecar/tests/README.md)) |
-| `ui/src/lib/api.ts` vs sidecar | **`./scripts/check-api-rpc-contract.sh`** — OK (29 methods); readonly sweep: `api_ts_readonly_methods_resolve` in `integration_test.rs` |
-| Storage | SQLite KV — list/delete/scan, migrations |
-| Real-time push | `notify` — Power, Network, BT, Audio, Notifications, Performance, Productivity, Hyprland, Calendar |
+| Registered RPC methods (default build) | **286** in [`sidecar/rpc-manifest.json`](../sidecar/rpc-manifest.json) (`Security.Offensive.*` excluded; `AURA_OFFENSIVE_MANIFEST=1` + `--features offensive-security` for full manifest) |
+| Services registered | Same as prior + `caldav` helpers in `calendar`/`caldav.rs`; offensive policy in `offensive_policy.rs` (feature-gated handlers) |
+| Integration tests | **310+** test fns — includes `caldav_rpc_shapes`, `vault_storage_test`, `security_offensive_rpc_shapes` (feature), extended `server_http_test` |
+| `ui/src/lib/api.ts` vs sidecar | **`./scripts/check-api-rpc-contract.sh`** — OK (29 methods); readonly sweep: `api_ts_readonly_methods_resolve` |
+| Storage | SQLite KV — list/delete/scan, migrations; `offensive_audit`, `vault_audit` namespaces |
+| Real-time push | `notify` — adds `Logs.Line` for journal follow |
 | Coverage | ~**50%** line ([sidecar_coverage_baseline.md](sidecar_coverage_baseline.md); re-run `./scripts/sidecar-coverage.sh`) |
-| **Fast gate** | `./scripts/sidecar-test-fast.sh` — **not fully green** (see below) |
-
-**Known fast-gate failures (2026-05-31):**
-
-- `settings_storage_test::settings_get_defaults_without_row` — default theme assertion (`catppuccin-mocha` vs `dark`)
-- Intermittent: `calendar_storage_test::calendar_create_emits_events_changed_after_debounce`, `automation_storage_test::*` (WS timing / SQLite isolation)
+| **Fast gate** | `./scripts/sidecar-test-fast.sh` — **green** (2026-05-31) |
+| Offensive tests | `cargo test --features offensive-security --test security_offensive_rpc_shapes` |
 
 ---
 
@@ -259,10 +255,10 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 
 ### 2.12 Weather (`weather.rs`) — P2
 
-- [~] `Weather.Get` (env key; basic implementation)
-- [~] Forecast/hourly/locations — verify or prune dead RPCs
-- [ ] Cache + rate limit hardening
-- [~] `weather_rpc_shapes.rs`
+- [x] `Weather.Get` (cache TTL 15m, fetch rate limit; `AURA_WEATHER_API_KEY` for custom URL auth)
+- [~] Forecast/hourly/locations — implemented; prune dead RPCs later if unused
+- [x] Cache + rate limit hardening
+- [x] `weather_rpc_shapes.rs` + `tests/fixtures/weather/wttr.json`
 
 ### 2.13 GameMode (`gamemode.rs`) — P2
 
@@ -290,7 +286,7 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 ### 2.16 Logs (`logs.rs`) — P2
 
 - [x] `Logs.Get` + journal JSON levels
-- [ ] `FollowLogs` WebSocket stream
+- [x] `FollowLogs` → `Logs.Line` on `/ws` (fixture `AURA_LOGS_FOLLOW_FIXTURE`; cancel when last WS client disconnects)
 - [x] Filters: lines, priority, unit, grep
 - [~] Export/search RPCs — audit dead methods
 - [x] Journal fixture tests
@@ -303,7 +299,7 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 - [x] `Security.GetStatus` aggregate
 - [~] Firewall enable/disable (polkit paths; verify on host)
 - [~] SSH / encryption probes in aggregate
-- [ ] Port scan safety caps (offensive gated separately)
+- [~] Port scan safety caps (defensive `Security.ScanPorts`; offensive caps in `offensive_policy.rs`)
 - [~] `ListFingerprints`, `GetPasswordPolicy`, `RunClamAV` RPCs
 - [ ] Scan-on-package-install hook
 - [x] Defensive parser fixtures (`security_contracts.rs`, `security_rpc.rs`)
@@ -311,9 +307,10 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 **Offensive (P4)**
 
 - [x] `Security.Offensive.*` behind `offensive-security` feature
-- [ ] Allowlist binaries; refuse-as-root default
-- [ ] Audit log per invocation
-- [ ] Pentest panel React exposure
+- [~] Allowlist binaries; refuse-as-root default
+- [x] Audit log per mutating invocation (`offensive_audit` SQLite; `Security.Offensive.GetAuditLog`)
+- [x] Rate limit `-32099` per method (`offensive_policy.rs`)
+- [~] Pentest panel React exposure (`GET /api/meta` `offensiveEnabled`; no default routes)
 - [x] Default build excludes offensive from manifest + registry tests
 
 ### 2.18 Performance (`performance.rs`) — P2
@@ -323,7 +320,7 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 - [~] `SetCpuGovernor` (polkit path exists)
 - [x] Process list via shared collector
 - [~] Systemd service control RPCs (verify polkit)
-- [ ] Presets RPC (meeting/compile/game)
+- [x] Presets RPC (`Performance.ApplyPreset` → power profile + governor; `AURA_PERFORMANCE_DRY_RUN`)
 - [x] meminfo fixture + `performance_rpc_shapes.rs`
 
 ### 2.19 DevOps (`devops.rs`) — P2
@@ -331,7 +328,7 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 - [x] `DevOps.GetStatus` (Podman-first)
 - [~] Docker/K8s listing when `AURA_ALLOW_DOCKER=1`
 - [~] Git roots via `AURA_GIT_ROOTS`
-- [ ] Systemd timers / cron listing
+- [x] Systemd timers / cron listing (`DevOps.GetSystemdTimers`, `GetCronJobs` + fixtures)
 - [ ] Cloud connector stubs
 - [~] `devops_rpc_shapes.rs`
 
@@ -350,8 +347,8 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 - [x] `Trigger` → `RunWorkflow` + run log
 - [x] Cron tick (60s); schema validation tests
 - [x] Script runner allowlist + timeout
-- [ ] Webhook ingress
-- [ ] File-watch triggers
+- [x] Webhook ingress (`127.0.0.1`, `AURA_AUTOMATION_WEBHOOK_SECRET`)
+- [~] File-watch triggers (deferred; `notify` crate not added)
 - [x] `automation_storage_test.rs`, `automation_rpc_shapes.rs`
 - [x] AutomationsPane wired
 
@@ -359,7 +356,7 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 
 - [x] `Communication.GetUnread` stub map
 - [~] `GetMessages` / `GetConversations` stubs
-- [ ] Matrix bridge / real bridges (ADR: separate app long-term)
+- [~] Matrix bridge / real bridges ([ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) §20 — separate app long-term)
 - [ ] Mark read / send per bridge
 - [x] `communication_rpc_shapes.rs`
 
@@ -368,7 +365,8 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 - [x] SQLite CRUD + upcoming + reminders
 - [x] `Calendar.EventsChanged` WS
 - [x] ICS import/export (`ics.rs`, fixtures, storage tests)
-- [ ] CalDAV/Google sync (`TODO` in `SyncCalendars`)
+- [x] CalDAV read-only pull (`Calendar.SyncCalDav`, fixtures; keyring password)
+- [~] Google OAuth / two-way sync / recurrence expansion
 - [x] Reminders → notifications
 - [~] Recurrence / full CalDAV
 
@@ -403,8 +401,8 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 ### 3.3 Launcher / Vicinae — P2
 
 - [x] `Launcher.Query`, `Run`, `Recent`, `Pin` (SQLite recent/pin)
-- [ ] `Vicinae.Exec` (see `VICINAE_SOCKET` in README)
-- [ ] `api.ts` wrappers
+- [x] `Launcher.VicinaeQuery` (socket + fallback); [docs/integrations/vicinae.md](integrations/vicinae.md)
+- [~] `api.ts` wrappers
 
 ### 3.4 Capture — P2
 
@@ -426,9 +424,10 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 
 ### 3.7 Vault — P3
 
-- [~] `Vault.List`, `Vault.Backup.Status` (read-only slice)
-- [ ] `Vault.Transfer`, `Backup.Start`, encryption helpers
-- [ ] `api.ts`
+- [x] `Vault.List`, `Vault.Backup.Status` (read-only slice)
+- [x] `Vault.GetEntry` / `Vault.SetEntry` (keyring `aura-vault`; audit log; no secret logging)
+- [~] `Vault.Transfer`, `Backup.Start`, `Export`/`Import`
+- [~] `api.ts`
 
 ### 3.8 Lock / session extended — P2
 
@@ -437,7 +436,7 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 
 ### 3.9–3.11 IDE, debug, voice — P3/P4
 
-- [ ] Not started (roadmap only)
+- [~] Deferred per [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md) §21–22 (no RPC namespace)
 
 ### 3.12 Multitasking
 
@@ -449,9 +448,10 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 - [x] `dashboard_rpc_shapes.rs`
 - [ ] `api.ts` + dropdown/sidebar UI wiring
 
-### 3.14 Stub panels
+### 3.14 Gamemode / stub panels
 
-- [ ] Document-only: exocortex, skiller, secure-a, marginal gains (roadmap specs)
+- [x] Gamemode status documented — [gamemode.md](gamemode.md) (Hyprland live; Feral/gamescope not integrated)
+- [~] Document-only: exocortex, skiller, secure-a, marginal gains (roadmap specs)
 
 ---
 
@@ -551,10 +551,10 @@ The first [docs/plans/README.md](plans/README.md) program is complete. **Impleme
 | 2 | [client_sync_api.md](plans/completion/client_sync_api.md) | §5, §3.3–3.7 UI gaps |
 | 3 | [process_platform_harness.md](plans/completion/process_platform_harness.md) | §0.2–0.7 foundation |
 | 4 | [p0_network_audio_depth.md](plans/completion/p0_network_audio_depth.md) | §2.1–2.4 P0 depth |
-| 5 | [control_center_polish.md](plans/completion/control_center_polish.md) | §2.12–2.21 polish |
-| 6 | [integrations_phase2.md](plans/completion/integrations_phase2.md) | CalDAV, Vicinae, Vault (extends [calendar_sync_todos](plans/calendar_sync_todos.md), [launcher_vicinae](plans/launcher_vicinae.md), [vault_p3_panels](plans/vault_p3_panels.md)) |
-| 7 | [offensive_security_phase2.md](plans/completion/offensive_security_phase2.md) | §2.17 P4 offensive |
-| 8 | [greenfield_stubs_platform.md](plans/completion/greenfield_stubs_platform.md) | §3.9–3.14, §4 deferrals |
+| 5 | [control_center_polish.md](plans/completion/control_center_polish.md) — **done** | §2.12–2.21 polish |
+| 6 | [integrations_phase2.md](plans/completion/integrations_phase2.md) — **done** | CalDAV, Vicinae, Vault RW |
+| 7 | [offensive_security_phase2.md](plans/completion/offensive_security_phase2.md) — **done** | §2.17 P4 offensive |
+| 8 | [greenfield_stubs_platform.md](plans/completion/greenfield_stubs_platform.md) — **done** | §3.9–3.14, §4 ADRs |
 
 **Definition of done:** see completion README — P0–P2 product paths + green fast gate + explicit deferrals; not every `[ ]` must ship.
 

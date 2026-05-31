@@ -1,6 +1,6 @@
 # Offensive security phase 2
 
-**Status:** Planned  
+**Status:** Implemented  
 **Depends on:** [offensive_security.md](../offensive_security.md) (feature gate shipped)  
 **Aligns with:** [BACKEND_TODO.md](../../BACKEND_TODO.md) §2.17 offensive, §3.12, §7 item 7
 

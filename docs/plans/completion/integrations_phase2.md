@@ -1,6 +1,6 @@
 # Integrations phase 2 — CalDAV, Vicinae, Vault RW
 
-**Status:** Planned  
+**Status:** Implemented  
 **Depends on:** [calendar_sync_todos.md](../calendar_sync_todos.md), [launcher_vicinae.md](../launcher_vicinae.md), [vault_p3_panels.md](../vault_p3_panels.md)  
 **Aligns with:** [BACKEND_TODO.md](../../BACKEND_TODO.md) §2.23, §3.3, §3.7, §7 item 4
 
