@@ -1,7 +1,19 @@
 use crate::services::ServiceRegistry;
-use crate::utils::process;
+use crate::utils::process::{self, ExecOpts, DEFAULT_MAX_OUTPUT};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::time::Duration;
+
+fn journalctl_opts() -> ExecOpts {
+    ExecOpts {
+        timeout: Duration::from_secs(120),
+        max_output_bytes: DEFAULT_MAX_OUTPUT,
+    }
+}
+
+async fn exec_journalctl(cmd: &[&str]) -> anyhow::Result<String> {
+    process::exec_command_with_opts(cmd, journalctl_opts()).await
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
@@ -120,7 +132,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             }
         }
 
-        let output = process::exec_command(&cmd).await.unwrap_or_default();
+        let output = exec_journalctl(&cmd).await.unwrap_or_default();
 
         let mut entries: Vec<LogEntry> = output
             .lines()
@@ -151,7 +163,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             cmd.extend_from_slice(&["-u", svc]);
         }
 
-        let output = process::exec_command(&cmd).await?;
+        let output = exec_journalctl(&cmd).await?;
         Ok(json!({ "logs": output }))
     });
 
@@ -171,7 +183,7 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         let lines_str = lines.to_string();
         let comm_filter = format!("_COMM={}", app_name);
-        let output = process::exec_command(&["journalctl", "-n", &lines_str, "--no-pager", &comm_filter]).await?;
+        let output = exec_journalctl(&["journalctl", "-n", &lines_str, "--no-pager", &comm_filter]).await?;
         Ok(json!({ "logs": output }))
     });
 
@@ -188,12 +200,19 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|p| p.get("service").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
 
-        let mut cmd = vec!["journalctl", "--no-pager", "--grep", &query];
+        let lines: usize = params
+            .as_ref()
+            .and_then(|p| p.get("lines").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(500);
+        let lines_str = lines.to_string();
+
+        let mut cmd = vec!["journalctl", "-n", &lines_str, "--no-pager", "--grep", &query];
         if let Some(ref svc) = service {
             cmd.extend_from_slice(&["-u", svc]);
         }
 
-        let output = process::exec_command(&cmd).await?;
+        let output = exec_journalctl(&cmd).await?;
         Ok(json!({ "logs": output }))
     });
 
@@ -221,9 +240,9 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|v| serde_json::from_value(v).ok());
 
         if let Some(ref svc) = service {
-            process::exec_command(&["journalctl", "-u", svc, "--vacuum-time=1s"]).await?;
+            exec_journalctl(&["journalctl", "-u", svc, "--vacuum-time=1s"]).await?;
         } else {
-            process::exec_command(&["journalctl", "--vacuum-time=1s"]).await?;
+            exec_journalctl(&["journalctl", "--vacuum-time=1s"]).await?;
         }
 
         Ok(json!({ "success": true }))
@@ -247,7 +266,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             cmd.extend_from_slice(&["-u", svc]);
         }
 
-        let output = process::exec_command(&cmd).await?;
+        let output = exec_journalctl(&cmd).await?;
         tokio::fs::write(&file_path, output).await?;
         Ok(json!({ "success": true }))
     });
@@ -267,7 +286,14 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|p| p.get("level").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
 
-        let mut cmd = vec!["journalctl", "--no-pager"];
+        let lines: usize = params
+            .as_ref()
+            .and_then(|p| p.get("lines").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(500);
+        let lines_str = lines.to_string();
+
+        let mut cmd = vec!["journalctl", "-n", &lines_str, "--no-pager"];
         if let Some(ref svc) = service {
             cmd.extend_from_slice(&["-u", svc]);
         }
@@ -275,7 +301,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             cmd.extend_from_slice(&["-p", lvl]);
         }
 
-        let output = process::exec_command(&cmd).await?;
+        let output = exec_journalctl(&cmd).await?;
         Ok(json!({ "logs": output }))
     });
 }

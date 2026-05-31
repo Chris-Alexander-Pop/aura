@@ -44,6 +44,7 @@ pub struct DesktopEntry {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(deny_unknown_fields)]
 struct LauncherResult {
     id: String,
     name: String,
@@ -413,7 +414,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             bail!("unknown app id: {id}");
         }
 
-        process::exec_command_detached(&["gtk-launch", id]).await?;
+        process::run_allowlisted_detached(&["gtk-launch", id]).await?;
         let _ = touch_recent(id).await;
         Ok(json!({ "ok": true }))
     });

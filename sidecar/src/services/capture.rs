@@ -43,11 +43,18 @@ fn param_str(params: Option<&serde_json::Value>, key: &str) -> Result<String> {
 }
 
 pub fn tool_on_path(name: &str) -> bool {
+    // Sync probe for early UI hints; allowlisted `which` is also used async in RPC paths.
     std::process::Command::new("which")
         .arg(name)
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+async fn tool_on_path_async(name: &str) -> bool {
+    process::run_allowlisted(&["which", name])
+        .await
+        .is_ok()
 }
 
 pub fn validate_screenshot_path(path: &str) -> Result<PathBuf> {
@@ -166,12 +173,12 @@ async fn run_screenshot(mode: &str, output: &str, path: Option<&str>) -> Result<
 async fn capture_to_clipboard(mode: &str) -> Result<()> {
     match mode {
         "full" => {
-            let grim = process::exec_command(&["grim", "-"]).await?;
+            let grim = process::run_allowlisted(&["grim", "-"]).await?;
             pipe_to_wl_copy(grim.as_bytes()).await
         }
         "region" => {
-            let geometry = process::exec_command(&["slurp"]).await?;
-            let image = process::exec_command(&["grim", "-g", geometry.trim(), "-"]).await?;
+            let geometry = process::run_allowlisted(&["slurp"]).await?;
+            let image = process::run_allowlisted(&["grim", "-g", geometry.trim(), "-"]).await?;
             pipe_to_wl_copy(image.as_bytes()).await
         }
         _ => bail!("invalid mode"),
@@ -179,6 +186,7 @@ async fn capture_to_clipboard(mode: &str) -> Result<()> {
 }
 
 async fn pipe_to_wl_copy(bytes: &[u8]) -> Result<()> {
+    process::run_allowlisted(&["which", "wl-copy"]).await?;
     use tokio::io::AsyncWriteExt;
     use tokio::process::Command;
     let mut child = Command::new("wl-copy")
@@ -198,11 +206,11 @@ async fn pipe_to_wl_copy(bytes: &[u8]) -> Result<()> {
 async fn capture_to_file(mode: &str, dest: &Path) -> Result<()> {
     match mode {
         "full" => {
-            process::exec_command(&["grim", dest.to_str().expect("utf8 path")]).await?;
+            process::run_allowlisted(&["grim", dest.to_str().expect("utf8 path")]).await?;
         }
         "region" => {
-            let geometry = process::exec_command(&["slurp"]).await?;
-            process::exec_command(&[
+            let geometry = process::run_allowlisted(&["slurp"]).await?;
+            process::run_allowlisted(&[
                 "grim",
                 "-g",
                 geometry.trim(),
@@ -229,7 +237,7 @@ async fn record_start() -> Result<serde_json::Value> {
         "recording-{}.mp4",
         chrono::Utc::now().format("%Y%m%d-%H%M%S")
     ));
-    process::exec_command_detached(&[
+    process::run_allowlisted_detached(&[
         "wf-recorder",
         "-f",
         out.to_str().expect("utf8"),
@@ -246,14 +254,14 @@ async fn record_stop() -> Result<serde_json::Value> {
         return Ok(json!({ "ok": false, "error": "not recording" }));
     }
     // Stop all wf-recorder processes for this user (allowlisted binary only).
-    let _ = process::exec_command(&["pkill", "-x", "wf-recorder"]).await;
+    let _ = process::run_allowlisted(&["pkill", "-x", "wf-recorder"]).await;
     let _ = std::fs::remove_file(&pid_path);
     Ok(json!({ "ok": true }))
 }
 
 async fn list_devices() -> Result<serde_json::Value> {
-    let audio = if tool_on_path("pactl") {
-        process::exec_command(&["pactl", "list", "sources", "short"])
+    let audio = if tool_on_path_async("pactl").await {
+        process::run_allowlisted(&["pactl", "list", "sources", "short"])
             .await
             .unwrap_or_default()
             .lines()
