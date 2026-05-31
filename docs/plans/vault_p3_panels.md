@@ -1,6 +1,6 @@
 # Vault, communication, fitness, and deferred panels
 
-**Status:** Planned (P3–P4)  
+**Status:** Implemented (2026-05-31, slice A)  
 **Depends on:** [foundation_contracts.md](foundation_contracts.md), keyring helper  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §3.7, §2.22, §2.24, §3.9–3.11, §3.14
 

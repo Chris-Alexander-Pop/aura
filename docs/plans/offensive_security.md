@@ -1,6 +1,6 @@
 # Offensive security feature gate
 
-**Status:** Planned (P4)  
+**Status:** Implemented (2026-05-31, slice A)  
 **Depends on:** [control_center_hardening.md](control_center_hardening.md) (defensive security first), [foundation_contracts.md](foundation_contracts.md)  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §2.17, [pentest-panel.md](../roadmap/pentest-panel.md)
 

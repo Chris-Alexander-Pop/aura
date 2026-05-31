@@ -1,6 +1,6 @@
 # Calendar sync, ICS, and Todos
 
-**Status:** Planned  
+**Status:** Implemented (2026-05-31, CalDAV deferred)  
 **Depends on:** [control_center_depth.md](control_center_depth.md), [shell_platform.md](shell_platform.md) (`Calendar.EventsChanged`)  
 **Aligns with:** [BACKEND_TODO.md](../BACKEND_TODO.md) §2.23, §3.6, §2.25
 
