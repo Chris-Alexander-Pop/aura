@@ -198,4 +198,5 @@ pub mod error_codes {
     pub const INVALID_PARAMS: i32 = -32602;
     pub const INTERNAL_ERROR: i32 = -32603;
     pub const SERVER_ERROR: i32 = -32000;
+    pub const RATE_LIMITED: i32 = -32099;
 }

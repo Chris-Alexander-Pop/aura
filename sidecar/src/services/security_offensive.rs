@@ -1505,4 +1505,19 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         Ok(serde_json::json!({ "success": true }))
     });
+
+    registry.register("Security.Offensive.GetAuditLog", |params| async move {
+        let limit: usize = params
+            .as_ref()
+            .and_then(|p| p.get("limit").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(50);
+        let offset: usize = params
+            .as_ref()
+            .and_then(|p| p.get("offset").cloned())
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or(0);
+        let entries = super::offensive_policy::get_audit_log(limit, offset).await?;
+        Ok(serde_json::to_value(&entries)?)
+    });
 }

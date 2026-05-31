@@ -156,6 +156,15 @@ pub fn error_response_for_registry_err(
             })),
         );
     }
+    #[cfg(feature = "offensive-security")]
+    if let Some(limited) = err.downcast_ref::<crate::services::offensive_policy::RateLimited>() {
+        return create_error_response_with_data(
+            id,
+            error_codes::RATE_LIMITED,
+            limited.to_string(),
+            Some(serde_json::json!({ "code": "rate_limited" })),
+        );
+    }
     create_error_response(id, error_codes::INTERNAL_ERROR, err.to_string())
 }
 

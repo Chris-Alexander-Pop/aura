@@ -33,7 +33,22 @@ System packages (Arch): `libssl-dev` / `openssl` + `pkg-config` for `openssl-sys
 | `AURA_AUDIO_VOLUME_TEST` | Set `1` for `#[ignore]` `audio_set_sink_volume_round_trip` |
 | `AURA_HYPRLAND_EVENTS` | Set `0` to disable Hyprland socket2 push listener |
 | `AURA_LAUNCHER_DESKTOP_DIRS` | Colon-separated directories of `.desktop` files (tests use `tests/fixtures/desktop`) |
-| `VICINAE_SOCKET` | *(planned)* Unix socket path for Vicinae daemon RPC — `Vicinae.Exec` not implemented yet |
+| `VICINAE_SOCKET` | Unix socket for `Launcher.VicinaeQuery` (falls back to `Launcher.Query`) |
+| `AURA_WEATHER_API_KEY` | Optional Bearer token for custom `AURA_WEATHER_WTTR_URL` |
+| `AURA_WEATHER_SKIP_CACHE` | Set `1` in tests to bypass weather cache |
+| `AURA_LOGS_FOLLOW_FIXTURE` | NDJSON/text lines for `Logs.FollowLogs` WS tests |
+| `AURA_CALDAV_FIXTURE` / `AURA_CALDAV_URL` | CalDAV read-only sync (fixture or live REPORT) |
+| `AURA_AUTOMATION_WEBHOOK_SECRET` | Shared secret for `127.0.0.1` webhook (`AURA_AUTOMATION_WEBHOOK_PORT`, default `19081`) |
+| `AURA_PERFORMANCE_DRY_RUN` | Set `1` so `Performance.ApplyPreset` returns targets without polkit |
+
+### Offensive security feature
+
+```bash
+cargo build --features offensive-security
+cargo test --features offensive-security --test security_offensive_rpc_shapes
+```
+
+`GET /api/meta` exposes `offensiveEnabled: true` only in offensive builds. Default manifest excludes `Security.Offensive.*` unless `AURA_OFFENSIVE_MANIFEST=1` when regenerating.
 
 ## Binary resolution (GTK / `src/lib/sidecar.ts`)
 

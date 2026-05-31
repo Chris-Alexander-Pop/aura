@@ -34,6 +34,9 @@ pub mod dashboard;
 pub mod capture;
 pub mod launcher;
 pub mod vault;
+pub mod caldav;
+#[cfg(feature = "offensive-security")]
+pub mod offensive_policy;
 
 use crate::types::JsonRpcRequest;
 use anyhow::Result;
@@ -85,11 +88,25 @@ impl ServiceRegistry {
         let params = request.params.clone();
         let started = std::time::Instant::now();
 
+        #[cfg(feature = "offensive-security")]
+        if method.starts_with("Security.Offensive.") {
+            if let Err(e) = offensive_policy::check_rate_limit(&method) {
+                crate::utils::rpc_log::log_rpc_completed(&method, params.as_ref(), started.elapsed());
+                return Err(e);
+            }
+        }
+
         let result = if let Some(handler) = self.handlers.get(&method) {
             handler(params.clone()).await
         } else {
             Err(anyhow::Error::new(MethodNotFound(method.clone())))
         };
+
+        #[cfg(feature = "offensive-security")]
+        if offensive_policy::offensive_method_is_mutating(&method) {
+            let status = if result.is_ok() { "ok" } else { "error" };
+            let _ = offensive_policy::record_audit(&method, &params, status).await;
+        }
 
         crate::utils::rpc_log::log_rpc_completed(
             &method,
