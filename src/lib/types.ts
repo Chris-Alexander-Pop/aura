@@ -19,6 +19,8 @@ export interface VpnStatus {
     state: VpnState
     message: string
     profile_id?: string
+    interface?: string
+    local_ip?: string
 }
 
 export interface BatteryState {

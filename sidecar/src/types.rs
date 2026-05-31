@@ -32,6 +32,10 @@ pub struct VpnStatus {
     pub state: VpnState,
     pub message: String,
     pub profile_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interface: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_ip: Option<String>,
 }
 
 // Power Types

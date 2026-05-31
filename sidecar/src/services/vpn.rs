@@ -1,13 +1,67 @@
 use crate::services::ServiceRegistry;
 use crate::types::{VpnProfile, VpnState, VpnStatus};
 use crate::utils::{keyring, process};
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
+use serde::Deserialize;
 use serde_json;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
+
+const VPN_BINARIES: &[&str] = &["openconnect", "openvpn", "wg-quick", "nmcli", "pkill"];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum VpnProtocol {
+    Openconnect,
+    Openvpn,
+    Wireguard,
+    Networkmanager,
+}
+
+impl Default for VpnProtocol {
+    fn default() -> Self {
+        Self::Openconnect
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct VpnProfileDef {
+    id: String,
+    name: String,
+    icon: String,
+    display_name: String,
+    interface: String,
+    requires_credentials: bool,
+    #[serde(default)]
+    protocol: VpnProtocol,
+    server: Option<String>,
+    authgroup: Option<String>,
+    connection: Option<String>,
+    config: Option<String>,
+}
+
+impl VpnProfileDef {
+    fn to_public(&self) -> VpnProfile {
+        VpnProfile {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            icon: self.icon.clone(),
+            display_name: self.display_name.clone(),
+            interface: self.interface.clone(),
+            requires_credentials: self.requires_credentials,
+        }
+    }
+
+    fn config_path(&self, config_dir: &Path) -> Option<PathBuf> {
+        self.config
+            .as_ref()
+            .map(|name| config_dir.join(name))
+    }
+}
 
 #[derive(Debug, Clone)]
 struct VpnServiceState {
@@ -28,260 +82,494 @@ impl Default for VpnServiceState {
     }
 }
 
+/// Host subprocess backend for VPN connect/disconnect (mockable in unit tests).
+#[async_trait::async_trait]
+pub trait VpnProcess: Send + Sync {
+    async fn exec_command(&self, cmd: &[&str]) -> Result<String>;
+    async fn exec_command_detached(&self, cmd: &[&str]) -> Result<()>;
+    async fn spawn_with_stdin(&self, cmd: &[&str], stdin: &[u8]) -> Result<()>;
+}
+
+struct HostVpnProcess;
+
+#[async_trait::async_trait]
+impl VpnProcess for HostVpnProcess {
+    async fn exec_command(&self, cmd: &[&str]) -> Result<String> {
+        process::exec_command(cmd).await
+    }
+
+    async fn exec_command_detached(&self, cmd: &[&str]) -> Result<()> {
+        assert_allowlisted_vpn_argv(cmd)?;
+        process::exec_command_detached(cmd).await
+    }
+
+    async fn spawn_with_stdin(&self, cmd: &[&str], stdin: &[u8]) -> Result<()> {
+        assert_allowlisted_vpn_argv(cmd)?;
+        let mut child = Command::new(cmd[0])
+            .args(&cmd[1..])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()?;
+        if let Some(mut child_stdin) = child.stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            child_stdin.write_all(stdin).await?;
+        }
+        Ok(())
+    }
+}
+
 lazy_static::lazy_static! {
     static ref VPN_STATE: RwLock<VpnServiceState> = RwLock::new(VpnServiceState::default());
-    static ref VPN_PROFILES: Vec<VpnProfile> = vec![
-        VpnProfile {
-            id: "education".to_string(),
-            name: "Campus".to_string(),
-            icon: "school".to_string(),
-            display_name: "Campus VPN".to_string(),
-            interface: "tun0".to_string(),
-            requires_credentials: true,
-        },
-        VpnProfile {
-            id: "personal".to_string(),
-            name: "Personal".to_string(),
-            icon: "person".to_string(),
-            display_name: "Personal VPN".to_string(),
-            interface: "example-exit".to_string(),
-            requires_credentials: false,
-        },
-        VpnProfile {
-            id: "home".to_string(),
-            name: "Home".to_string(),
-            icon: "home".to_string(),
-            display_name: "Home VPN".to_string(),
-            interface: "tun0".to_string(),
-            requires_credentials: true,
-        },
-    ];
+}
+
+fn vpn_dry_run() -> bool {
+    std::env::var("AURA_VPN_DRY_RUN").ok().as_deref() == Some("1")
+}
+
+pub fn vpn_config_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("AURA_VPN_CONFIG_DIR") {
+        return PathBuf::from(dir);
+    }
+    let base = std::env::var("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|_| std::env::var("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+    base.join("ags/vpn")
+}
+
+fn default_profile_defs() -> Vec<VpnProfileDef> {
+    serde_json::from_str(include_str!("../../assets/vpn/profiles.json"))
+        .expect("embedded default vpn profiles")
+}
+
+fn load_profile_defs_from_dir(config_dir: &Path) -> Vec<VpnProfileDef> {
+    let manifest = config_dir.join("profiles.json");
+    if !manifest.is_file() {
+        return default_profile_defs();
+    }
+    match std::fs::read_to_string(&manifest) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
+            tracing::warn!("invalid vpn profiles.json in {}: {e}", config_dir.display());
+            default_profile_defs()
+        }),
+        Err(e) => {
+            tracing::warn!("failed to read vpn profiles.json: {e}");
+            default_profile_defs()
+        }
+    }
+}
+
+pub(crate) fn load_profile_defs() -> Vec<VpnProfileDef> {
+    load_profile_defs_from_dir(&vpn_config_dir())
+}
+
+pub fn load_public_profiles_from_dir(config_dir: &Path) -> Vec<VpnProfile> {
+    load_profile_defs_from_dir(config_dir)
+        .into_iter()
+        .map(|p| p.to_public())
+        .collect()
+}
+
+fn profile_id_from_params(params: &Option<serde_json::Value>) -> Result<String> {
+    let p = params
+        .as_ref()
+        .ok_or_else(|| anyhow!("Missing params"))?;
+    let value = p
+        .get("profile_id")
+        .or_else(|| p.get("profileId"))
+        .cloned()
+        .ok_or_else(|| anyhow!("Missing profile_id parameter"))?;
+    serde_json::from_value(value).map_err(Into::into)
+}
+
+pub fn assert_allowlisted_vpn_argv(argv: &[&str]) -> Result<()> {
+    if argv.is_empty() {
+        bail!("vpn_binary_denied: empty argv");
+    }
+    let bin_idx = if argv[0] == "sudo" { 1 } else { 0 };
+    let bin = argv
+        .get(bin_idx)
+        .ok_or_else(|| anyhow!("vpn_binary_denied: missing binary"))?;
+    let name = Path::new(bin)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(bin);
+    if !VPN_BINARIES.contains(&name) {
+        bail!("vpn_binary_denied: {name}");
+    }
+    Ok(())
+}
+
+fn apply_connect_start(state: &mut VpnServiceState, profile_id: &str) {
+    state.active_profile_id = Some(profile_id.to_string());
+    state.state = VpnState::Connecting;
+    state.message = "Connecting...".to_string();
+    state.connection_log.clear();
+}
+
+fn apply_connected(state: &mut VpnServiceState, message: &str) {
+    state.state = VpnState::Connected;
+    state.message = message.to_string();
+}
+
+fn apply_disconnected(state: &mut VpnServiceState) {
+    state.state = VpnState::Disconnected;
+    state.message = "Disconnected".to_string();
+    state.active_profile_id = None;
+    state.connection_log.clear();
+}
+
+fn apply_error(state: &mut VpnServiceState, message: &str) {
+    state.state = VpnState::Error;
+    state.message = message.to_string();
 }
 
 pub fn register(registry: &mut ServiceRegistry) {
-    // Start connection monitoring
     tokio::spawn(async {
-        let mut interval = interval(Duration::from_secs(2));
+        let mut tick = interval(Duration::from_secs(2));
         loop {
-            interval.tick().await;
+            tick.tick().await;
             check_connection_status().await.ok();
         }
     });
 
     registry.register("Vpn.Connect", |params| async move {
-        let profile_id: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("profile_id").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing profile_id parameter"))?,
-        )?;
+        let profile_id = profile_id_from_params(&params)?;
 
         let auth: Option<HashMap<String, String>> = params
             .as_ref()
             .and_then(|p| p.get("auth").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
 
-        connect_vpn(&profile_id, auth).await?;
+        connect_vpn(&profile_id, auth, &HostVpnProcess).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Vpn.Disconnect", |_params| async move {
-        disconnect_vpn().await?;
+        disconnect_vpn(&HostVpnProcess).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Vpn.GetProfiles", |_params| async move {
-        Ok(serde_json::to_value(VPN_PROFILES.clone())?)
+        let profiles: Vec<VpnProfile> = load_profile_defs()
+            .into_iter()
+            .map(|p| p.to_public())
+            .collect();
+        Ok(serde_json::to_value(profiles)?)
     });
 
     registry.register("Vpn.GetStatus", |_params| async move {
-        let state = VPN_STATE.read().await;
-        let status = VpnStatus {
-            state: state.state.clone(),
-            message: state.message.clone(),
-            profile_id: state.active_profile_id.clone(),
-        };
-        Ok(serde_json::to_value(status)?)
+        Ok(serde_json::to_value(snapshot_vpn_status().await?)?)
     });
 }
 
-async fn connect_vpn(profile_id: &str, auth: Option<HashMap<String, String>>) -> Result<()> {
-    let profile = VPN_PROFILES
+async fn snapshot_vpn_status() -> Result<VpnStatus> {
+    let state = VPN_STATE.read().await.clone();
+    build_vpn_status(&state).await
+}
+
+async fn build_vpn_status(state: &VpnServiceState) -> Result<VpnStatus> {
+    let profiles = load_profile_defs();
+    let profile = state
+        .active_profile_id
+        .as_ref()
+        .and_then(|id| profiles.iter().find(|p| p.id == *id));
+
+    let mut interface = profile.map(|p| p.interface.clone());
+    let mut local_ip = None;
+
+    if state.state == VpnState::Connected {
+        if let Some(iface) = interface.clone() {
+            if let Ok(output) = process::exec_command(&["ip", "-o", "addr", "show"]).await {
+                local_ip = parse_iface_ipv4(&output, &iface);
+            }
+        }
+    } else if state.state == VpnState::Disconnected {
+        interface = None;
+    }
+
+    Ok(VpnStatus {
+        state: state.state.clone(),
+        message: state.message.clone(),
+        profile_id: state.active_profile_id.clone(),
+        interface,
+        local_ip,
+    })
+}
+
+async fn connect_vpn(
+    profile_id: &str,
+    auth: Option<HashMap<String, String>>,
+    backend: &dyn VpnProcess,
+) -> Result<()> {
+    let profiles = load_profile_defs();
+    let profile = profiles
         .iter()
         .find(|p| p.id == profile_id)
-        .ok_or_else(|| anyhow::anyhow!("Profile not found: {}", profile_id))?;
+        .ok_or_else(|| anyhow!("Profile not found: {profile_id}"))?
+        .clone();
+    let config_dir = vpn_config_dir();
 
-    // Disconnect any existing connection
-    disconnect_vpn().await.ok();
+    disconnect_vpn(backend).await.ok();
 
-    let mut state = VPN_STATE.write().await;
-    state.active_profile_id = Some(profile_id.to_string());
-    state.state = VpnState::Connecting;
-    state.message = "Connecting...".to_string();
-    state.connection_log.clear();
-    drop(state);
+    {
+        let mut state = VPN_STATE.write().await;
+        apply_connect_start(&mut state, profile_id);
+    }
 
-    if profile.requires_credentials {
-        // Load credentials from keyring or use provided auth
-        let mut username = auth
-            .as_ref()
-            .and_then(|a| a.get("user").cloned());
+    if vpn_dry_run() {
+        let mut state = VPN_STATE.write().await;
+        apply_connected(&mut state, "Connected (dry run)");
+        return Ok(());
+    }
 
-        let mut password = auth
-            .as_ref()
-            .and_then(|a| a.get("pass").cloned());
+    let result = match profile.protocol {
+        VpnProtocol::Networkmanager => connect_networkmanager(&profile, backend).await,
+        VpnProtocol::Wireguard => connect_wireguard(&profile, &config_dir, backend).await,
+        VpnProtocol::Openvpn => connect_openvpn(&profile, &config_dir, profile_id, &auth, backend).await,
+        VpnProtocol::Openconnect => connect_openconnect(profile_id, &profile, &auth, backend).await,
+    };
 
-        let mut mfa = auth
-            .as_ref()
-            .and_then(|a| a.get("mfa").cloned());
-
-        // Fallback to keyring if not provided
-        if username.is_none() {
-            if let Ok(Some(u)) = keyring::lookup_vpn_credential(profile_id, "vpn_user").await {
-                username = Some(u);
-            }
-        }
-
-        if password.is_none() {
-            if let Ok(Some(p)) = keyring::lookup_vpn_credential(profile_id, "vpn_password").await {
-                password = Some(p);
-            }
-        }
-
-        if mfa.is_none() {
-            if let Ok(Some(m)) = keyring::lookup_vpn_credential(profile_id, "vpn_mfa").await {
-                mfa = Some(m);
-            }
-        }
-
-        let mfa = mfa.unwrap_or_else(|| "push".to_string());
-
-        if username.is_none() || password.is_none() {
-            let mut state = VPN_STATE.write().await;
-            state.state = VpnState::Error;
-            state.message = "Missing credentials".to_string();
-            return Err(anyhow::anyhow!("Missing credentials"));
-        }
-
-        // Persist provided credentials into keyring for future use
-        if let Some(a) = auth.as_ref() {
-            if let Some(user) = a.get("user") {
-                let _ = keyring::store_vpn_credential(profile_id, "vpn_user", user).await;
-            }
-            if let Some(pass) = a.get("pass") {
-                let _ = keyring::store_vpn_credential(profile_id, "vpn_password", pass).await;
-            }
-            if let Some(m) = a.get("mfa") {
-                let _ = keyring::store_vpn_credential(profile_id, "vpn_mfa", m).await;
-            }
-        }
-
-        // Execute VPN connection command
-        if profile_id == "home" {
-            // OpenVPN
-            let auth_file = format!("/tmp/caelestia-vpn-auth-{}.txt", profile_id);
-            tokio::fs::write(&auth_file, format!("{}\n{}", username.unwrap(), password.unwrap())).await?;
-
-            let home = std::env::var("HOME")?;
-            let config_path = format!("{}/.config/quickshell/caelestia/assets/vpn/home.ovpn", home);
-
-            Command::new("sudo")
-                .args(&[
-                    "/usr/bin/openvpn",
-                    "--config",
-                    &config_path,
-                    "--auth-user-pass",
-                    &auth_file,
-                    "--script-security",
-                    "2",
-                ])
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()?;
-        } else {
-            // OpenConnect
-            let mut cmd = Command::new("sudo");
-            cmd.args(&[
-                "/usr/bin/openconnect",
-                "vpn.example.edu",
-                "--user",
-                &username.unwrap(),
-                "--authgroup=example-group",
-                "--passwd-on-stdin",
-                "--disable-ipv6",
-                "--script=/etc/vpnc/vpnc-script",
-            ]);
-
-            if let Some(pass) = password {
-                cmd.stdin(Stdio::piped());
-                let mut child = cmd.spawn()?;
-                if let Some(mut stdin) = child.stdin.take() {
-                    use tokio::io::AsyncWriteExt;
-                    let input = format!("{}\n{}\n", pass, mfa);
-                    stdin.write_all(input.as_bytes()).await?;
-                }
-                // Don't wait for completion - it runs in background
-            }
-        }
-    } else {
-        // Non-credential VPN (NetworkManager)
-        if profile_id == "personal" {
-            process::exec_command_detached(&["nmcli", "connection", "up", "example-exit"]).await?;
-        }
+    if let Err(e) = result {
+        let mut state = VPN_STATE.write().await;
+        apply_error(&mut state, &e.to_string());
+        return Err(e);
     }
 
     Ok(())
 }
 
-async fn disconnect_vpn() -> Result<()> {
-    let state = VPN_STATE.read().await;
-    let profile_id = state.active_profile_id.clone();
-    drop(state);
+async fn connect_networkmanager(profile: &VpnProfileDef, backend: &dyn VpnProcess) -> Result<()> {
+    let connection = profile
+        .connection
+        .as_deref()
+        .ok_or_else(|| anyhow!("Missing connection for NetworkManager profile"))?;
+    let cmd = ["nmcli", "connection", "up", connection];
+    assert_allowlisted_vpn_argv(&cmd)?;
+    backend.exec_command_detached(&cmd).await
+}
 
-    if let Some(profile) = profile_id.and_then(|id| VPN_PROFILES.iter().find(|p| p.id == id)) {
-        if profile.requires_credentials {
-            // Kill OpenConnect or OpenVPN
-            let _ = process::exec_command(&["sudo", "pkill", "-SIGINT", "openconnect"]).await;
-            let _ = process::exec_command(&["sudo", "pkill", "-SIGINT", "openvpn"]).await;
-        } else {
-            if profile.id == "personal" {
-                let _ = process::exec_command(&["nmcli", "connection", "down", "example-exit"]).await;
+async fn connect_wireguard(
+    profile: &VpnProfileDef,
+    config_dir: &Path,
+    backend: &dyn VpnProcess,
+) -> Result<()> {
+    let config_path = profile
+        .config_path(config_dir)
+        .ok_or_else(|| anyhow!("Missing config for WireGuard profile"))?;
+    if !config_path.is_file() {
+        bail!("WireGuard config not found: {}", config_path.display());
+    }
+    let path = config_path.to_string_lossy();
+    let cmd = ["sudo", "wg-quick", "up", &path];
+    assert_allowlisted_vpn_argv(&cmd)?;
+    backend.exec_command_detached(&cmd).await
+}
+
+async fn connect_openvpn(
+    profile: &VpnProfileDef,
+    config_dir: &Path,
+    profile_id: &str,
+    auth: &Option<HashMap<String, String>>,
+    backend: &dyn VpnProcess,
+) -> Result<()> {
+    let config_path = profile
+        .config_path(config_dir)
+        .filter(|p| p.is_file())
+        .or_else(|| {
+            std::env::var("HOME").ok().map(|home| {
+                PathBuf::from(home).join(".config/quickshell/caelestia/assets/vpn/home.ovpn")
+            })
+        })
+        .ok_or_else(|| anyhow!("OpenVPN config not found for profile {profile_id}"))?;
+
+    let (username, password) = resolve_credentials(profile_id, profile.requires_credentials, auth).await?;
+    let auth_file = format!("/tmp/aura-vpn-auth-{profile_id}.txt");
+    tokio::fs::write(&auth_file, format!("{username}\n{password}")).await?;
+
+    let config = config_path.to_string_lossy();
+    let auth_path = auth_file.as_str();
+    let cmd = [
+        "sudo",
+        "/usr/bin/openvpn",
+        "--config",
+        &config,
+        "--auth-user-pass",
+        auth_path,
+        "--script-security",
+        "2",
+    ];
+    assert_allowlisted_vpn_argv(&cmd)?;
+    backend.exec_command_detached(&cmd).await
+}
+
+async fn connect_openconnect(
+    profile_id: &str,
+    profile: &VpnProfileDef,
+    auth: &Option<HashMap<String, String>>,
+    backend: &dyn VpnProcess,
+) -> Result<()> {
+    let server = profile
+        .server
+        .as_deref()
+        .ok_or_else(|| anyhow!("Missing server for OpenConnect profile"))?;
+    let (username, password) = resolve_credentials(profile_id, profile.requires_credentials, auth).await?;
+    let mfa = resolve_mfa(profile_id, auth).await;
+
+    let user = username;
+    let pass = password;
+    let mut args = vec![
+        "sudo".to_string(),
+        "/usr/bin/openconnect".to_string(),
+        server.to_string(),
+        "--user".to_string(),
+        user.clone(),
+        "--passwd-on-stdin".to_string(),
+        "--disable-ipv6".to_string(),
+        "--script=/etc/vpnc/vpnc-script".to_string(),
+    ];
+    if let Some(group) = profile.authgroup.as_deref() {
+        args.push(format!("--authgroup={group}"));
+    }
+
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    assert_allowlisted_vpn_argv(&argv)?;
+    backend
+        .spawn_with_stdin(&argv, format!("{pass}\n{mfa}\n").as_bytes())
+        .await
+}
+
+async fn resolve_credentials(
+    profile_id: &str,
+    requires_credentials: bool,
+    auth: &Option<HashMap<String, String>>,
+) -> Result<(String, String)> {
+    if !requires_credentials {
+        return Ok((String::new(), String::new()));
+    }
+
+    let mut username = auth.as_ref().and_then(|a| a.get("user").cloned());
+    let mut password = auth.as_ref().and_then(|a| a.get("pass").cloned());
+
+    if username.is_none() {
+        if let Ok(Some(u)) = keyring::lookup_vpn_credential(profile_id, "vpn_user").await {
+            username = Some(u);
+        }
+    }
+    if password.is_none() {
+        if let Ok(Some(p)) = keyring::lookup_vpn_credential(profile_id, "vpn_password").await {
+            password = Some(p);
+        }
+    }
+
+    if let Some(a) = auth.as_ref() {
+        if let Some(user) = a.get("user") {
+            let _ = keyring::store_vpn_credential(profile_id, "vpn_user", user).await;
+        }
+        if let Some(pass) = a.get("pass") {
+            let _ = keyring::store_vpn_credential(profile_id, "vpn_password", pass).await;
+        }
+        if let Some(m) = a.get("mfa") {
+            let _ = keyring::store_vpn_credential(profile_id, "vpn_mfa", m).await;
+        }
+    }
+
+    match (username, password) {
+        (Some(u), Some(p)) => Ok((u, p)),
+        _ => {
+            let mut state = VPN_STATE.write().await;
+            apply_error(&mut state, "Missing credentials");
+            Err(anyhow!("Missing credentials"))
+        }
+    }
+}
+
+async fn resolve_mfa(profile_id: &str, auth: &Option<HashMap<String, String>>) -> String {
+    if let Some(m) = auth.as_ref().and_then(|a| a.get("mfa").cloned()) {
+        return m;
+    }
+    if let Ok(Some(m)) = keyring::lookup_vpn_credential(profile_id, "vpn_mfa").await {
+        return m;
+    }
+    "push".to_string()
+}
+
+async fn disconnect_vpn(backend: &dyn VpnProcess) -> Result<()> {
+    if vpn_dry_run() {
+        let mut state = VPN_STATE.write().await;
+        apply_disconnected(&mut state);
+        return Ok(());
+    }
+
+    let profile_id = {
+        let state = VPN_STATE.read().await;
+        state.active_profile_id.clone()
+    };
+
+    let profiles = load_profile_defs();
+    if let Some(id) = profile_id.as_deref() {
+        if let Some(profile) = profiles.iter().find(|p| p.id == id) {
+            match profile.protocol {
+                VpnProtocol::Networkmanager => {
+                    if let Some(connection) = profile.connection.as_deref() {
+                        let cmd = ["nmcli", "connection", "down", connection];
+                        assert_allowlisted_vpn_argv(&cmd)?;
+                        let _ = backend.exec_command(&cmd).await;
+                    }
+                }
+                VpnProtocol::Wireguard => {
+                    if let Some(config_path) = profile.config_path(&vpn_config_dir()) {
+                        if config_path.is_file() {
+                            let path = config_path.to_string_lossy();
+                            let cmd = ["sudo", "wg-quick", "down", &path];
+                            assert_allowlisted_vpn_argv(&cmd)?;
+                            let _ = backend.exec_command(&cmd).await;
+                        }
+                    }
+                }
+                VpnProtocol::Openconnect | VpnProtocol::Openvpn => {
+                    let oc = ["sudo", "pkill", "-SIGINT", "openconnect"];
+                    assert_allowlisted_vpn_argv(&oc)?;
+                    let _ = backend.exec_command(&oc).await;
+                    let ov = ["sudo", "pkill", "-SIGINT", "openvpn"];
+                    assert_allowlisted_vpn_argv(&ov)?;
+                    let _ = backend.exec_command(&ov).await;
+                }
             }
         }
     }
 
     let mut state = VPN_STATE.write().await;
-    state.state = VpnState::Disconnected;
-    state.message = "Disconnected".to_string();
-    state.active_profile_id = None;
-    state.connection_log.clear();
-
+    apply_disconnected(&mut state);
     Ok(())
 }
 
 async fn check_connection_status() -> Result<()> {
-    let state = VPN_STATE.read().await;
-    let profile_id = state.active_profile_id.clone();
-    let interface = profile_id
-        .as_ref()
-        .and_then(|id| VPN_PROFILES.iter().find(|p| p.id == *id))
-        .map(|p| p.interface.clone());
-    drop(state);
+    let (profile_id, current_state) = {
+        let state = VPN_STATE.read().await;
+        (state.active_profile_id.clone(), state.state.clone())
+    };
 
-    if let Some(iface) = interface {
-        // Check if interface exists
-        let output = process::exec_command(&["ip", "-o", "addr", "show"]).await?;
-        let is_connected =
-            vpn_interface_connected(&output, &iface, is_vpn_process_running().await);
+    let Some(id) = profile_id else {
+        return Ok(());
+    };
 
-        let mut state = VPN_STATE.write().await;
-        if is_connected && state.state != VpnState::Connected {
-            state.state = VpnState::Connected;
-            state.message = "Connected".to_string();
-        } else if !is_connected && state.state == VpnState::Connected {
-            state.state = VpnState::Disconnected;
-            state.message = "Disconnected".to_string();
-        }
+    let profiles = load_profile_defs();
+    let Some(profile) = profiles.iter().find(|p| p.id == id) else {
+        return Ok(());
+    };
+
+    let output = process::exec_command(&["ip", "-o", "addr", "show"]).await?;
+    let process_running = is_vpn_process_running().await;
+    let is_connected =
+        vpn_interface_connected(&output, &profile.interface, process_running);
+
+    let mut state = VPN_STATE.write().await;
+    if is_connected && current_state != VpnState::Connected {
+        apply_connected(&mut state, "Connected");
+    } else if !is_connected && current_state == VpnState::Connected {
+        apply_disconnected(&mut state);
     }
 
     Ok(())
@@ -295,6 +583,41 @@ pub(crate) fn vpn_interface_connected(
 ) -> bool {
     ip_output.contains(iface)
         || (iface.starts_with("tun") && ip_output.contains("tun") && vpn_process_running)
+}
+
+/// Extract the first IPv4 address assigned to `iface` from `ip addr` / `ip -o addr` output.
+pub fn parse_iface_ipv4(ip_output: &str, iface: &str) -> Option<String> {
+    for line in ip_output.lines() {
+        if line.contains(iface) && line.contains(" inet ") && !line.contains(" inet6 ") {
+            let after = line.split(" inet ").nth(1)?;
+            let addr = after.split_whitespace().next()?;
+            return Some(addr.split('/').next()?.to_string());
+        }
+    }
+
+    let mut current_iface: Option<String> = None;
+    for line in ip_output.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("inet ") {
+            if trimmed.starts_with("inet6 ") {
+                continue;
+            }
+            if current_iface.as_deref() == Some(iface) {
+                let addr = rest.split_whitespace().next()?;
+                return Some(addr.split('/').next()?.to_string());
+            }
+        }
+        if let Some((_, name_part)) = trimmed.split_once(':') {
+            if let Some(name) = name_part.split(':').next() {
+                let name = name.trim();
+                if !name.is_empty() && !name.contains(' ') {
+                    current_iface = Some(name.to_string());
+                }
+            }
+        }
+    }
+
+    None
 }
 
 /// One row from `ip link` / `ip -o link show`.
@@ -412,10 +735,13 @@ async fn is_vpn_process_running() -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        ip_link_interface_up, parse_ip_link_line, parse_wireguard_conf, vpn_interface_connected,
-        WireGuardConfigSummary,
+        apply_connect_start, apply_connected, apply_disconnected, apply_error,
+        assert_allowlisted_vpn_argv, default_profile_defs, ip_link_interface_up,
+        load_profile_defs_from_dir, parse_iface_ipv4, parse_ip_link_line, parse_wireguard_conf,
+        vpn_interface_connected, VpnProcess, VpnServiceState, VpnState, WireGuardConfigSummary,
     };
     use std::path::PathBuf;
+    use std::sync::Mutex;
 
     fn vpn_fixture(name: &str) -> String {
         let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -423,6 +749,37 @@ mod tests {
             .join(name);
         std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("fixture {name}: {e}"))
+    }
+
+    struct RecordingVpnProcess {
+        calls: Mutex<Vec<Vec<String>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl VpnProcess for RecordingVpnProcess {
+        async fn exec_command(&self, cmd: &[&str]) -> Result<String, anyhow::Error> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(cmd.iter().map(|s| s.to_string()).collect());
+            Ok(String::new())
+        }
+
+        async fn exec_command_detached(&self, cmd: &[&str]) -> Result<(), anyhow::Error> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(cmd.iter().map(|s| s.to_string()).collect());
+            Ok(())
+        }
+
+        async fn spawn_with_stdin(&self, cmd: &[&str], _stdin: &[u8]) -> Result<(), anyhow::Error> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(cmd.iter().map(|s| s.to_string()).collect());
+            Ok(())
+        }
     }
 
     #[test]
@@ -443,6 +800,18 @@ mod tests {
         let out = vpn_fixture("ip_o_addr_show_nm_profile.txt");
         assert!(vpn_interface_connected(&out, "example-exit", false));
         assert!(!vpn_interface_connected(&out, "eth0", false));
+    }
+
+    #[test]
+    fn parse_iface_ipv4_from_addr_fixture() {
+        let out = vpn_fixture("ip_o_addr_show_connected.txt");
+        assert_eq!(parse_iface_ipv4(&out, "tun0").as_deref(), Some("10.0.0.2"));
+    }
+
+    #[test]
+    fn parse_iface_ipv4_from_ip_o_output() {
+        let out = "3: tun0    inet 10.14.0.2/24 brd 10.14.0.2 scope global tun0";
+        assert_eq!(parse_iface_ipv4(out, "tun0").as_deref(), Some("10.14.0.2"));
     }
 
     #[test]
@@ -488,5 +857,69 @@ mod tests {
         assert!(summary.dns.is_empty());
         assert_eq!(summary.endpoint.as_deref(), Some("vpn.example.com:443"));
         assert_eq!(summary.allowed_ips, vec!["10.0.0.0/8"]);
+    }
+
+    #[test]
+    fn load_profiles_from_fixture_dir() {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vpn");
+        let profiles = load_profile_defs_from_dir(&dir);
+        assert!(profiles.iter().any(|p| p.id == "education"));
+        assert!(profiles.iter().any(|p| p.id == "lab-wg"));
+    }
+
+    #[test]
+    fn default_profiles_include_caelestia_ids() {
+        let profiles = default_profile_defs();
+        let ids: Vec<_> = profiles.iter().map(|p| p.id.as_str()).collect();
+        assert!(ids.contains(&"education"));
+        assert!(ids.contains(&"personal"));
+        assert!(ids.contains(&"home"));
+    }
+
+    #[test]
+    fn vpn_binary_allowlist_accepts_known_tools() {
+        assert!(assert_allowlisted_vpn_argv(&["sudo", "/usr/bin/openconnect"]).is_ok());
+        assert!(assert_allowlisted_vpn_argv(&["nmcli", "connection", "up", "example-exit"]).is_ok());
+    }
+
+    #[test]
+    fn vpn_binary_allowlist_rejects_unknown() {
+        let err = assert_allowlisted_vpn_argv(&["curl", "http://evil"]).unwrap_err();
+        assert!(err.to_string().contains("vpn_binary_denied"));
+    }
+
+    #[test]
+    fn state_machine_transitions() {
+        let mut state = VpnServiceState::default();
+        assert_eq!(state.state, VpnState::Disconnected);
+
+        apply_connect_start(&mut state, "education");
+        assert_eq!(state.state, VpnState::Connecting);
+        assert_eq!(state.active_profile_id.as_deref(), Some("education"));
+
+        apply_connected(&mut state, "Connected");
+        assert_eq!(state.state, VpnState::Connected);
+
+        apply_disconnected(&mut state);
+        assert_eq!(state.state, VpnState::Disconnected);
+        assert!(state.active_profile_id.is_none());
+
+        apply_error(&mut state, "Missing credentials");
+        assert_eq!(state.state, VpnState::Error);
+    }
+
+    #[tokio::test]
+    async fn recording_backend_captures_disconnect_argv() {
+        let backend = RecordingVpnProcess {
+            calls: Mutex::new(Vec::new()),
+        };
+        assert_allowlisted_vpn_argv(&["sudo", "pkill", "-SIGINT", "openconnect"]).unwrap();
+        backend
+            .exec_command(&["sudo", "pkill", "-SIGINT", "openconnect"])
+            .await
+            .unwrap();
+        let calls = backend.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0][0], "sudo");
     }
 }

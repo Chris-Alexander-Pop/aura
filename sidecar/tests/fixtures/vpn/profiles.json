@@ -1,0 +1,43 @@
+[
+  {
+    "id": "education",
+    "name": "Campus",
+    "icon": "school",
+    "display_name": "Campus VPN",
+    "interface": "tun0",
+    "requires_credentials": true,
+    "protocol": "openconnect",
+    "server": "vpn.example.edu",
+    "authgroup": "example-group"
+  },
+  {
+    "id": "personal",
+    "name": "Personal",
+    "icon": "person",
+    "display_name": "Personal VPN",
+    "interface": "example-exit",
+    "requires_credentials": false,
+    "protocol": "networkmanager",
+    "connection": "example-exit"
+  },
+  {
+    "id": "home",
+    "name": "Home",
+    "icon": "home",
+    "display_name": "Home VPN",
+    "interface": "tun0",
+    "requires_credentials": true,
+    "protocol": "openvpn",
+    "config": "home.ovpn"
+  },
+  {
+    "id": "lab-wg",
+    "name": "Lab WireGuard",
+    "icon": "shield",
+    "display_name": "Lab WireGuard",
+    "interface": "wg0",
+    "requires_credentials": false,
+    "protocol": "wireguard",
+    "config": "wg_minimal.conf"
+  }
+]
