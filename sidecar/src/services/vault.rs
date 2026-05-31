@@ -1,9 +1,10 @@
 //! Vault panel backend: rclone remotes registry and backup status (read-only phase).
 
 use crate::services::ServiceRegistry;
-use crate::utils::process;
+use crate::utils::{keyring, process, storage};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VaultRemote {
@@ -39,6 +40,66 @@ pub fn register(registry: &mut ServiceRegistry) {
         let status = backup_status_stub();
         Ok(serde_json::to_value(&status)?)
     });
+
+    registry.register("Vault.GetEntry", |params| async move {
+        let key: String = serde_json::from_value(
+            params
+                .as_ref()
+                .and_then(|p| p.get("key").cloned())
+                .ok_or_else(|| anyhow::anyhow!("Missing key"))?,
+        )?;
+        validate_vault_key(&key)?;
+        let value = keyring::lookup_vault_entry(&key).await?;
+        Ok(json!({
+            "key": key,
+            "value": value,
+        }))
+    });
+
+    registry.register("Vault.SetEntry", |params| async move {
+        let key: String = serde_json::from_value(
+            params
+                .as_ref()
+                .and_then(|p| p.get("key").cloned())
+                .ok_or_else(|| anyhow::anyhow!("Missing key"))?,
+        )?;
+        let value: String = serde_json::from_value(
+            params
+                .as_ref()
+                .and_then(|p| p.get("value").cloned())
+                .ok_or_else(|| anyhow::anyhow!("Missing value"))?,
+        )?;
+        validate_vault_key(&key)?;
+        keyring::store_vault_entry(&key, &value).await?;
+        record_vault_audit("Vault.SetEntry", &key).await?;
+        Ok(json!({ "success": true }))
+    });
+}
+
+fn validate_vault_key(key: &str) -> Result<()> {
+    if key.is_empty() || key.len() > 128 {
+        anyhow::bail!("invalid vault key");
+    }
+    if !key
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_')
+    {
+        anyhow::bail!("invalid vault key");
+    }
+    Ok(())
+}
+
+async fn record_vault_audit(method: &str, key: &str) -> Result<()> {
+    storage::init().await?;
+    let entry = json!({
+        "timestamp": chrono::Utc::now().timestamp(),
+        "method": method,
+        "key": key,
+        "user": std::env::var("USER").unwrap_or_else(|_| "unknown".into()),
+    });
+    let id = format!("audit_{}", chrono::Utc::now().timestamp_millis());
+    storage::set_kv("vault_audit", &id, &entry).await?;
+    Ok(())
 }
 
 /// Parse `rclone listremotes` lines (`name:`).

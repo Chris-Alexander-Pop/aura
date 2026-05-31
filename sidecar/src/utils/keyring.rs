@@ -109,6 +109,112 @@ pub async fn store_wifi_password(ssid: &str, password: &str) -> Result<()> {
     Ok(())
 }
 
+/// Store CalDAV basic-auth password (never logged by RPC layer).
+pub async fn store_caldav_password(username: &str, password: &str) -> Result<()> {
+    let mut cmd = Command::new("secret-tool");
+    cmd.arg("store")
+        .arg("--label")
+        .arg(format!("Aura CalDAV: {username}"))
+        .arg("application")
+        .arg("aura")
+        .arg("type")
+        .arg("caldav_password")
+        .arg("username")
+        .arg(username)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let mut child = cmd.spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(password.as_bytes()).await?;
+    }
+    let status = child.wait().await?;
+    if !status.success() {
+        anyhow::bail!("secret-tool store failed with status {}", status);
+    }
+    Ok(())
+}
+
+/// Look up CalDAV password for a username.
+pub async fn lookup_caldav_password(username: &str) -> Result<Option<String>> {
+    let output = Command::new("secret-tool")
+        .arg("lookup")
+        .arg("application")
+        .arg("aura")
+        .arg("type")
+        .arg("caldav_password")
+        .arg("username")
+        .arg(username)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if text.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(text))
+    }
+}
+
+/// Store an Aura Vault entry (opaque secret; never log values).
+pub async fn store_vault_entry(key: &str, value: &str) -> Result<()> {
+    let mut cmd = Command::new("secret-tool");
+    cmd.arg("store")
+        .arg("--label")
+        .arg(format!("Aura Vault: {key}"))
+        .arg("application")
+        .arg("aura-vault")
+        .arg("type")
+        .arg("vault_entry")
+        .arg("key")
+        .arg(key)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let mut child = cmd.spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(value.as_bytes()).await?;
+    }
+    let status = child.wait().await?;
+    if !status.success() {
+        anyhow::bail!("secret-tool store failed with status {}", status);
+    }
+    Ok(())
+}
+
+/// Look up a Vault entry by key.
+pub async fn lookup_vault_entry(key: &str) -> Result<Option<String>> {
+    let output = Command::new("secret-tool")
+        .arg("lookup")
+        .arg("application")
+        .arg("aura-vault")
+        .arg("type")
+        .arg("vault_entry")
+        .arg("key")
+        .arg(key)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if text.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(text))
+    }
+}
+
 /// Look up a stored Wi-Fi password by SSID.
 pub async fn lookup_wifi_password(ssid: &str) -> Result<Option<String>> {
     let output = Command::new("secret-tool")
