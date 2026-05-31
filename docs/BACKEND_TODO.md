@@ -2,23 +2,53 @@
 
 > **Purpose:** Exhaustive backlog for `ags-sidecar` (`sidecar/`) so each item can be picked up, implemented, and verified with unit + integration tests before wiring the React/GTK UI.
 >
-> **Sources:** [todo.md](../todo.md), [docs/roadmap/](roadmap/), [feature_matrix.md](feature_matrix.md), [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md), **[ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)** (resolved product/stack choices), current `sidecar/src/services/*`, `ui/src/lib/api.ts`, `src/lib/sidecar.ts`.
+> **Sources:** [todo.md](../todo.md), [docs/roadmap/](roadmap/), [feature_matrix.md](feature_matrix.md), [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md), **[ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)**, `sidecar/src/services/*`, `ui/src/lib/api.ts`, `src/lib/sidecar.ts`.
 >
-> **How to use:** Check `[x]` when done. Prefer **one vertical slice** per PR (e.g. “Network saved networks + tests + api.ts”), not half a service. Run `cd sidecar && cargo test` after each slice.
+> **How to use:** `[x]` done · `[~]` partial or deferred · `[ ]` not done. Prefer one vertical slice per PR. Run `cd sidecar && cargo test` after each slice.
+>
+> **Plans:** First program [docs/plans/README.md](plans/README.md) **implemented** (2026-05-31). Remaining work: [docs/plans/completion/README.md](plans/completion/README.md). This checklist is **not** fully complete.
 
 ---
 
-## Snapshot (May 2026)
+## Executive summary (2026-05-31 audit)
+
+| Lens | Status |
+|------|--------|
+| **docs/plans/** (15 vertical slices) | **Complete** — sidecar RPC + tests; see plan files for scope |
+| **This checklist** | **In progress** — many shipped items were never ticked; P3/P4 and UI sync remain |
+| **Ready for every roadmap panel** | **No** — several RPC namespaces lack `api.ts` wiring; Communication/Vicinae/CalDAV deferred per ADR |
+
+### Shipped (sidecar RPC + tests)
+
+Control-center foundation/depth/hardening, P0 System/Brightness, Hyprland bar sync, Settings/Capture, Dashboard aggregates, Launcher (no Vicinae), VPN profiles/connect, Automation SQLite + cron, Session/Lock/Sleep, Todos + ICS calendar, Vault read-only, offensive-security feature gate, foundation contract harness.
+
+### Partial / deferred
+
+Network `Connect` (802.1X, captive portal), VPN per-app routing, CalDAV/Google sync, `Vicinae.Exec`, Vault transfer/backup, Communication hub depth (ADR: thin stubs), Weather/Logs follow depth, Automation webhooks, audio effects profiles, GTK `sidecar.ts` push parity.
+
+### Still open (prioritized — see §7 → [completion plans](plans/completion/README.md))
+
+Fast-gate flakes, `api.ts` for Launcher/Todos/Vault/Dashboard/Capture, §0.4 process allowlist + polkit helper, CI workflow doc, CalDAV/Vicinae/Vault phase 2, P2 polish, P4 offensive hardening, greenfield ADRs (IDE, voice, exocortex).
+
+---
+
+## Snapshot (2026-05-31)
 
 | Item | Status |
 |------|--------|
-| Registered RPC methods | ~**309** (`sidecar/rpc-manifest.json`) |
-| Integration tests | **250+** test fns — contracts, RPC guard, per-service `*_rpc_shapes.rs`, fast vs slow host sweep |
-| `ui/src/lib/api.ts` vs sidecar | **Contract script** — `scripts/check-api-rpc-contract.sh` |
-| Dedicated services missing | **Launcher/Vicinae**, **Capture**, **Settings/Config**, **Vault**, **Todos** (see §3) |
-| Storage layer | SQLite KV with **list/delete/scan** |
-| Real-time push | `notify` bus — Power, Network, BT, Audio, Notifications, Performance, Productivity, **Hyprland** |
-| Coverage | ~**50%** line (`docs/sidecar_coverage_baseline.md`, `scripts/sidecar-coverage.sh`) |
+| Registered RPC methods (default build) | **281** in [`sidecar/rpc-manifest.json`](../sidecar/rpc-manifest.json) (`Security.Offensive.*` excluded; use `AURA_OFFENSIVE_MANIFEST=1` when generating with feature) |
+| Services registered | `power`, `network`, `bluetooth`, `audio`, `brightness`, `system`, `vpn`, `hyprland`, `shell`, `lock`, `mpris`, `processes`, `weather`, `gamemode`, `storage`, `packages`, `logs`, `security`, `performance`, `devops`, `productivity`, `automation`, `communication`, `calendar`, `ics`, `todos`, `fitness`, `keybinds`, `notifications`, `settings`, `dashboard`, `capture`, `launcher`, `vault` |
+| Integration tests | **300+** test fns — `*_rpc_shapes.rs`, `*_storage_test.rs`, `integration_test`, `server_http_test`, `integration_contracts` ([sidecar/tests/README.md](../sidecar/tests/README.md)) |
+| `ui/src/lib/api.ts` vs sidecar | **`./scripts/check-api-rpc-contract.sh`** — OK (29 methods); readonly sweep: `api_ts_readonly_methods_resolve` in `integration_test.rs` |
+| Storage | SQLite KV — list/delete/scan, migrations |
+| Real-time push | `notify` — Power, Network, BT, Audio, Notifications, Performance, Productivity, Hyprland, Calendar |
+| Coverage | ~**50%** line ([sidecar_coverage_baseline.md](sidecar_coverage_baseline.md); re-run `./scripts/sidecar-coverage.sh`) |
+| **Fast gate** | `./scripts/sidecar-test-fast.sh` — **not fully green** (see below) |
+
+**Known fast-gate failures (2026-05-31):**
+
+- `settings_storage_test::settings_get_defaults_without_row` — default theme assertion (`catppuccin-mocha` vs `dark`)
+- Intermittent: `calendar_storage_test::calendar_create_emits_events_changed_after_debounce`, `automation_storage_test::*` (WS timing / SQLite isolation)
 
 ---
 
@@ -26,11 +56,11 @@
 
 | Tier | Meaning | Examples |
 |------|---------|----------|
-| **P0** | Blocks UI today or causes 500s | Fix API contract mismatches; Power/Network/Audio correctness |
-| **P1** | Core shell daily use | Notifications, brightness/volume OSD paths, Hyprland, session |
-| **P2** | Control center panes (existing UI) | Packages, Logs, Security aggregate, Performance, VPN profiles |
-| **P3** | Roadmap panels (greenfield backend) | Vault, Communication hub, Calendar sync, DevOps cloud |
-| **P4** | Stubs / sensitive / optional | Exocortex, Skiller, Secure-A, most `Security.Offensive.*` |
+| **P0** | Blocks UI today or causes 500s | Contract mismatches; Power/Network/Audio correctness |
+| **P1** | Core shell daily use | Notifications, brightness, Hyprland, session |
+| **P2** | Control center panes | Packages, Logs, Security, Performance, VPN |
+| **P3** | Roadmap / greenfield | Vault transfers, CalDAV, Communication depth |
+| **P4** | Stubs / sensitive / optional | Exocortex, offensive UI, voice |
 
 ---
 
@@ -38,608 +68,528 @@
 
 ### 0.1 Project hygiene
 
-- [ ] Document canonical **Arch-only vs multi-distro** stance in `sidecar/README.md` (pacman vs apt branches exist today)
-- [ ] Add `sidecar/README.md` with: build, `ags-sidecar client`, HTTP `:9080`, env vars, polkit/sudo expectations
-- [ ] Resolve **binary path** story: `src/lib/sidecar.ts` hardcodes `~/.config/ags/sidecar/target/...` — document or fix for dev clones under `Engineering/Productivity/ags`
-- [ ] Add **OpenAPI or machine-readable RPC manifest** generated from `registry.register` calls (script in CI) to prevent contract drift
-- [ ] Standardize method naming: **`DevOps`** everywhere (rename TS clients from `Devops`) — see [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)
+- [x] Document **Arch-first** stance in [sidecar/README.md](../sidecar/README.md) (pacman branches; multi-distro not a goal)
+- [x] `sidecar/README.md`: build, HTTP `:9080`, env vars, deny-list, coverage
+- [~] **Binary path:** documented (`AURA_SIDECAR`, XDG path, dev clone under `Engineering/Productivity/ags`); GTK resolver not fully generalized (ADR)
+- [x] Machine-readable **RPC manifest** + regeneration in `./scripts/sidecar-test-fast.sh`
+- [x] **`DevOps`** casing in `ui/src/lib/api.ts` (not `Devops`)
 
 ### 0.2 Shared types (`sidecar/src/types.rs`)
 
-- [ ] Audit all public DTOs — ensure `serde` renames match `ui/src/lib/api-types.ts` (snake_case)
-- [ ] Add `#[serde(deny_unknown_fields)]` on stable outward types where feasible
-- [ ] Mirror types in `src/lib/types.ts` for GTK client
-- [ ] Add **version field** to HTTP health: `GET /api/System.Ping` or `Sidecar.GetVersion`
+- [~] Audit DTOs vs `ui/src/lib/api-types.ts` (ongoing per service)
+- [ ] `#[serde(deny_unknown_fields)]` on stable outward types where feasible
+- [~] Mirror types in `src/lib/types.ts` (partial; VPN and others updated ad hoc)
+- [x] Version RPC: `Sidecar.GetVersion` (+ HTTP tests in `server_http_test.rs`)
 
 ### 0.3 Storage (`sidecar/src/utils/storage.rs`)
 
 - [x] `list_keys(namespace) -> Vec<String>`
 - [x] `list_namespace(prefix) -> Vec<(namespace, key)>`
 - [x] `delete_kv(namespace, key)`
-- [x] `scan_namespace(namespace) -> Vec<serde_json::Value>` for calendar events, workflows, tasks
+- [x] `scan_namespace(namespace) -> Vec<serde_json::Value>`
 - [x] Migrations table + schema version
 - [x] Unit tests: round-trip, concurrent writes, corrupt JSON handling
 
 ### 0.4 Process & privileges (`utils/process.rs`, `utils/keyring.rs`)
 
-- [ ] Central **allowlist** for shell commands (security review)
-- [ ] Timeout + max output bytes on all `exec_command`
-- [ ] Polkit integration helper for privileged ops (VPN, firewall, package install)
-- [ ] Keyring: store/retrieve Wi-Fi/VPN/OAuth secrets — never log values
+- [~] Allowlist pattern in launcher, capture, hyprland dispatch, automation (not one central module)
+- [~] Timeouts on many `exec_command` call sites (not universal)
+- [~] Polkit/pkexec used ad hoc (packages, security firewall, VPN); no shared helper
+- [~] Keyring: network/VPN paths (not full OAuth)
 - [ ] Unit tests with **mocked** command runner (inject trait)
 
 ### 0.5 Service registry
 
-- [ ] Unknown method: structured error code (not generic bail)
+- [x] Unknown method: `MethodNotFound` → structured JSON-RPC / HTTP 404
 - [ ] Request logging behind `RUST_LOG` with **redaction**
-- [ ] Optional **method groups** for pentest (`Security.Offensive.*`) behind feature flag `offensive-security`
-- [ ] ~~Register alias handlers~~ — **decided:** rename clients to match Rust, no aliases (see ADR)
+- [x] `Security.Offensive.*` behind `offensive-security` feature ([security_offensive.rs](../sidecar/src/services/security_offensive.rs))
+- [x] ~~Register alias handlers~~ — **decided:** rename clients, no aliases (ADR); `Automation.ListRules` aliases `GetWorkflows` in Rust only
 
 ### 0.6 Real-time events
 
-- [ ] Define notification schema: `{ method, params }` for WebSocket + future stdin notify
-- [x] Emit on: battery change, network connect/disconnect, Bluetooth, Audio (partial — VPN pending)
-- [x] GTK `sidecar.ts` already listens for `Power.BatteryState` / `Power.Profile` — **implement emitters** in `power.rs`
-- [ ] Integration test: connect WS client, trigger change, assert message
+- [x] Notify payload: `{ method, params }` on `/ws` and stdout forwarder
+- [x] Emit on: battery, network, Bluetooth, Audio (partial); Performance, Productivity, Hyprland, Calendar
+- [~] GTK `sidecar.ts` listens for some events; not all React namespaces wired
+- [x] WS tests: `server_http_test.rs` (synthetic `notify::emit`; Calendar, Power, etc.)
+- [ ] Integration test: **live** host change → WS (not only synthetic emit)
 
 ### 0.7 Test infrastructure
 
-- [ ] **Unit tests** per service module under `sidecar/src/services/<name>/tests` or `#[cfg(test)]` in module
-- [ ] **Integration tests** using `ServiceRegistry::new()` + register only service under test (no full HTTP server required)
-- [ ] **HTTP integration tests** with `axum::test` or `reqwest` against spawned server on random port
-- [ ] **Fixture directory** `sidecar/tests/fixtures/` (nmcli output, pactl, hyprctl JSON, pacman -Qu)
-- [ ] CI job: `cargo test`, `cargo clippy`, optional `cargo test --features offensive-security`
-- [ ] Document **manual test matrix** for hardware-dependent tests (Wi-Fi, BT, battery)
-- [ ] Replace placeholder `integration_test.rs` brightness copy with real registry calls
+- [x] Unit tests: `#[cfg(test)]` in service modules + `integration_contracts.rs`
+- [x] Integration tests via full `build_registry()` + `call_method` deny-list
+- [x] HTTP integration: `server_http_test.rs` on `127.0.0.1:0`
+- [x] Fixture directory `sidecar/tests/fixtures/` (hyprland, nmcli, audio, power_supply, brightness, packages, security, vpn, calendar, desktop, vault, …)
+- [~] CI job: fast gate script exists; no `.github/workflows` doc in-repo yet
+- [~] Manual test matrix: partial notes in `sidecar/tests/README.md`
+- [x] P0 / brightness smoke via registry (`integration_test.rs`, `brightness_rpc_shapes.rs`)
+- [x] `api_ts_readonly_methods_resolve` for safe `api.ts` RPCs
 
 ---
 
 ## 1. API contract alignment (P0)
 
-These methods are called from **`ui/src/lib/api.ts`** and/or **`src/lib/sidecar.ts`** but are **missing or differently named** in the sidecar today. Fix by implementing the method **or** adding a documented alias + updating clients.
+Historical gaps (2025 checklist) — **resolved for current `api.ts`:**
 
-| Client calls | Sidecar today | Action |
-|--------------|---------------|--------|
-| `Packages.GetUpdates` | `Packages.GetUpgradable` | Implement alias or rename client |
-| `Logs.Get` | `Logs.GetSystemLogs`, etc. | Implement `Logs.Get` wrapper returning structured `LogEntry[]` |
-| `Security.GetStatus` | `Security.GetFirewallStatus`, … | Implement aggregate `GetStatus` matching `api-types.ts` |
-| `Performance.GetMetrics` | `Performance.GetCpuStats`, … | Implement aggregate or update clients |
-| `Devops.GetStatus` | `DevOps.*` (15 methods, no `GetStatus`) | Implement summary + fix casing |
-| `Productivity.GetStats` | `Productivity.GetScreenTime`, … | Implement aggregate |
-| `Automation.ListRules` | `Automation.GetWorkflows` | Implement alias + fix `GetWorkflows` empty list |
-| `Communication.GetUnread` | *(none)* | Implement unread map per bridge/app |
-| `Gamemode.GetStatus` | `GameMode.IsEnabled` | Alias or rename |
-| `Storage.GetConfig` | `Storage.Get` / `Storage.Set` | Alias or implement config schema |
-| `Automation.Trigger` | `Automation.RunWorkflow` | Alias |
+| Client | Resolution |
+|--------|------------|
+| `Packages.GetUpdates` | Client uses `Packages.GetUpgradable` or equivalent path |
+| `Logs.Get` | Implemented |
+| `Security.GetStatus` | Aggregate implemented |
+| `Performance.GetMetrics` | Aggregate implemented |
+| `DevOps.GetStatus` | Implemented; TS uses `DevOps.*` |
+| `Productivity.GetStats` | Aggregate implemented |
+| `Automation.ListRules` / `Trigger` | Aliased to `GetWorkflows` / `RunWorkflow`; UI uses `GetWorkflows` + `Trigger` |
+| `Communication.GetUnread` | Stub map implemented |
+| `GameMode` | UI uses `GameMode.IsEnabled` (no `GetStatus` alias per ADR) |
+| `Storage` config | Aura prefs use `Settings.*`; generic `Storage.*` for KV |
+| `Automation.Trigger` | Registered; aliases `RunWorkflow` |
 
-- [ ] Complete table above (all rows)
-- [ ] Add integration test: every `api.ts` method returns `ok: true` on CI stub environment OR returns defined error when tool missing
-- [ ] Add `ui` contract test (optional): script that greps `api.` vs generated manifest
+- [x] Contract table satisfied for current React client
+- [x] `scripts/check-api-rpc-contract.sh` (29 `api.ts` methods)
+- [x] `api_ts_readonly_methods_resolve` integration test
+- [x] Manifest parity via `rpc_contract_test.rs` + fast gate manifest regen
+
+**Not in `api.ts` yet (sidecar only):** `Launcher.*`, `Todos.*`, `Vault.*`, `Dashboard.*`, `Sidebar.*`, full `Capture.*` — see §5.
 
 ---
 
 ## 2. Existing services — implement, harden, test
 
-For each service: **(a)** real system integration, **(b)** typed responses, **(c)** unit tests with fixtures, **(d)** integration test via registry, **(e)** expose in `api.ts` + `sidecar.ts` if user-facing.
+For each service: **(a)** integration **(b)** typed responses **(c)** fixture tests **(d)** registry tests **(e)** `api.ts` / GTK if user-facing.
 
 ### 2.1 Power (`power.rs`) — P0
 
-- [x] Battery % from `/sys/class/power_supply` or UPower (zbus)
-- [x] Charging state + **time remaining** (fix TODO in source)
-- [x] Power profiles: `powerprofilesctl` / TLP / PPD — verify on target hardware
-- [x] `Power.SetProfile` persists and reports errors clearly
-- [x] Emit `Power.BatteryState` notifications on change (poll or uevent)
-- [ ] Unit tests: parse sysfs fixtures
-- [ ] Integration tests: `GetBatteryState`, `GetProfile`, `SetProfile` (mock profiles daemon)
+- [x] Battery % from sysfs / UPower
+- [x] Charging state + time remaining
+- [x] Power profiles (`powerprofilesctl` / fallbacks)
+- [x] `Power.SetProfile`
+- [x] `Power.BatteryState` notifications
+- [x] Sysfs fixtures (`tests/fixtures/power_supply/`, `integration_contracts.rs`)
+- [~] Integration: `GetProfile` / `SetProfile` (deny-listed in default harness; host-only)
 
 ### 2.2 Network (`network.rs`) — P0
 
-- [x] `Network.GetStatus`: wifi enabled, active SSID, IPs, **public IP** (optional cached)
-- [x] `Network.ScanNetworks`: signal, security type, hidden SSIDs
-- [ ] `Network.Connect`: open/WPA2/WPA3; **802.1X** path (WPA via nmcli + keyring done; 802.1X deferred)
-- [x] Saved networks: list, forget, auto-connect flag
-- [ ] Captive portal detection helper
-- [x] Keyring integration for passwords
-- [x] `Network.ToggleWifi` reliable on NM
-- [x] Ethernet/VPN interface status in `GetStatus` (ethernet done; VPN in status deferred)
-- [ ] Unit tests: parse `nmcli` fixtures
-- [ ] Integration tests with **nmcli test mode** or mocked commands
-- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) Wi-Fi panel, [system-and-input-foundation.md](roadmap/system-and-input-foundation.md) login paths
+- [x] `Network.GetStatus` (wifi, ethernet, IPs, public IP)
+- [x] `Network.ScanNetworks`
+- [~] `Network.Connect`: WPA + keyring; **802.1X deferred**
+- [x] Saved networks list/forget/auto-connect
+- [ ] Captive portal detection
+- [x] Keyring for passwords
+- [x] `Network.ToggleWifi`
+- [~] VPN fields in `GetStatus` (VPN service separate)
+- [x] nmcli fixtures in `integration_contracts.rs`
+- [~] Connect integration tests (`#[ignore]` / deny-list only)
 
 ### 2.3 Bluetooth (`bluetooth.rs`) — P0
 
-- [x] Adapter power/discoverable (`bluetoothctl`, `SetAdapterPower` / `SetAdapterDiscoverable`)
-- [ ] Pairing flow + agent handling (PIN UI deferred)
-- [x] Device battery % when available (`bluetoothctl info` parse)
+- [x] Adapter power/discoverable
+- [ ] Pairing flow + agent (PIN UI deferred)
+- [x] Device battery % when available
 - [ ] Audio profile selection (A2DP/HSP)
-- [x] `Bluetooth.GetDeviceInfo` used by UI
-- [x] Stop scan, remove device — `bluetoothctl` + React pane wired
-- [x] Unit tests: `bluetoothctl` output fixtures
-- [x] Integration tests: `GetAdapters` / `GetDevices` smoke
+- [x] `Bluetooth.GetDeviceInfo`
+- [x] Stop scan, remove device
+- [x] `bluetoothctl` fixtures + `bluetooth_rpc_shapes.rs`
 
 ### 2.4 Audio (`audio.rs`) — P0
 
-- [x] `Audio.GetDevices` / `GetStreams` — PipeWire via `wpctl` / `pactl`
-- [x] Default sink/source set + **mute state sync** (`SetSinkMute` / `SetSourceMute`, parse MUTED)
-- [x] Per-stream volume/mute (verified + refresh after set)
-- [x] `Audio.SetDefaultDevice` — GTK bar needs this
-- [x] **Fallback path**: `Audio.Refresh` with optional `restart_wireplumber` param
-- [x] Sink volume for default output (`Audio.SetSinkVolume` / `SetSourceVolume`)
-- [ ] Effects submodule: verify EasyEffects/wireplumber links or gate behind “advanced”
-- [ ] Profiles/scenarios: list/load/apply — test with real configs
-- [ ] Media controls: prefer `mpris.rs` or consolidate `Audio.Media.*`
-- [ ] Unit tests: parse `pactl`/`wpctl` fixtures
-- [ ] Integration tests: volume set round-trip (mock)
-- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) audio panel, [sidebar-popup.md](roadmap/sidebar-popup.md)
+- [x] `Audio.GetDevices` / `GetStreams` (PipeWire / pactl)
+- [x] Default device, mute sync, per-stream volume
+- [x] `Audio.SetDefaultDevice`, `Audio.Refresh`
+- [x] Sink/source volume RPCs
+- [~] Effects submodule (RPCs exist; EasyEffects verification incomplete)
+- [~] Profiles/scenarios (RPCs exist; real-config tests thin)
+- [x] Media via `mpris.rs` + `Audio.Media.*` + bar `api.ts`
+- [~] pactl/wpctl fixture coverage (partial)
+- [ ] Volume round-trip integration (mock)
 
 ### 2.5 Brightness (`brightness.rs`) — P1
 
-- [ ] Multi-monitor `Brightness.Get`/`Set` via brightnessctl or ddcutil
-- [ ] Parse relative adjustments (`+10%`, etc.) — unit tests exist for parser; **wire to Set**
-- [ ] Integration with GNOME/Hyprland brightness keys
-- [ ] Tests: parser + command builder
+- [x] Multi-monitor `Brightness.Get` / `Set` (brightnessctl; `monitor: all`)
+- [~] Relative adjustments (`+10%`) — parser exists; Set wiring partial
+- [ ] Hyprland/GNOME keybind integration (document binds)
+- [x] Fixtures + `brightness_rpc_shapes.rs`; `AURA_BRIGHTNESS_DRY_RUN`
 
 ### 2.6 System (`system.rs`) — P1
 
-- [ ] `System.GetStats`: CPU, RAM, GPU, temps via `sysinfo` + sensors
-- [ ] Per-disk usage (extend beyond single number)
-- [ ] Optional: load averages, uptime
-- [ ] Unit tests: sysinfo snapshot thresholds
+- [x] `System.GetStats` (sysinfo + `/proc` + sensors/GPU/df)
+- [~] Per-disk detail (basic via df in stats)
+- [~] Load averages / uptime (partial in implementation)
+- [~] Unit thresholds (`system_rpc_shapes.rs`)
 
 ### 2.7 VPN (`vpn.rs`) — P1
 
-- [ ] Port Caelestia state machine (OpenConnect/OpenVPN/WireGuard)
-- [ ] `Vpn.GetProfiles` from config dir
-- [ ] `Vpn.Connect`/`Disconnect` with polkit/sudo safe wrapper
-- [ ] Status: connected, IP, DNS leak hints
-- [ ] **Per-app routing** (roadmap) — design doc + nftables/NM split tunnel
-- [ ] Kill switch (optional, dangerous — feature flag)
-- [ ] Unit tests: state transitions with mock process
-- [ ] Integration tests: connect failure paths
+- [~] State machine (OpenConnect/OpenVPN/WireGuard; not full Caelestia port)
+- [x] `Vpn.GetProfiles` from config dir + defaults
+- [x] `Vpn.Connect` / `Disconnect` (allowlist, `AURA_VPN_DRY_RUN`, deny-list in tests)
+- [x] `Vpn.GetStatus` (+ optional interface/IP)
+- [ ] Per-app routing / kill switch (roadmap)
+- [x] State transition unit tests + `vpn_rpc_shapes.rs`
+- [x] `#[ignore]` connect failure / dry-run tests
 
 ### 2.8 Hyprland (`hyprland.rs`) — P1
 
-- [x] `GetWorkspaces` / `GetClients` / `GetActiveWindow` — typed JSON matching React bar
-- [x] `Dispatch` allowlist (prevent arbitrary command injection)
-- [x] `GetMonitors` for multi-monitor bar
-- [x] Event subscription → WebSocket (`Hyprland.StateChanged` via socket2; `AURA_HYPRLAND_EVENTS=0` to disable)
-- [x] Unit tests: parse hyprctl JSON fixtures (`tests/fixtures/hyprland/`, `hyprland_*` tests)
-- [ ] Integration tests with live `hyprctl` on CI host (optional; fixtures cover parsers)
+- [x] Typed workspaces/clients/monitors/active window
+- [x] `Dispatch` allowlist
+- [x] `Hyprland.StateChanged` WebSocket
+- [x] hyprctl JSON fixtures + `hyprland_rpc_shapes.rs` + `hyprland_internal_test.rs`
+- [ ] Live `hyprctl` on CI (optional)
 
-### 2.9 Shell / session (`shell.rs`) — P1
+### 2.9 Shell / session (`shell.rs`, `lock.rs`) — P1
 
-- [ ] `Session.Lock` → `hyprlock`/`loginctl lock-session`
-- [ ] Logout/suspend/reboot/poweroff via `loginctl` with polkit
-- [ ] `Aura.ToggleWindow` → delegate to AGS IPC (document contract)
-- [ ] `Apps.Launch` allowlist (xdg-open, gtk-launch)
-- [ ] Tests: verify allowlist rejects unknown ids
+- [x] `Session.Lock` → `hyprlock` / `loginctl`
+- [x] Logout/suspend/reboot/poweroff via logind
+- [ ] `Aura.ToggleWindow` → AGS IPC contract
+- [~] `Apps.Launch` (registered; overlap with `Launcher.Run`)
+- [x] Session tests in `shell.rs` `#[cfg(test)]`; `shell_rpc_shapes.rs`
+- [x] `Lock.GetConfig` / `SetConfig`, `Lock.TestFingerprint`, `Sleep.GetInhibitors`, `Sleep.Inhibit`
 
 ### 2.10 MPRIS / media (`mpris.rs`) — P1
 
-- [x] `Media.GetNowPlaying` — `playerctl status` + metadata; `playing`/`paused`/`player_name`
-- [x] Play/pause/next/prev wired in `api.ts` → `Audio.Media.*` (bar controls)
-- [x] Tests with fixtures (`playerctl_status.txt`, `audio_rpc_shapes.rs`)
+- [x] `Media.GetNowPlaying` + `Audio.Media.*`
+- [x] Bar `api.ts` transport
+- [x] playerctl fixtures + `audio_rpc_shapes.rs`
 
 ### 2.11 Processes (`processes.rs`) — P1
 
-- [ ] `Process.ListTop` — stable sort, configurable limit
-- [ ] `Process.Kill` — SIGTERM then SIGKILL with confirmation token from UI
-- [ ] Align with `Performance.GetProcesses` — dedupe or delegate
-- [ ] Roadmap: [sidebar.md](roadmap/sidebar.md) task manager
+- [x] `Process.ListTop` (shared collector with Performance)
+- [x] `Process.Kill` with `confirmation_token`
+- [x] Aligned with `Performance.GetProcesses`
+- [ ] Sidebar task manager UI (roadmap)
 
 ### 2.12 Weather (`weather.rs`) — P2
 
-- [ ] `Weather.Get` with API key from env/keyring
-- [ ] Forecast/hourly/locations methods — implement or remove from registry
-- [ ] Cache + rate limit
-- [ ] Unit tests: parse API JSON fixtures
+- [~] `Weather.Get` (env key; basic implementation)
+- [~] Forecast/hourly/locations — verify or prune dead RPCs
+- [ ] Cache + rate limit hardening
+- [~] `weather_rpc_shapes.rs`
 
 ### 2.13 GameMode (`gamemode.rs`) — P2
 
-- [ ] `GameMode.IsEnabled` / toggle via `gamemoded` dbus
-- [ ] Add `GameMode.GetStatus` alias for GTK client
-- [ ] Tests with mocked dbus
+- [~] `GameMode.IsEnabled` / toggle (dbus when present)
+- [ ] `GameMode.GetStatus` alias (ADR: clients use `IsEnabled`)
+- [~] `gamemode_rpc_shapes.rs`
 
 ### 2.14 Storage (`storage.rs`) — P2
 
-- [ ] Define Aura config schema (`Storage.Get`/`Set` for namespaced JSON)
-- [ ] `Storage.GetConfig` alias for GTK
-- [ ] Validate schema on write
-- [ ] Tests: schema validation
+- [x] Generic KV `Storage.Get` / `Set` / `Delete` / `ScanNamespace`
+- [~] Aura app schema lives in `Settings.*` (not `Storage.GetConfig` alias)
+- [~] Schema validation on generic storage (minimal)
+- [x] Storage round-trip tests in `integration_test.rs`
 
 ### 2.15 Packages (`packages.rs`) — P2
 
-- [x] `Packages.GetUpgradable` — pacman `-Qu` (Arch only)
-- [x] **`Packages.GetUpdates` alias** for UI (client uses `GetUpgradable`)
-- [x] Install/remove/update with `pkexec`/`sudo` helper
-- [ ] Dependency graph: `GetPackageDependencies` + reverse deps (“why installed”)
-- [x] **Transaction history** append-only log in `~/.local/share/ags-sidecar/transactions.jsonl`
-- [ ] AUR/Flatpak/Snap methods — verify or gate behind optional tools
-- [ ] Auto-update policy RPC (schedule, security-only)
-- [ ] Unit tests: parse pacman output fixtures
-- [ ] Integration tests: dry-run install mocked
-- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) package panel
+- [x] `Packages.GetUpgradable` / UI path for updates
+- [x] Install/remove/update helpers
+- [x] `GetPackageDependencies`, `GetReverseDependencies`, `GetAutoUpdatePolicy`
+- [x] Transaction history jsonl
+- [ ] AUR/Flatpak/Snap depth
+- [x] pacman/pactree fixtures + `packages_rpc_shapes.rs`
+- [ ] Dry-run install integration
 
 ### 2.16 Logs (`logs.rs`) — P2
 
-- [x] **`Logs.Get`** returning `LogEntry[]` for Control Center (journalctl structured)
-- [x] Map journal priority to `level` field (`journalctl -o json`, `PRIORITY` → level)
-- [ ] `FollowLogs` → WebSocket stream (optional)
-- [x] `Logs.Get` filters: `lines`, `priority`, `unit`, `grep`
-- [ ] Filter/search/export methods — implement or remove dead RPCs
-- [x] Unit tests: journal JSON parser fixture
-- [ ] Roadmap: Logs pane
+- [x] `Logs.Get` + journal JSON levels
+- [ ] `FollowLogs` WebSocket stream
+- [x] Filters: lines, priority, unit, grep
+- [~] Export/search RPCs — audit dead methods
+- [x] Journal fixture tests
+- [x] Logs pane uses `Logs.Get`
 
 ### 2.17 Security (`security.rs`) — P2
 
-**Defensive (daily use)**
+**Defensive**
 
-- [x] **`Security.GetStatus`** aggregate for UI (firewall, ssh, encryption + fail2ban/clamav/fprintd probes)
-- [ ] Firewall enable/disable — verify ufw/nftables
-- [ ] SSH status, failed logins, sudo logs
-- [ ] Port scan (local only) — safety caps
-- [ ] Encryption/LUKS detection
-- [ ] Certificate listing
-- [ ] **AV integration**: ClamAV scheduled scan RPC
-- [ ] **Scan on package install** hook (async, opt-in)
-- [ ] **fprintd**: list/enroll/test fingerprint
-- [ ] Password policy status (expire, weak configs) — read-only
+- [x] `Security.GetStatus` aggregate
+- [~] Firewall enable/disable (polkit paths; verify on host)
+- [~] SSH / encryption probes in aggregate
+- [ ] Port scan safety caps (offensive gated separately)
+- [~] `ListFingerprints`, `GetPasswordPolicy`, `RunClamAV` RPCs
+- [ ] Scan-on-package-install hook
+- [x] Defensive parser fixtures (`security_contracts.rs`, `security_rpc.rs`)
 
-**Offensive (pentest panel — P4, feature-gated)**
+**Offensive (P4)**
 
-- [ ] Move `Security.Offensive.*` (~60+ methods) behind `offensive-security` feature flag
-- [ ] Allowlist binaries; refuse as root by default
-- [ ] Audit logging for every offensive invocation
-- [ ] Document legal/ethical use in [pentest-panel.md](roadmap/pentest-panel.md)
-- [ ] Do **not** expose full surface to React until reviewed
-
-- [ ] Unit tests per defensive parser
-- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) security panel
+- [x] `Security.Offensive.*` behind `offensive-security` feature
+- [ ] Allowlist binaries; refuse-as-root default
+- [ ] Audit log per invocation
+- [ ] Pentest panel React exposure
+- [x] Default build excludes offensive from manifest + registry tests
 
 ### 2.18 Performance (`performance.rs`) — P2
 
-- [x] **`Performance.GetMetrics`** aggregate for UI
-- [x] `Performance.MetricsChanged` WS push (30s poll, debounced)
-- [ ] CPU/GPU/memory/disk/network stats — real data paths
-- [ ] `SetCpuGovernor` / frequency — polkit + safety caps
-- [ ] Process list + priority — align with `processes.rs`
-- [ ] Systemd service control — confirm polkit
-- [ ] **Presets** RPC: meeting/compile/game → power profile + governor
-- [ ] Unit tests: parse `/proc`, `ps` fixtures
-- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) performance panel
+- [x] `Performance.GetMetrics` + `MetricsChanged` WS
+- [~] Real `/proc` / meminfo paths (improved; presets open)
+- [~] `SetCpuGovernor` (polkit path exists)
+- [x] Process list via shared collector
+- [~] Systemd service control RPCs (verify polkit)
+- [ ] Presets RPC (meeting/compile/game)
+- [x] meminfo fixture + `performance_rpc_shapes.rs`
 
 ### 2.19 DevOps (`devops.rs`) — P2
 
-- [x] **`DevOps.GetStatus`** summary: podman/docker runtime, container count, k8s hint, git dirty count (`AURA_GIT_ROOTS`)
-- [ ] Docker: containers/images/stats — handle missing docker.sock gracefully
-- [ ] Podman/K8s optional
-- [ ] Git repo discovery + status
-- [ ] Systemd timers, cron listing
-- [ ] **Cloud connector** stubs (AWS/GCP health check) — P3
-- [ ] Unit tests: docker/ps fixtures
-- [ ] Roadmap: [devops-panel.md](roadmap/devops-panel.md)
+- [x] `DevOps.GetStatus` (Podman-first)
+- [~] Docker/K8s listing when `AURA_ALLOW_DOCKER=1`
+- [~] Git roots via `AURA_GIT_ROOTS`
+- [ ] Systemd timers / cron listing
+- [ ] Cloud connector stubs
+- [~] `devops_rpc_shapes.rs`
 
 ### 2.20 Productivity (`productivity.rs`) — P2
 
-- [x] **`Productivity.GetStats`** aggregate (task counts, pomodoro, focus, timers)
-- [x] Timers/pomodoro — in-memory ticks; pomodoro prefs in SQLite; **`Productivity.TimerTick`** WS
-- [x] Tasks CRUD with storage **list/delete** (`GetTasks`, `DeleteTask`)
-- [ ] Focus mode / site blocking — integrate `/etc/hosts` or nftables (dangerous — confirm UX)
-- [ ] Screen time / app usage — integrate ActivityWatch or similar (roadmap Cold Turkey)
-- [ ] Unit tests: timer state machine
-- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) productivity panel
+- [x] `Productivity.GetStats`, timers, WS `TimerTick`
+- [x] Tasks CRUD + storage
+- [ ] Focus mode / site blocking
+- [ ] Screen time / ActivityWatch
+- [~] Timer tests via storage/rpc shapes
 
 ### 2.21 Automation (`automation.rs`) — P2
 
-- [ ] Fix `Automation.GetWorkflows` to list from SQLite
-- [ ] Fix delete workflow (storage delete)
-- [ ] **`Automation.ListRules` alias** for UI
-- [ ] **`Automation.Trigger` alias** → `RunWorkflow`
-- [ ] Trigger engine: cron, file watch, RPC (use `notify` crate carefully)
-- [ ] Script runner sandbox (timeout, allowlist)
-- [ ] Webhook ingress (localhost only)
-- [ ] Vaultwarden/n8n **integration RPCs** (webhook URLs, not embedded n8n)
-- [ ] Unit tests: workflow JSON schema validation
-- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) automations
+- [x] `GetWorkflows` / `ListRules` from SQLite
+- [x] Delete/update/enable workflows
+- [x] `Trigger` → `RunWorkflow` + run log
+- [x] Cron tick (60s); schema validation tests
+- [x] Script runner allowlist + timeout
+- [ ] Webhook ingress
+- [ ] File-watch triggers
+- [x] `automation_storage_test.rs`, `automation_rpc_shapes.rs`
+- [x] AutomationsPane wired
 
 ### 2.22 Communication (`communication.rs`) — P3
 
-- [ ] **`Communication.GetUnread`** — per-app counts (telegram, discord, …)
-- [ ] Implement `GetMessages` / `GetConversations` (even stub per bridge)
-- [ ] Matrix (mautrix) bridge adapter — phase 1 read-only
-- [ ] Mark read / send message — per bridge
-- [ ] Mute/DND integration with notification service
-- [ ] `LaunchApp` allowlist
-- [ ] Unit tests: unread aggregation logic
-- [ ] Roadmap: [communication-panel.md](roadmap/communication-panel.md)
+- [x] `Communication.GetUnread` stub map
+- [~] `GetMessages` / `GetConversations` stubs
+- [ ] Matrix bridge / real bridges (ADR: separate app long-term)
+- [ ] Mark read / send per bridge
+- [x] `communication_rpc_shapes.rs`
 
-### 2.23 Calendar (`calendar.rs`) — P2
+### 2.23 Calendar (`calendar.rs`, `ics.rs`) — P2
 
-- [x] `Calendar.GetEvents` — load from SQLite via `scan_namespace`
-- [x] CRUD: create/update/delete with validation (`DeleteEvent` via storage)
-- [x] `Calendar.GetUpcomingEvents` — sorted upcoming window
-- [x] Reminders v0 — sidecar tick → notification inbox
-- [ ] `GetCalendars`, `SyncCalendars` — CalDAV/Google OAuth (P3)
-- [ ] ICS import/export — implement parsers (use `quick-xml`)
-- [ ] Reminders → notification service + WS
-- [ ] `GetUpcomingEvents` for sidebar tile
-- [ ] Unit tests: ICS parse, recurrence (later)
-- [ ] Roadmap: [calendar-panel.md](roadmap/calendar-panel.md)
+- [x] SQLite CRUD + upcoming + reminders
+- [x] `Calendar.EventsChanged` WS
+- [x] ICS import/export (`ics.rs`, fixtures, storage tests)
+- [ ] CalDAV/Google sync (`TODO` in `SyncCalendars`)
+- [x] Reminders → notifications
+- [~] Recurrence / full CalDAV
 
 ### 2.24 Fitness (`fitness.rs`) — P3
 
-- [ ] `Fitness.GetGoals` — persist goals
-- [ ] Activity/steps/heart rate — device sync stubs
-- [ ] Workout start/stop/history
-- [ ] Integrate Google Fit / Strava (optional, keyring tokens)
-- [ ] Roadmap: calendar fitness hooks
+- [~] Goals persistence (`fitness_storage_test.rs`)
+- [ ] Device sync / workouts
+- [ ] Google Fit / Strava
 
 ### 2.25 Calendar + Fitness UI API
 
-- [ ] Extend `api.ts` with calendar CRUD methods (not only `GetEvents`)
-- [ ] Typed parsers in `api-types.ts` for all calendar/fitness DTOs
+- [~] `api.ts` calendar (partial — not full CRUD surface)
+- [ ] `api.ts` fitness
+- [~] `api-types.ts` coverage
 
 ---
 
-## 3. New services to create
+## 3. New services
 
-### 3.1 Keybinds (`keybinds.rs`) — P1
+### 3.1 Keybinds — P1
 
-- [x] `Keybinds.List` — parse `~/.config/hypr/hyprland.conf` + conf.d (`source =`, depth cap)
-- [x] `Keybinds.GetCategories` — window/workspace/media/etc.
-- [x] `Keybinds.Set` / `Unset` — safe write to `~/.config/ags/hypr/aura-binds.conf` + backup
-- [x] `Keybinds.Validate` — conflict detection + dispatch allowlist hints
-- [x] `Keybinds.Export` / `Import`
-- [x] `Keybinds.Reload` — `hyprctl reload`
-- [ ] Optional: global shortcuts via `keyd` integration
-- [x] Unit tests: parse/bind conflict fixtures
-- [x] Register in `build_registry()`, `api.ts` (GTK `sidecar.ts` deferred)
-- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) keybinds pane (live load in UI v1)
+- [x] List, categories, Set/Unset, Validate, Export/Import, Reload
+- [ ] keyd integration (optional)
+- [x] Fixtures + `keybinds_rpc_shapes.rs`
+- [~] `api.ts` (GTK deferred)
 
-### 3.2 Notifications (`notifications.rs`) — P1
+### 3.2 Notifications — P1
 
-- [x] Subscribe to Freedesktop Notification spec (D-Bus: `dbus-monitor` + `NotificationClosed` signals)
-- [x] `Notifications.List` — history with filters
-- [x] `Notifications.Dismiss` / `ClearAll`
-- [x] `Notifications.GetDnd` / `SetDnd` + schedule (SQLite)
-- [x] `Notifications.GetRules` / `SetRules` per app
-- [x] `Notifications.InvokeAction` (best-effort)
-- [x] Mirror to WebSocket (`Notifications.Changed`) + Control Center pane
-- [x] Unit tests: parse notification payloads
-- [ ] Roadmap: [system-and-input-foundation.md](roadmap/system-and-input-foundation.md), [control-panel.md](roadmap/control-panel.md)
+- [x] D-Bus listener, List, Dismiss, DND, rules, WS, tests
+- [x] Control Center pane
 
-### 3.3 Launcher / Vicinae (`launcher.rs`) — P2
+### 3.3 Launcher / Vicinae — P2
 
-- [ ] `Launcher.Query` — fuzzy app search (desktop entries)
-- [ ] `Launcher.Run` — allowlisted commands
-- [ ] `Vicinae.Exec` — integration contract with Vicinae binary/RPC
-- [ ] `Launcher.Recent` / `Pin`
-- [ ] Custom user commands store (SQLite)
-- [ ] Roadmap: Vicinae overpowered integration in todo.md
+- [x] `Launcher.Query`, `Run`, `Recent`, `Pin` (SQLite recent/pin)
+- [ ] `Vicinae.Exec` (see `VICINAE_SOCKET` in README)
+- [ ] `api.ts` wrappers
 
-### 3.4 Capture (`capture.rs`) — P2
+### 3.4 Capture — P2
 
-- [ ] `Capture.Screenshot` — region/window/full (grim+slurp)
-- [ ] `Capture.Record` — start/stop (wf-recorder)
-- [ ] `Capture.ListDevices` — audio/video inputs
-- [ ] Clipboard vs file path options
-- [ ] Unit tests: command assembly only
-- [ ] Roadmap: screenshot/recording revamp
+- [x] `Capture.Screenshot`, `RecordStart`/`RecordStop`, `ListDevices`
+- [x] argv tests in module; `capture_rpc_shapes.rs`
+- [ ] `api.ts` / keybind UX
 
-### 3.5 Settings / Aura config (`settings.rs`) — P2
+### 3.5 Settings — P2
 
-- [ ] `Settings.Get` / `Settings.Set` — Aura JSON (theme, layout, panel modules)
-- [ ] `Settings.GetSchema` — for UI forms
-- [ ] `Settings.Reset` namespace
-- [ ] Wayland/compositor options proxy (read hypr config)
-- [ ] Distro settings links (read-only pointers)
-- [ ] Roadmap: [control-panel.md](roadmap/control-panel.md) system settings
+- [x] `Settings.Get` / `Set` / `GetSchema` / `Reset`
+- [x] `SettingsPane` wired
+- [ ] Hypr proxy / distro links (read-only pointers)
 
-### 3.6 Todos (`todos.rs`) — P2
+### 3.6 Todos — P2
 
-- [ ] CRUD + projects + due dates
-- [ ] Natural language date parsing (library)
-- [ ] CalDAV VTODO sync (optional)
-- [ ] Reminders → notifications
-- [ ] Roadmap: [calendar-panel.md](roadmap/calendar-panel.md) todo subpanel
+- [x] CRUD, projects, `ParseDueDate`, reminders → notifications, `Todos.Changed`
+- [ ] CalDAV VTODO
+- [ ] `api.ts` + calendar subpanel UI
 
-### 3.7 Vault (`vault.rs`) — P3
+### 3.7 Vault — P3
 
-- [ ] Provider registry (rclone configs)
-- [ ] `Vault.List` / `Transfer` / `Backup.Start` / `Backup.Status`
-- [ ] Encryption helpers (age/gpg) — orchestration only
-- [ ] Share links metadata (no plaintext keys in logs)
-- [ ] Roadmap: [vault-panel.md](roadmap/vault-panel.md)
+- [~] `Vault.List`, `Vault.Backup.Status` (read-only slice)
+- [ ] `Vault.Transfer`, `Backup.Start`, encryption helpers
+- [ ] `api.ts`
 
-### 3.8 Lock / session extended (`lock.rs`) — P2
+### 3.8 Lock / session extended — P2
 
-- [ ] `Lock.GetConfig` / `SetConfig` — visibility toggles
-- [ ] `Lock.TestFingerprint`
-- [ ] `Sleep.Inhibit` / `Sleep.GetInhibitors` — logind
-- [ ] Hibernate/suspend targets
-- [ ] Roadmap: [lock-panel.md](roadmap/lock-panel.md)
+- [x] `Lock.*`, `Sleep.*` RPCs
+- [ ] Hibernate targets / lock panel UI
 
-### 3.9 IDE / agents (`ide.rs`) — P3
+### 3.9–3.11 IDE, debug, voice — P3/P4
 
-- [ ] `Ide.List` — detect installed IDEs
-- [ ] `Ide.Launch` — folder + IDE id
-- [ ] `Agents.Run` — allowlisted CLI agents (Jules, etc.)
-- [ ] Roadmap: [ide-popup.md](roadmap/ide-popup.md)
+- [ ] Not started (roadmap only)
 
-### 3.10 System debug (`debug.rs`) — P3
+### 3.12 Multitasking
 
-- [ ] `Debug.CollectBundle` — logs, configs redacted
-- [ ] `Debug.RestoreBackup` — orchestrate restic/borg
-- [ ] `Debug.HealthCheck` — disk, failed units, last boot
-- [ ] Roadmap: [system-debugging-popup.md](roadmap/system-debugging-popup.md)
+- [ ] Extend `hyprland.rs` or new module — not started
 
-### 3.11 Voice (`voice.rs`) — P4
+### 3.13 Dashboard — P2
 
-- [ ] `Voice.ListEngines` — local/cloud
-- [ ] `Voice.Transcribe` — push-to-talk file in
-- [ ] Route text to Vicinae/sidecar command
-- [ ] Roadmap: voice control in todo.md
+- [x] `Dashboard.GetQuickStatus`, `Sidebar.GetTileData`
+- [x] `dashboard_rpc_shapes.rs`
+- [ ] `api.ts` + dropdown/sidebar UI wiring
 
-### 3.12 Multitasking (`workspaces.rs`) — P3
+### 3.14 Stub panels
 
-- [ ] Workspace rules, recent windows, move semantics
-- [ ] May extend `hyprland.rs` instead of new module — decide
-
-### 3.13 Dropdown / sidebar aggregation (`dashboard.rs`) — P2
-
-- [ ] `Dashboard.GetQuickStatus` — single RPC for top dropdown (network, bt, battery, dnd, next event)
-- [ ] `Sidebar.GetTileData` — named tiles
-- [ ] Roadmap: [top-dropdown.md](roadmap/top-dropdown.md), [sidebar.md](roadmap/sidebar.md)
-
-### 3.14 Stub panels (document only until product spec)
-
-- [ ] Exocortex — [exocortex-panel.md](roadmap/exocortex-panel.md)
-- [ ] Skiller — [skiller-panel.md](roadmap/skiller-panel.md)
-- [ ] Secure A — [secure-a-panel.md](roadmap/secure-a-panel.md)
-- [ ] Marginal gains / KOLB — [marginal-gains-panel.md](roadmap/marginal-gains-panel.md)
+- [ ] Document-only: exocortex, skiller, secure-a, marginal gains (roadmap specs)
 
 ---
 
 ## 4. Cross-cutting platform work
 
-### 4.1 Login & session ([system-and-input-foundation.md](roadmap/system-and-input-foundation.md))
+### 4.1 Login & session
 
-- [ ] Document greeter + PAM + keyring stack for this machine
-- [ ] `Login.GetLastFailures` read-only diagnostic RPC
-- [ ] Post-login hook: ensure NM keyring unlocked for Wi-Fi
+- [ ] Greeter/PAM/keyring doc
+- [ ] `Login.GetLastFailures`
+- [ ] Post-login NM keyring hook
 
 ### 4.2 Package hygiene
 
-- [ ] `Packages.Audit` — orphans, explicit install list export
-- [ ] `System.Cleanup` — cache sizes, pacman -Sc dry-run
+- [ ] `Packages.Audit`, `System.Cleanup`
 
-### 4.3 FN keys / media keys
+### 4.3 FN keys
 
-- [ ] `Input.GetFnLock` / `SetFnLock` — keyd or kernel module specific
-- [ ] Map F12 row to sidecar actions (document Hypr binds)
+- [ ] `Input.GetFnLock` / `SetFnLock`
+- [ ] F-row → sidecar actions doc
 
-### 4.4 Migration / Windows
+### 4.4 Migration
 
-- [ ] Mostly operational — optional `Migration.Checklist` static RPC
+- [ ] Optional `Migration.Checklist` RPC
 
 ---
 
 ## 5. Client sync checklist
 
-When a backend slice lands, update all consumers:
+When a backend slice lands, update consumers. **2026-05-31 gap table:**
 
-- [ ] `sidecar/src/types.rs`
-- [ ] `src/lib/types.ts`
-- [ ] `src/lib/sidecar.ts` — typed wrapper + signals if push
-- [ ] `ui/src/lib/api.ts` + `ui/src/lib/api-types.ts`
-- [ ] React panes under `ui/src/pages/control-center/panes/`
-- [ ] GTK bar/flyouts under `ui/src/components/bar/flyouts/` and `src/widget/bar/`
-- [ ] `.cursor/skills/ags-sidecar-rpc/SKILL.md` if workflow changes
+| RPC namespace | Sidecar | `api.ts` | GTK `sidecar.ts` | CC / bar UI |
+|---------------|---------|----------|------------------|-------------|
+| Power, Network, BT, Audio | Yes | Yes | Partial | Yes |
+| Hyprland, Media | Yes | Yes | Partial | Bar |
+| Logs, Security, Performance, DevOps, Productivity | Yes | Yes | — | CC panes |
+| Automation | Yes | Yes | — | AutomationsPane |
+| Calendar (read) | Yes | Partial | — | CalendarNav |
+| Settings | Yes | Yes | — | SettingsPane |
+| Notifications, Keybinds | Yes | Partial | — | CC |
+| **Launcher** | Yes | **No** | **No** | — |
+| **Todos** | Yes | **No** | **No** | — |
+| **Vault** | Yes | **No** | **No** | — |
+| **Dashboard / Sidebar** | Yes | **No** | **No** | — |
+| **Capture** | Yes | **Minimal** | **No** | — |
+| VPN | Yes | Partial | — | Partial |
+
+- [~] `sidecar/src/types.rs` — per-service updates
+- [~] `src/lib/types.ts` — partial
+- [ ] `src/lib/sidecar.ts` — push parity for new events
+- [~] `ui/src/lib/api.ts` + `api-types.ts` — core CC done; gaps above
+- [~] React panes — many wired; Launcher/Todos/Vault/Dashboard pending
+- [~] GTK bar/flyouts — Hyprland/media partial
+- [~] `.cursor/skills/ags-sidecar-rpc/SKILL.md`
 
 ---
 
 ## 6. Test case catalog (templates)
 
-Copy per feature:
+Unchanged template for new slices. **P0 smoke** (`integration_test.rs`):
 
-```text
-Unit:
-  [ ] parse_<fixture>
-  [ ] validate_<params>_rejects_invalid
-  [ ] state_machine_<transition>
-
-Integration (registry):
-  [ ] <Method>_returns_ok_with_fixture
-  [ ] <Method>_errors_when_tool_missing
-
-HTTP:
-  [ ] GET_/api/<Method>
-  [ ] POST_/api/<Method>_with_body
-
-Manual (hardware):
-  [ ] <describe physical verification>
-```
-
-### 6.1 P0 smoke suite (automate first)
-
-- [x] `Power.GetBatteryState`
-- [x] `Network.GetStatus`
-- [ ] `Audio.GetDevices`
-- [ ] `Hyprland.GetWorkspaces`
-- [ ] `System.GetStats`
-- [ ] `Brightness.Set` (mock monitor name)
+- [x] `Power.GetBatteryState`, `Network.GetStatus`
+- [x] `Audio.GetDevices`
+- [x] `Hyprland.GetWorkspaces` (host-dependent)
+- [x] `System.GetStats`
+- [~] `Brightness.Set` (deny-listed; `#[ignore]` dry-run in `brightness_rpc_shapes.rs`)
 
 ### 6.2 Control Center pane coverage
 
-| Pane | Primary RPCs | Tests needed |
-|------|----------------|--------------|
-| Network | `Network.*` | scan, connect mock |
-| Bluetooth | `Bluetooth.*` | adapter list fixture |
-| Audio | `Audio.*` | streams fixture |
-| VPN | `Vpn.*` | state machine mock |
-| Packages | `Packages.GetUpdates` | pacman -Qu fixture |
-| Logs | `Logs.Get` | journal fixture |
-| Security | `Security.GetStatus` | ufw fixture |
-| Performance | `Performance.GetMetrics` | proc fixture |
-| DevOps | `DevOps.GetStatus` | podman fixture |
-| Automations | `Automation.ListRules` | workflow CRUD |
-| Communication | `Communication.GetUnread` | mock counts |
-| Calendar nav | `Calendar.GetEvents` | sqlite populate |
-| Fitness | `Fitness.GetGoals` | storage |
-| Productivity | `Productivity.GetStats` | timers |
-| Settings | Power/Network/… aggregates | combined mock |
-| Weather | `Weather.Get` | API fixture |
-| Keybinds | `Keybinds.*` | **service missing** |
+| Pane | Primary RPCs | Test status |
+|------|----------------|-------------|
+| Network | `Network.*` | `network_rpc_shapes.rs` |
+| Bluetooth | `Bluetooth.*` | fixtures + shapes |
+| Audio | `Audio.*` | `audio_rpc_shapes.rs` |
+| VPN | `Vpn.*` | `vpn_rpc_shapes.rs` |
+| Packages | `Packages.*` | `packages_rpc_shapes.rs` |
+| Logs | `Logs.Get` | journal fixtures |
+| Security | `Security.GetStatus` | `security_rpc.rs` |
+| Performance | `Performance.GetMetrics` | `performance_rpc_shapes.rs` |
+| DevOps | `DevOps.GetStatus` | `devops_rpc_shapes.rs` |
+| Automations | `Automation.*` | storage + shapes |
+| Communication | `Communication.GetUnread` | shapes |
+| Calendar | `Calendar.*` | storage + ICS |
+| Productivity | `Productivity.GetStats` | shapes + storage |
+| Settings | `Settings.*` | `settings_*_test.rs` |
+| Keybinds | `Keybinds.*` | `keybinds_rpc_shapes.rs` |
+| Weather | `Weather.Get` | `weather_rpc_shapes.rs` |
 
 ---
 
-## 7. Suggested implementation order (for agents)
+## 7. Suggested work order (post-plans, 2026-05-31)
 
-1. **§0.7 + §1** — test harness + contract fixes (unblocks all UI panes)
-2. **§0.1 sidecar binary resolver** — `AURA_SIDECAR` + repo walk (see ADR)
-3. **§0.3 storage list/delete** — unblocks Calendar, Automation, Productivity
-4. **§2.1–2.4** — Power, Network, Bluetooth, Audio (daily use)
-5. **§3.2 Notifications** + **§3.1 Keybinds**
-6. **§2.15–2.18** — Packages, Logs, Security aggregate, Performance
-7. **§2.19–2.21** — DevOps (Podman), Productivity, Automation — **skip Communication** (separate app)
-8. **§2.23 Calendar** (Google/CalDAV) + **§3.6 Todos**
-9. **§3.4–3.5 Capture + Settings** (install `wf-recorder` on host)
-10. **§3.7+** — Vault, voice
-11. **§2.17 offensive security** — `offensive-security` feature; pentest panel when enabled
+The first [docs/plans/README.md](plans/README.md) program is complete. **Implementation plans for the rest of this checklist:** [docs/plans/completion/README.md](plans/completion/README.md).
+
+| Priority | Completion plan | BACKEND_TODO |
+|----------|-----------------|--------------|
+| 1 | [test_harness_green.md](plans/completion/test_harness_green.md) | §0.7 flakes, fast gate |
+| 2 | [client_sync_api.md](plans/completion/client_sync_api.md) | §5, §3.3–3.7 UI gaps |
+| 3 | [process_platform_harness.md](plans/completion/process_platform_harness.md) | §0.2–0.7 foundation |
+| 4 | [p0_network_audio_depth.md](plans/completion/p0_network_audio_depth.md) | §2.1–2.4 P0 depth |
+| 5 | [control_center_polish.md](plans/completion/control_center_polish.md) | §2.12–2.21 polish |
+| 6 | [integrations_phase2.md](plans/completion/integrations_phase2.md) | CalDAV, Vicinae, Vault (extends [calendar_sync_todos](plans/calendar_sync_todos.md), [launcher_vicinae](plans/launcher_vicinae.md), [vault_p3_panels](plans/vault_p3_panels.md)) |
+| 7 | [offensive_security_phase2.md](plans/completion/offensive_security_phase2.md) | §2.17 P4 offensive |
+| 8 | [greenfield_stubs_platform.md](plans/completion/greenfield_stubs_platform.md) | §3.9–3.14, §4 deferrals |
+
+**Definition of done:** see completion README — P0–P2 product paths + green fast gate + explicit deferrals; not every `[ ]` must ship.
 
 ---
 
 ## 8. Resolved decisions (2026-05-28)
 
-Full rationale, host probe results, and notification guidance: **[ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)**.
+See **[ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)** for full rationale.
 
 | # | Question | **Decision** |
 |---|----------|----------------|
-| 1 | Package backend | **Arch only** (`pacman` / optional AUR helper) |
-| 2 | Transaction history | **Local append-only log** in `~/.local/share/ags-sidecar/` (+ optional journal correlation) |
-| 3 | Per-app VPN | **All phases:** NM split → nftables → optional mihomo/clash profile type |
-| 4 | Keybinds | **Hyprland** + Aura-managed include file; **keyd** optional for FN row |
-| 5 | Notifications | **Freedesktop D-Bus listener** (any daemon); **recommend swaync** autostart on Hyprland |
-| 6 | Vicinae | **Long-lived socket/RPC**; subprocess fallback |
-| 7 | Voice | **Local default**, cloud opt-in, **GPU** when available, **push-to-talk** |
-| 8 | DevOps | **Podman** socket/API; RW with allowlist + confirmations (not assumed Docker) |
-
-**Also resolved (see ADR):** SDDM; GNOME Keyring; NetworkManager; PipeWire+WirePlumber; hyprlock; `DevOps` naming; rename clients not aliases; `offensive-security` feature flag; sidecar path via `AURA_SIDECAR` + XDG + repo walk; CI RPC manifest; WS push all domains; ClamAV scans; fprintd; grim/slurp/wf-recorder; Google/CalDAV; comms/Reclaim out of scope; vault deferred; hyprlock clock-only; React webview pattern for sidebar; dropdown DnD; workspace thumbnails icon-only default; pentest yes with feature flag; IDE/stub panels deferred/ignore.
+| 1 | Package backend | **Arch only** |
+| 2 | Transaction history | Local append-only log |
+| 3 | Per-app VPN | Phased: NM → nftables → optional clash profile |
+| 4 | Keybinds | Hyprland + `aura-binds.conf`; keyd optional |
+| 5 | Notifications | Freedesktop D-Bus; swaync recommended |
+| 6 | Vicinae | Long-lived socket/RPC (not implemented) |
+| 7 | Voice | Local default; cloud opt-in |
+| 8 | DevOps | Podman-first |
 
 ---
 
-## 9. Progress log (optional)
+## 9. Progress log
 
-| Date | Item completed | Notes |
-|------|----------------|-------|
-| 2026-05-30 | Shell platform — Settings, Capture, contract gate, Calendar WS, Session.Lock | [docs/plans/shell_platform.md](plans/shell_platform.md) |
-| 2026-05-29 | Compositor bar — Hyprland typed RPCs, dispatch allowlist, WS, media transport | [docs/plans/compositor_bar_live.md](plans/compositor_bar_live.md) |
-| 2026-05-29 | Control Center depth — DevOps, Automation, Productivity, Calendar | [docs/plans/control_center_depth.md](plans/control_center_depth.md) |
-| 2026-05-28 | Control Center foundation — Notifications, Keybinds, Logs/Security/Performance | [docs/plans/control_center_foundation.md](plans/control_center_foundation.md) |
-| 2026-05-28 | Test harness + ~47% coverage | `sidecar-test-fast.sh`, contract tests |
-
-**Remaining work:** see [docs/plans/README.md](plans/README.md).
+| Date | Item | Notes |
+|------|------|-------|
+| 2026-05-31 | **Completion plans** | [docs/plans/completion/](plans/completion/) — 8 slices mapped to §7 |
+| 2026-05-31 | **Checklist audit** | Reconciled with codebase; first plans program complete |
+| 2026-05-31 | Batch 4 — calendar/todos ICS, vault RO, offensive gate | plan commits on `master` |
+| 2026-05-31 | Batch 3 — CC hardening, launcher, VPN | |
+| 2026-05-31 | Batch 2 — P0 hardening, dashboard | |
+| 2026-05-31 | Batch 1 — foundation, automation, session | |
+| 2026-05-30 | Shell platform — Settings, Capture, calendar WS | [shell_platform.md](plans/shell_platform.md) |
+| 2026-05-29 | Compositor bar, CC depth | [compositor_bar_live.md](plans/compositor_bar_live.md), [control_center_depth.md](plans/control_center_depth.md) |
+| 2026-05-28 | CC foundation, test harness | [control_center_foundation.md](plans/control_center_foundation.md) |
 
 ---
 
-*Generated for Aura/AGS backend implementation planning. Update this file as items ship; link PRs in §9.*
+*Update this file as items ship. Plans: [first program](plans/README.md) (done) · [completion phase](plans/completion/README.md) (remaining).*

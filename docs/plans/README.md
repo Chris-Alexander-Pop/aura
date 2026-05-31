@@ -1,8 +1,23 @@
 # Sidecar implementation plans
 
-All backend plans in this directory are **implemented** (2026-05-31). Track ongoing product work in [BACKEND_TODO.md](../BACKEND_TODO.md) and [docs/roadmap/](../roadmap/).
+The **first plans program** (15 slices below) is **implemented** (2026-05-31). Remaining BACKEND_TODO work is broken into **[completion plans](completion/README.md)** — test harness, client sync, platform harness, P0 depth, polish, integrations phase 2, offensive hardening, greenfield ADRs. Checklist: [BACKEND_TODO.md](../BACKEND_TODO.md). Product specs: [docs/roadmap/](../roadmap/).
 
-## Completed plans
+## Completion phase (remaining BACKEND_TODO)
+
+| Plan | Focus |
+|------|--------|
+| [completion/test_harness_green.md](completion/test_harness_green.md) | Fast gate flakes (settings, calendar WS, automation DB) |
+| [completion/client_sync_api.md](completion/client_sync_api.md) | `api.ts` / GTK for Launcher, Todos, Vault, Dashboard, Capture |
+| [completion/process_platform_harness.md](completion/process_platform_harness.md) | Exec allowlist, polkit, RPC logging, CI matrix |
+| [completion/p0_network_audio_depth.md](completion/p0_network_audio_depth.md) | Network.Connect, audio fixtures, BT optional |
+| [completion/control_center_polish.md](completion/control_center_polish.md) | FollowLogs, weather cache, presets, webhooks |
+| [completion/integrations_phase2.md](completion/integrations_phase2.md) | CalDAV, Vicinae socket, Vault RW |
+| [completion/offensive_security_phase2.md](completion/offensive_security_phase2.md) | Audit log, rate caps, UI gate |
+| [completion/greenfield_stubs_platform.md](completion/greenfield_stubs_platform.md) | Communication/IDE/voice ADRs, §4 deferrals |
+
+Suggested order: [completion/README.md](completion/README.md).
+
+## Completed plans (first program)
 
 | Plan | BACKEND_TODO focus |
 |------|-------------------|

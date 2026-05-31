@@ -18,7 +18,7 @@
 ## Known technical gaps (concise)
 
 - **Keybind management:** `keybinds.rs` service exists; UI supports live load + `aura-binds.conf` writes. Full editor UX still evolving.
-- **Depth vs breadth:** many sidecar services exist; the corresponding **UIs** are still mostly **stubs** except where noted in the control center. Details belong in the relevant [docs/roadmap/](roadmap/) page, not duplicated here.
+- **Depth vs breadth:** sidecar RPC surface is broad (see [BACKEND_TODO.md](BACKEND_TODO.md) audit 2026-05-31); several namespaces (Launcher, Todos, Vault, Dashboard) lack `api.ts` wiring. Control center panes vary from live to stub — see roadmap pages, not duplicated here.
 - **Stack & product decisions:** resolved choices (Arch-only packages, Podman, notifications D-Bus, etc.) live in [ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md); implementation backlog in [BACKEND_TODO.md](BACKEND_TODO.md).
 
 ## Doc flow
