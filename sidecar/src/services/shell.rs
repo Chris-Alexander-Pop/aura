@@ -1,7 +1,7 @@
 //! Allowlisted session actions, Aura window toggles, app launch — invoked from React/WebKit only via JSON-RPC.
 use crate::services::ServiceRegistry;
 use crate::utils::process;
-use anyhow::bail;
+use anyhow::{bail, Result};
 use serde_json::json;
 use std::collections::HashMap;
 
@@ -27,6 +27,137 @@ lazy_static::lazy_static! {
     };
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionAction {
+    Logout,
+    Suspend,
+    Reboot,
+    PowerOff,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionCommand {
+    Exec { argv: Vec<String> },
+    Login1 { method: &'static str, interactive: bool },
+}
+
+pub fn classify_session_stderr(stderr: &str) -> &'static str {
+    let s = stderr.to_ascii_lowercase();
+    if s.contains("not authorized")
+        || s.contains("access denied")
+        || s.contains("authentication")
+        || s.contains("interactive authentication")
+        || s.contains("polkit")
+        || s.contains("permission denied")
+        || s.contains("not permitted")
+    {
+        "auth_required"
+    } else if s.contains("not supported") || s.contains("operation not supported") {
+        "not_supported"
+    } else {
+        "failed"
+    }
+}
+
+pub fn format_session_error(code: &str, detail: &str) -> String {
+    let detail = detail
+        .lines()
+        .next()
+        .unwrap_or(detail)
+        .trim();
+    let detail = if detail.len() > 240 {
+        &detail[..240]
+    } else {
+        detail
+    };
+    format!("session_action_failed: {code}: {detail}")
+}
+
+fn map_session_error(err: anyhow::Error) -> anyhow::Error {
+    let msg = err.to_string();
+    let code = classify_session_stderr(&msg);
+    anyhow::anyhow!(format_session_error(code, &msg))
+}
+
+pub fn resolve_logout_argv(session_id: Option<&str>, user: Option<&str>) -> Vec<String> {
+    if let Some(sid) = session_id.filter(|s| !s.is_empty()) {
+        return vec![
+            "loginctl".into(),
+            "terminate-session".into(),
+            sid.into(),
+        ];
+    }
+    let user = user.filter(|u| !u.is_empty()).unwrap_or("_");
+    vec![
+        "loginctl".into(),
+        "terminate-user".into(),
+        user.into(),
+    ]
+}
+
+pub fn resolve_session_command(
+    action: SessionAction,
+    session_id: Option<&str>,
+    user: Option<&str>,
+) -> SessionCommand {
+    match action {
+        SessionAction::Logout => SessionCommand::Exec {
+            argv: resolve_logout_argv(session_id, user),
+        },
+        SessionAction::Suspend => SessionCommand::Login1 {
+            method: "Suspend",
+            interactive: false,
+        },
+        SessionAction::Reboot => SessionCommand::Login1 {
+            method: "Reboot",
+            interactive: false,
+        },
+        SessionAction::PowerOff => SessionCommand::Login1 {
+            method: "PowerOff",
+            interactive: false,
+        },
+    }
+}
+
+async fn invoke_login1(method: &str, interactive: bool) -> Result<()> {
+    use zbus::{Connection, Proxy};
+
+    let conn = Connection::system().await?;
+    let proxy = Proxy::new(
+        &conn,
+        "org.freedesktop.login1",
+        "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager",
+    )
+    .await?;
+    let _: () = proxy.call(method, &(interactive,)).await?;
+    Ok(())
+}
+
+async fn run_session_action(action: SessionAction) -> Result<serde_json::Value> {
+    let session_id = std::env::var("XDG_SESSION_ID").ok();
+    let user = std::env::var("USER")
+        .ok()
+        .or_else(|| std::env::var("LOGNAME").ok());
+    let cmd = resolve_session_command(
+        action,
+        session_id.as_deref(),
+        user.as_deref(),
+    );
+    match cmd {
+        SessionCommand::Exec { argv } => {
+            let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+            process::exec_command(&refs).await.map_err(map_session_error)?;
+        }
+        SessionCommand::Login1 { method, interactive } => {
+            invoke_login1(method, interactive)
+                .await
+                .map_err(map_session_error)?;
+        }
+    }
+    Ok(json!({"ok": true}))
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Sidecar.GetVersion", |_p| async move {
         Ok(json!({
@@ -35,30 +166,26 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Session.Lock", |_p| async move {
-        let argv = resolve_lock_argv();
+        let argv = resolve_lock_command();
         let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
         process::exec_command_detached(&refs).await?;
         Ok(json!({"ok": true}))
     });
 
     registry.register("Session.Logout", |_p| async move {
-        process::exec_command_detached(&["hyprctl", "dispatch", "exit"]).await?;
-        Ok(json!({"ok": true}))
+        run_session_action(SessionAction::Logout).await
     });
 
     registry.register("Session.Suspend", |_p| async move {
-        process::exec_command_detached(&["systemctl", "suspend"]).await?;
-        Ok(json!({"ok": true}))
+        run_session_action(SessionAction::Suspend).await
     });
 
     registry.register("Session.Reboot", |_p| async move {
-        process::exec_command_detached(&["systemctl", "reboot"]).await?;
-        Ok(json!({"ok": true}))
+        run_session_action(SessionAction::Reboot).await
     });
 
     registry.register("Session.PowerOff", |_p| async move {
-        process::exec_command_detached(&["systemctl", "poweroff"]).await?;
-        Ok(json!({"ok": true}))
+        run_session_action(SessionAction::PowerOff).await
     });
 
     registry.register("Aura.ToggleWindow", |params| async move {
@@ -99,7 +226,7 @@ pub(crate) fn app_launch_argv(app_id: &str) -> Option<Vec<&'static str>> {
 }
 
 /// Prefer `hyprlock` when installed; fall back to `loginctl lock-session`.
-pub fn resolve_lock_argv() -> Vec<String> {
+pub fn resolve_lock_command() -> Vec<String> {
     if std::process::Command::new("which")
         .arg("hyprlock")
         .output()
@@ -114,7 +241,10 @@ pub fn resolve_lock_argv() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{app_launch_argv, aura_window_allowed};
+    use super::{
+        app_launch_argv, aura_window_allowed, classify_session_stderr, resolve_lock_command,
+        resolve_logout_argv, resolve_session_command, SessionAction, SessionCommand,
+    };
 
     #[test]
     fn aura_window_allowlist() {
@@ -134,12 +264,85 @@ mod tests {
     }
 
     #[test]
-    fn resolve_lock_argv_is_nonempty() {
-        let argv = super::resolve_lock_argv();
+    fn resolve_lock_command_hyprlock_or_loginctl() {
+        let argv = resolve_lock_command();
         assert!(!argv.is_empty());
         assert!(
             argv[0] == "hyprlock"
                 || (argv[0] == "loginctl" && argv.get(1).map(String::as_str) == Some("lock-session"))
         );
+    }
+
+    #[test]
+    fn resolve_logout_prefers_session_id() {
+        let argv = resolve_logout_argv(Some("5"), Some("alice"));
+        assert_eq!(
+            argv,
+            vec!["loginctl", "terminate-session", "5"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn resolve_logout_falls_back_to_user() {
+        let argv = resolve_logout_argv(None, Some("bob"));
+        assert_eq!(
+            argv,
+            vec!["loginctl", "terminate-user", "bob"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn resolve_session_action_logout_is_loginctl() {
+        match resolve_session_command(SessionAction::Logout, Some("2"), None) {
+            SessionCommand::Exec { argv } => {
+                assert_eq!(argv[0], "loginctl");
+                assert_eq!(argv[1], "terminate-session");
+                assert_eq!(argv[2], "2");
+            }
+            other => panic!("expected exec, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_session_action_suspend_uses_login1() {
+        match resolve_session_command(SessionAction::Suspend, None, None) {
+            SessionCommand::Login1 { method, interactive } => {
+                assert_eq!(method, "Suspend");
+                assert!(!interactive);
+            }
+            other => panic!("expected login1, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_session_action_reboot_and_poweroff() {
+        for (action, method) in [
+            (SessionAction::Reboot, "Reboot"),
+            (SessionAction::PowerOff, "PowerOff"),
+        ] {
+            match resolve_session_command(action, None, None) {
+                SessionCommand::Login1 { method: m, .. } => assert_eq!(m, method),
+                other => panic!("expected login1, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn classify_session_stderr_polkit() {
+        assert_eq!(
+            classify_session_stderr("Not authorized to perform operation"),
+            "auth_required"
+        );
+        assert_eq!(
+            classify_session_stderr("Operation not supported on this platform"),
+            "not_supported"
+        );
+        assert_eq!(classify_session_stderr("some other fault"), "failed");
     }
 }
