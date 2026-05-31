@@ -172,21 +172,21 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 
 - [x] `Network.GetStatus` (wifi, ethernet, IPs, public IP)
 - [x] `Network.ScanNetworks`
-- [~] `Network.Connect`: WPA + keyring; **802.1X deferred**
+- [~] `Network.Connect`: WPA/WPA3/open + keyring; clearer nmcli errors; **802.1X + captive portal deferred**
 - [x] Saved networks list/forget/auto-connect
-- [ ] Captive portal detection
+- [~] Captive portal detection (deferred — no `Network.GetCaptivePortal` yet)
 - [x] Keyring for passwords
 - [x] `Network.ToggleWifi`
 - [~] VPN fields in `GetStatus` (VPN service separate)
 - [x] nmcli fixtures in `integration_contracts.rs`
-- [~] Connect integration tests (`#[ignore]` / deny-list only)
+- [x] Connect fixtures + `#[ignore]` live test (`AURA_NETWORK_TEST_SSID`; deny-list unchanged)
 
 ### 2.3 Bluetooth (`bluetooth.rs`) — P0
 
 - [x] Adapter power/discoverable
-- [ ] Pairing flow + agent (PIN UI deferred)
+- [~] Pairing flow + agent (PIN UI deferred; documented in `bluetooth.rs`)
 - [x] Device battery % when available
-- [ ] Audio profile selection (A2DP/HSP)
+- [~] Audio profile selection (A2DP/HSP deferred; no RPC stub)
 - [x] `Bluetooth.GetDeviceInfo`
 - [x] Stop scan, remove device
 - [x] `bluetoothctl` fixtures + `bluetooth_rpc_shapes.rs`
@@ -197,11 +197,11 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 - [x] Default device, mute sync, per-stream volume
 - [x] `Audio.SetDefaultDevice`, `Audio.Refresh`
 - [x] Sink/source volume RPCs
-- [~] Effects submodule (RPCs exist; EasyEffects verification incomplete)
-- [~] Profiles/scenarios (RPCs exist; real-config tests thin)
+- [~] Effects submodule (mutating RPCs gated on `AURA_AUDIO_ADVANCED=1`; EasyEffects verification incomplete)
+- [~] Profiles/scenarios (mutating RPCs gated on `AURA_AUDIO_ADVANCED=1`; real-config tests thin)
 - [x] Media via `mpris.rs` + `Audio.Media.*` + bar `api.ts`
-- [~] pactl/wpctl fixture coverage (partial)
-- [ ] Volume round-trip integration (mock)
+- [x] pactl/wpctl fixture coverage (`pactl_list_sinks`, extended `wpctl_status`, `integration_contracts`)
+- [~] Volume round-trip integration (`#[ignore]` + `AURA_AUDIO_VOLUME_TEST=1`)
 
 ### 2.5 Brightness (`brightness.rs`) — P1
 

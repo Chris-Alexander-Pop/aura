@@ -28,6 +28,9 @@ System packages (Arch): `libssl-dev` / `openssl` + `pkg-config` for `openssl-sys
 | `AURA_STORAGE_DB` | SQLite path for `Storage.*` and namespaced prefs (tests use a temp file) |
 | `RUST_LOG` | Tracing filter, e.g. `ags_sidecar=debug` (see `tracing_subscriber`) |
 | `AURA_RPC_LOG_PARAMS` | Set `1` to log RPC params at `debug` (secrets redacted; never logs `Storage.*` / `Settings.*` bodies) |
+| `AURA_AUDIO_ADVANCED` | Set `1` to allow mutating `Audio.Effects.*` / `Audio.Profiles.*` (EasyEffects / saved profiles) |
+| `AURA_NETWORK_TEST_SSID` | Test SSID for `#[ignore]` `network_connect_test_ssid_live` (`AURA_NETWORK_TEST_PASSWORD` optional) |
+| `AURA_AUDIO_VOLUME_TEST` | Set `1` for `#[ignore]` `audio_set_sink_volume_round_trip` |
 | `AURA_HYPRLAND_EVENTS` | Set `0` to disable Hyprland socket2 push listener |
 | `AURA_LAUNCHER_DESKTOP_DIRS` | Colon-separated directories of `.desktop` files (tests use `tests/fixtures/desktop`) |
 | `VICINAE_SOCKET` | *(planned)* Unix socket path for Vicinae daemon RPC — `Vicinae.Exec` not implemented yet |
