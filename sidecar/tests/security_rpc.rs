@@ -2,8 +2,11 @@
 
 mod common;
 
-use common::{call_method, test_registry};
+use ags_sidecar::services::MethodNotFound;
+use common::{call_method, call_method_unchecked, test_registry};
 use serde_json::Value;
+use std::fs;
+use std::path::PathBuf;
 
 fn assert_json_object_keys(value: &Value, keys: &[&str]) {
     let obj = value.as_object().expect("JSON object");
@@ -21,6 +24,38 @@ fn assert_security_log_array(value: &Value) {
 
 fn host_tool_missing(err: &anyhow::Error) -> bool {
     err.to_string().contains("Command failed")
+}
+
+const OFFENSIVE_SAMPLE: &str = "Security.Offensive.Nmap.Scan";
+
+fn load_manifest() -> Vec<String> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("rpc-manifest.json");
+    let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    serde_json::from_str(&text).expect("rpc-manifest.json array")
+}
+
+#[test]
+fn default_manifest_excludes_offensive_methods() {
+    let offensive: Vec<_> = load_manifest()
+        .into_iter()
+        .filter(|m| m.starts_with("Security.Offensive."))
+        .collect();
+    assert!(
+        offensive.is_empty(),
+        "default rpc-manifest.json must not list offensive methods: {offensive:?}"
+    );
+}
+
+#[tokio::test]
+async fn default_registry_excludes_offensive_methods() {
+    let registry = test_registry();
+    let err = call_method_unchecked(&registry, OFFENSIVE_SAMPLE, None)
+        .await
+        .expect_err("offensive RPC must not be registered in default build");
+    assert!(
+        err.downcast_ref::<MethodNotFound>().is_some(),
+        "expected MethodNotFound, got: {err}"
+    );
 }
 
 #[tokio::test]

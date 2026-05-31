@@ -10,9 +10,13 @@ pub mod audio;
 pub mod bluetooth;
 pub mod performance;
 pub mod security;
+#[cfg(feature = "offensive-security")]
+pub mod security_offensive;
 pub mod devops;
 pub mod productivity;
 pub mod calendar;
+pub mod ics;
+pub mod todos;
 pub mod logs;
 pub mod packages;
 pub mod automation;
@@ -29,6 +33,7 @@ pub mod settings;
 pub mod dashboard;
 pub mod capture;
 pub mod launcher;
+pub mod vault;
 
 use crate::types::JsonRpcRequest;
 use anyhow::Result;

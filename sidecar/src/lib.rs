@@ -26,6 +26,7 @@ pub fn build_registry() -> ServiceRegistry {
     services::devops::register(&mut registry);
     services::productivity::register(&mut registry);
     services::calendar::register(&mut registry);
+    services::todos::register(&mut registry);
     services::logs::register(&mut registry);
     services::packages::register(&mut registry);
     services::automation::register(&mut registry);
@@ -42,6 +43,7 @@ pub fn build_registry() -> ServiceRegistry {
     services::dashboard::register(&mut registry);
     services::capture::register(&mut registry);
     services::launcher::register(&mut registry);
+    services::vault::register(&mut registry);
     registry
 }
 
@@ -274,6 +276,14 @@ pub mod contract_parsers {
 
     pub fn parse_wireguard_conf(conf: &str) -> crate::services::vpn::WireGuardConfigSummary {
         crate::services::vpn::parse_wireguard_conf(conf)
+    }
+
+    pub fn parse_rclone_listremotes(output: &str) -> Vec<crate::services::vault::VaultRemote> {
+        crate::services::vault::parse_rclone_listremotes(output)
+    }
+
+    pub fn communication_unread_counts_schema_valid(value: &serde_json::Value) -> bool {
+        crate::services::communication::unread_counts_schema_valid(value)
     }
 
     pub fn parse_iface_ipv4(ip_output: &str, iface: &str) -> Option<String> {

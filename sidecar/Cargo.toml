@@ -3,6 +3,10 @@ name = "ags-sidecar"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+offensive-security = []
+
 [lib]
 name = "ags_sidecar"
 path = "src/lib.rs"
