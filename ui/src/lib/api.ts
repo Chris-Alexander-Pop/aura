@@ -70,6 +70,15 @@ export type WorkflowView = {
   triggers?: unknown
   actions?: unknown
   created_at?: number
+  run_count?: number
+  last_run_at?: number
+}
+
+export type WorkflowRunView = {
+  ts: string
+  workflow_id: string
+  success: boolean
+  error?: string
 }
 
 export type {
@@ -234,6 +243,11 @@ export const api = {
   deleteAutomationWorkflow: (workflowId: string) =>
     call<{ success: boolean; deleted?: boolean }>("Automation.DeleteWorkflow", {
       workflow_id: workflowId,
+    }),
+  getAutomationHistory: (workflowId?: string, limit = 20) =>
+    call<WorkflowRunView[]>("Automation.GetWorkflowHistory", {
+      workflow_id: workflowId,
+      limit,
     }),
   getUnreadMessages:     () => call<Record<string, number>>("Communication.GetUnread"),
   getFitnessStats:       () => call<Record<string, unknown>>("Fitness.GetGoals"),

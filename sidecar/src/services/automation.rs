@@ -1,10 +1,14 @@
 use crate::services::ServiceRegistry;
 use crate::utils::{automation_log, process, storage};
 use anyhow::{anyhow, Result};
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::path::PathBuf;
+use std::sync::Once;
 use tokio::time::{timeout, Duration};
+
+static CRON_TICK: Once = Once::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Workflow {
@@ -14,6 +18,10 @@ pub struct Workflow {
     pub triggers: serde_json::Value,
     pub actions: serde_json::Value,
     pub created_at: i64,
+    #[serde(default)]
+    pub run_count: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_run_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +60,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|p| p.get("actions").cloned())
             .ok_or_else(|| anyhow!("Missing actions"))?;
 
+        validate_workflow_triggers(&triggers)?;
         validate_workflow_actions(&actions)?;
 
         let workflow_id = format!("workflow_{}", chrono::Utc::now().timestamp_millis());
@@ -62,6 +71,8 @@ pub fn register(registry: &mut ServiceRegistry) {
             triggers,
             actions,
             created_at: chrono::Utc::now().timestamp_millis(),
+            run_count: 0,
+            last_run_at: None,
         };
 
         storage::init().await?;
@@ -71,6 +82,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             &serde_json::to_value(&workflow)?,
         )
         .await?;
+        spawn_cron_tick();
         Ok(serde_json::to_value(&workflow)?)
     });
 
@@ -88,16 +100,21 @@ pub fn register(registry: &mut ServiceRegistry) {
             .ok_or_else(|| anyhow!("Missing updates"))?;
 
         storage::init().await?;
-        if let Some(mut workflow_value) = storage::get_kv("automation_workflows", &workflow_id).await? {
-            if let Some(workflow_obj) = workflow_value.as_object_mut() {
-                if let Some(actions) = updates.get("actions") {
-                    validate_workflow_actions(actions)?;
-                }
-                for (key, value) in updates.as_object().unwrap() {
-                    workflow_obj.insert(key.clone(), value.clone());
-                }
-                storage::set_kv("automation_workflows", &workflow_id, &workflow_value).await?;
+        let Some(mut workflow_value) = storage::get_kv("automation_workflows", &workflow_id).await?
+        else {
+            return Err(anyhow!("Workflow not found"));
+        };
+        if let Some(triggers) = updates.get("triggers") {
+            validate_workflow_triggers(triggers)?;
+        }
+        if let Some(actions) = updates.get("actions") {
+            validate_workflow_actions(actions)?;
+        }
+        if let Some(workflow_obj) = workflow_value.as_object_mut() {
+            for (key, value) in updates.as_object().unwrap() {
+                workflow_obj.insert(key.clone(), value.clone());
             }
+            storage::set_kv("automation_workflows", &workflow_id, &workflow_value).await?;
         }
 
         Ok(serde_json::json!({ "success": true }))
@@ -228,6 +245,8 @@ pub fn register(registry: &mut ServiceRegistry) {
             "run_script"
         ]))
     });
+
+    spawn_cron_tick();
 }
 
 async fn set_workflow_enabled(
@@ -242,11 +261,12 @@ async fn set_workflow_enabled(
     )?;
 
     storage::init().await?;
-    if let Some(mut workflow_value) = storage::get_kv("automation_workflows", &workflow_id).await? {
-        if let Some(workflow_obj) = workflow_value.as_object_mut() {
-            workflow_obj.insert("enabled".to_string(), serde_json::json!(enabled));
-            storage::set_kv("automation_workflows", &workflow_id, &workflow_value).await?;
-        }
+    let Some(mut workflow_value) = storage::get_kv("automation_workflows", &workflow_id).await? else {
+        return Err(anyhow!("Workflow not found"));
+    };
+    if let Some(workflow_obj) = workflow_value.as_object_mut() {
+        workflow_obj.insert("enabled".to_string(), serde_json::json!(enabled));
+        storage::set_kv("automation_workflows", &workflow_id, &workflow_value).await?;
     }
 
     Ok(serde_json::json!({ "success": true }))
@@ -268,22 +288,99 @@ pub async fn run_workflow_by_id(workflow_id: &str) -> Result<serde_json::Value> 
     )
     .await;
 
+    let run_finished_at = Utc::now().timestamp_millis();
     match result {
         Ok(Ok(())) => {
             automation_log::log_workflow_run(workflow_id, true, None).await;
+            record_workflow_run(workflow_id, run_finished_at).await?;
             Ok(serde_json::json!({ "success": true }))
         }
         Ok(Err(e)) => {
             let msg = e.to_string();
             automation_log::log_workflow_run(workflow_id, false, Some(msg.clone())).await;
+            record_workflow_run(workflow_id, run_finished_at).await.ok();
             Err(anyhow!(msg))
         }
         Err(_) => {
             let msg = "Workflow execution timed out after 30s".to_string();
             automation_log::log_workflow_run(workflow_id, false, Some(msg.clone())).await;
+            record_workflow_run(workflow_id, run_finished_at).await.ok();
             Err(anyhow!(msg))
         }
     }
+}
+
+async fn record_workflow_run(workflow_id: &str, at_ms: i64) -> Result<()> {
+    let Some(mut workflow_value) = storage::get_kv("automation_workflows", workflow_id).await? else {
+        return Ok(());
+    };
+    if let Some(obj) = workflow_value.as_object_mut() {
+        let count = obj
+            .get("run_count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+            .saturating_add(1);
+        obj.insert("run_count".to_string(), serde_json::json!(count));
+        obj.insert("last_run_at".to_string(), serde_json::json!(at_ms));
+        storage::set_kv("automation_workflows", workflow_id, &workflow_value).await?;
+    }
+    Ok(())
+}
+
+pub fn spawn_cron_tick() {
+    CRON_TICK.call_once(|| {
+        tokio::spawn(async {
+            let mut tick = tokio::time::interval(Duration::from_secs(60));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tick.tick().await;
+                if let Err(e) = automation_cron_tick().await {
+                    tracing::debug!("automation cron tick: {}", e);
+                }
+            }
+        });
+    });
+}
+
+async fn automation_cron_tick() -> Result<()> {
+    storage::init().await?;
+    let items = storage::scan_namespace("automation_workflows").await?;
+    let workflows = workflows_from_storage_values(items);
+    let now = Utc::now();
+    for workflow in workflows {
+        if !workflow.enabled {
+            continue;
+        }
+        let Some(cron_expr) = workflow_cron_expr(&workflow.triggers) else {
+            continue;
+        };
+        let after_ms = workflow.last_run_at.unwrap_or(workflow.created_at);
+        let after = DateTime::from_timestamp_millis(after_ms).unwrap_or_else(|| {
+            DateTime::from_timestamp(0, 0).unwrap_or_else(|| Utc::now())
+        });
+        let Some(next) = cron_next_fire_after(&cron_expr, after) else {
+            continue;
+        };
+        if next > now {
+            continue;
+        }
+        let _ = run_workflow_by_id(&workflow.id).await;
+    }
+    Ok(())
+}
+
+fn workflow_cron_expr(triggers: &serde_json::Value) -> Option<String> {
+    let arr = triggers.as_array()?;
+    for trigger in arr {
+        let obj = trigger.as_object()?;
+        if obj.get("type").and_then(|v| v.as_str()) == Some("time") {
+            return obj
+                .get("cron")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+        }
+    }
+    None
 }
 
 pub(crate) fn workflows_from_storage_values(items: Vec<serde_json::Value>) -> Vec<Workflow> {
@@ -298,6 +395,80 @@ pub(crate) fn scripts_from_storage_values(items: Vec<serde_json::Value>) -> Vec<
         .into_iter()
         .filter_map(|v| serde_json::from_value(v).ok())
         .collect()
+}
+
+pub(crate) fn validate_workflow_triggers(triggers: &serde_json::Value) -> Result<()> {
+    let Some(triggers_array) = triggers.as_array() else {
+        return Err(anyhow!("triggers must be an array"));
+    };
+    for trigger in triggers_array {
+        let trigger_obj = trigger
+            .as_object()
+            .ok_or_else(|| anyhow!("each trigger must be an object"))?;
+        let trigger_type = trigger_obj
+            .get("type")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("trigger missing type"))?;
+        match trigger_type {
+            "manual" | "system_event" | "network_event" | "file_change" => {}
+            "time" => {
+                let cron = trigger_obj
+                    .get("cron")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow!("time trigger missing cron"))?;
+                if cron_next_fire_after(cron, Utc::now()).is_none() {
+                    return Err(anyhow!("invalid cron expression: {}", cron));
+                }
+            }
+            other => return Err(anyhow!("unknown trigger type: {}", other)),
+        }
+    }
+    Ok(())
+}
+
+/// Next fire time strictly after `after` for a five-field cron (minute hour dom month dow).
+pub fn cron_next_fire_after(expr: &str, after: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    let parts: Vec<&str> = expr.split_whitespace().collect();
+    if parts.len() != 5 {
+        return None;
+    }
+    let mut probe = after + chrono::Duration::minutes(1);
+    probe = probe
+        .with_second(0)
+        .and_then(|t| t.with_nanosecond(0))
+        .unwrap_or(probe);
+    for _ in 0..(48 * 60) {
+        if cron_matches(&parts, probe) {
+            return Some(probe);
+        }
+        probe += chrono::Duration::minutes(1);
+    }
+    None
+}
+
+fn cron_matches(parts: &[&str], t: DateTime<Utc>) -> bool {
+    cron_field_matches(parts[0], t.minute() as u32, 0, 59)
+        && cron_field_matches(parts[1], t.hour() as u32, 0, 23)
+        && cron_field_matches(parts[2], t.day() as u32, 1, 31)
+        && cron_field_matches(parts[3], t.month() as u32, 1, 12)
+        && cron_field_matches(parts[4], t.weekday().num_days_from_sunday(), 0, 6)
+}
+
+fn cron_field_matches(field: &str, value: u32, min: u32, max: u32) -> bool {
+    if field == "*" {
+        return true;
+    }
+    if let Some(step_s) = field.strip_prefix("*/") {
+        let step: u32 = match step_s.parse() {
+            Ok(n) if n > 0 => n,
+            _ => return false,
+        };
+        return value >= min && value <= max && value % step == 0;
+    }
+    if let Ok(exact) = field.parse::<u32>() {
+        return value == exact;
+    }
+    false
 }
 
 pub(crate) fn validate_workflow_actions(actions: &serde_json::Value) -> Result<()> {
@@ -462,6 +633,7 @@ async fn run_script_file(script: &Script) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
     use serde_json::json;
 
     #[test]
@@ -473,6 +645,8 @@ mod tests {
             triggers: json!([]),
             actions: json!([]),
             created_at: 1,
+            run_count: 0,
+            last_run_at: None,
         };
         let items = vec![
             serde_json::to_value(&valid).unwrap(),
@@ -501,5 +675,34 @@ mod tests {
     fn validate_workflow_accepts_notify() {
         let actions = json!([{ "type": "send_notification", "title": "t", "body": "b" }]);
         assert!(validate_workflow_actions(&actions).is_ok());
+    }
+
+    #[test]
+    fn validate_workflow_rejects_bad_triggers() {
+        assert!(validate_workflow_triggers(&json!("x")).is_err());
+        assert!(validate_workflow_triggers(&json!([{ "type": "time" }])).is_err());
+        assert!(validate_workflow_triggers(&json!([{ "type": "time", "cron": "not cron" }])).is_err());
+    }
+
+    #[test]
+    fn validate_workflow_accepts_time_trigger() {
+        let triggers = json!([{ "type": "time", "cron": "*/5 * * * *" }]);
+        assert!(validate_workflow_triggers(&triggers).is_ok());
+    }
+
+    #[test]
+    fn cron_next_fire_steps_every_five_minutes() {
+        let after = Utc.with_ymd_and_hms(2025, 5, 1, 10, 3, 0).unwrap();
+        let next = cron_next_fire_after("*/5 * * * *", after).unwrap();
+        assert_eq!(next.minute(), 5);
+        assert_eq!(next.hour(), 10);
+    }
+
+    #[test]
+    fn cron_next_fire_fixed_hour() {
+        let after = Utc.with_ymd_and_hms(2025, 5, 1, 8, 30, 0).unwrap();
+        let next = cron_next_fire_after("0 9 * * *", after).unwrap();
+        assert_eq!(next.hour(), 9);
+        assert_eq!(next.minute(), 0);
     }
 }

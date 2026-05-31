@@ -19,6 +19,12 @@ export function AutomationsPane() {
     staleTime: 30_000,
   })
 
+  const { data: history } = useQuery({
+    queryKey: ["automation-history"],
+    queryFn: () => api.getAutomationHistory(undefined, 15),
+    staleTime: 15_000,
+  })
+
   const createMut = useMutation({
     mutationFn: () => {
       let actions: unknown
@@ -32,6 +38,7 @@ export function AutomationsPane() {
     onSuccess: () => {
       setName("")
       void qc.invalidateQueries({ queryKey: ["automation-rules"] })
+      void qc.invalidateQueries({ queryKey: ["automation-history"] })
     },
   })
 
@@ -43,7 +50,10 @@ export function AutomationsPane() {
   const toggleMut = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       enabled ? api.disableAutomationWorkflow(id) : api.enableAutomationWorkflow(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["automation-rules"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["automation-rules"] })
+      void qc.invalidateQueries({ queryKey: ["automation-history"] })
+    },
   })
 
   const deleteMut = useMutation({
@@ -52,6 +62,7 @@ export function AutomationsPane() {
   })
 
   const rules: WorkflowView[] = Array.isArray(data) ? data : []
+  const runs = Array.isArray(history) ? history : []
 
   return (
     <motion.div
@@ -129,7 +140,14 @@ export function AutomationsPane() {
             <li key={rule.id}>
               <div className="glass-card p-4 flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium text-text">{rule.name}</p>
+                  <div>
+                    <p className="text-sm font-medium text-text">{rule.name}</p>
+                    {(rule.run_count ?? 0) > 0 && (
+                      <p className="text-[10px] text-subtext1 mt-0.5">
+                        {rule.run_count} run{rule.run_count === 1 ? "" : "s"}
+                      </p>
+                    )}
+                  </div>
                   <span
                     className={cn(
                       "text-[10px] uppercase px-2 py-0.5 rounded-full",
@@ -169,6 +187,22 @@ export function AutomationsPane() {
             </li>
           ))}
         </ul>
+      )}
+
+      {runs.length > 0 && (
+        <div className="glass-card p-4 flex flex-col gap-2">
+          <p className="text-xs font-medium text-text">Recent runs</p>
+          <ul className="flex flex-col gap-1 list-none m-0 p-0 text-[11px] text-subtext1">
+            {runs.map((run) => (
+              <li key={`${run.ts}-${run.workflow_id}`} className="flex justify-between gap-2">
+                <span className="truncate">{run.workflow_id}</span>
+                <span className={run.success ? "text-green" : "text-red"}>
+                  {run.success ? "ok" : "failed"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </motion.div>
   )

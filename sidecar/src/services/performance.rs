@@ -680,16 +680,20 @@ mod tests {
 
         let tx = crate::notify::init_for_tests();
         let mut rx = tx.subscribe();
+        while rx.try_recv().is_ok() {}
 
         schedule_metrics_emit_for_tests().await;
         schedule_metrics_emit_for_tests().await;
         tokio::time::sleep(Duration::from_millis(350)).await;
 
         let mut count = 0;
-        while rx.try_recv().is_ok() {
-            count += 1;
+        while let Ok(raw) = rx.try_recv() {
+            let v: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
+            if v.get("method").and_then(|m| m.as_str()) == Some("Performance.MetricsChanged") {
+                count += 1;
+            }
         }
-        assert!(count <= 1);
+        assert!(count <= 1, "expected debounced metrics emit, got {count}");
     }
 
     #[tokio::test]

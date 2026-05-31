@@ -61,6 +61,40 @@ async fn automation_get_workflows_skips_corrupt_storage_rows() {
 }
 
 #[tokio::test]
+async fn automation_list_rules_matches_get_workflows() {
+    let _db = setup_temp_storage_db().await;
+    let registry = test_registry();
+
+    call_rpc(
+        &registry,
+        "Storage.Set",
+        Some(json!({
+            "namespace": "automation_workflows",
+            "key": "wf1",
+            "value": {
+                "id": "wf1",
+                "name": "Sync",
+                "enabled": true,
+                "triggers": [],
+                "actions": [],
+                "created_at": 2,
+                "run_count": 3
+            }
+        })),
+    )
+    .await
+    .expect("Storage.Set");
+
+    let workflows = call_rpc(&registry, "Automation.GetWorkflows", None)
+        .await
+        .expect("GetWorkflows");
+    let rules = call_rpc(&registry, "Automation.ListRules", None)
+        .await
+        .expect("ListRules");
+    assert_eq!(workflows, rules);
+}
+
+#[tokio::test]
 async fn automation_get_triggers_and_actions_schema() {
     let registry = test_registry();
     for method in ["Automation.GetTriggers", "Automation.GetActions"] {
