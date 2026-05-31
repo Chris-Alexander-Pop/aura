@@ -155,6 +155,47 @@ pub fn register(registry: &mut ServiceRegistry) {
         Ok(serde_json::to_value(&network_stats)?)
     });
 
+    registry.register("Performance.ApplyPreset", |params| async move {
+        let preset: String = serde_json::from_value(
+            params
+                .as_ref()
+                .and_then(|p| p.get("preset").cloned())
+                .ok_or_else(|| anyhow::anyhow!("Missing preset"))?,
+        )?;
+
+        let (profile, governor) = preset_targets(&preset)
+            .ok_or_else(|| anyhow::anyhow!("Unknown preset: {preset}"))?;
+
+        if std::env::var("AURA_PERFORMANCE_DRY_RUN").ok().as_deref() == Some("1") {
+            return Ok(json!({
+                "preset": preset,
+                "profile": profile,
+                "governor": governor,
+                "dry_run": true,
+            }));
+        }
+
+        crate::services::power::set_profile_by_name(profile).await?;
+
+        let output = process::exec_command(&["nproc"]).await?;
+        let num_cores: usize = output.trim().parse().unwrap_or(1);
+        for i in 0..num_cores {
+            let governor_path = format!(
+                "/sys/devices/system/cpu/cpu{}/cpufreq/scaling_governor",
+                i
+            );
+            let script = format!("echo '{}' > '{}'", governor.replace('\'', ""), governor_path);
+            crate::utils::polkit::run_privileged(&["sh", "-c", &script]).await?;
+        }
+
+        Ok(json!({
+            "preset": preset,
+            "profile": profile,
+            "governor": governor,
+            "success": true,
+        }))
+    });
+
     registry.register("Performance.SetCpuGovernor", |params| async move {
         let governor: String = serde_json::from_value(
             params
@@ -365,6 +406,26 @@ async fn metrics_changed(current: &Value) -> bool {
         return true;
     };
     metrics_delta_significant(p, current, 2.0)
+}
+
+fn preset_targets(preset: &str) -> Option<(&'static str, &'static str)> {
+    match preset {
+        "meeting" => Some(("balanced", "powersave")),
+        "compile" => Some(("performance", "performance")),
+        "game" => Some(("performance", "performance")),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod preset_tests {
+    use super::*;
+
+    #[test]
+    fn preset_targets_known() {
+        assert_eq!(preset_targets("meeting"), Some(("balanced", "powersave")));
+        assert!(preset_targets("unknown").is_none());
+    }
 }
 
 #[cfg(test)]

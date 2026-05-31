@@ -3,7 +3,7 @@
 mod common;
 
 use ags_sidecar::contract_parsers::parse_meminfo_cached_buffers_kb;
-use common::{call_method, load_fixture, test_registry};
+use common::{call_method, call_method_unchecked, load_fixture, test_registry};
 use serde_json::json;
 
 #[test]
@@ -74,4 +74,23 @@ async fn performance_get_processes_aligns_with_list_top() {
         assert!(cpu <= last_cpu + f64::EPSILON, "GetProcesses should be CPU-sorted");
         last_cpu = cpu;
     }
+}
+
+#[tokio::test]
+async fn performance_apply_preset_dry_run() {
+    std::env::set_var("AURA_PERFORMANCE_DRY_RUN", "1");
+    let registry = test_registry();
+    let value = call_method_unchecked(
+        &registry,
+        "Performance.ApplyPreset",
+        Some(json!({ "preset": "meeting" })),
+    )
+    .await
+    .expect("Performance.ApplyPreset");
+    assert_eq!(value.get("dry_run").and_then(|v| v.as_bool()), Some(true));
+    assert_eq!(
+        value.get("profile").and_then(|v| v.as_str()),
+        Some("balanced")
+    );
+    std::env::remove_var("AURA_PERFORMANCE_DRY_RUN");
 }

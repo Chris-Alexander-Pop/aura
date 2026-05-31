@@ -43,3 +43,21 @@ async fn devops_get_git_status_repo_shape() {
     assert!(value.get("status").and_then(|v| v.as_str()).is_some());
     assert!(value.get("dirty").and_then(|v| v.as_bool()).is_some());
 }
+
+#[test]
+fn devops_systemd_timers_fixture_parser() {
+    use ags_sidecar::contract_parsers::parse_systemd_timer_line;
+
+    let text = common::load_fixture("devops/systemctl_timers.txt");
+    let timers: Vec<_> = text.lines().filter_map(parse_systemd_timer_line).collect();
+    assert!(!timers.is_empty());
+}
+
+#[tokio::test]
+async fn devops_get_systemd_timers_safe() {
+    let registry = test_registry();
+    let value = call_method(&registry, "DevOps.GetSystemdTimers", None)
+        .await
+        .expect("DevOps.GetSystemdTimers");
+    assert!(value.is_array());
+}

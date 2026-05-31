@@ -9,6 +9,7 @@ use std::sync::Once;
 use tokio::time::{timeout, Duration};
 
 static CRON_TICK: Once = Once::new();
+static WEBHOOK_SERVER: Once = Once::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Workflow {
@@ -33,6 +34,14 @@ pub struct Script {
 }
 
 pub fn register(registry: &mut ServiceRegistry) {
+    WEBHOOK_SERVER.call_once(|| {
+        tokio::spawn(async {
+            if let Err(e) = run_automation_webhook_server().await {
+                tracing::debug!("automation webhook server: {}", e);
+            }
+        });
+    });
+
     let list_workflows = |_params| async move {
         storage::init().await?;
         let items = storage::scan_namespace("automation_workflows").await?;
@@ -610,6 +619,82 @@ async fn execute_actions(actions: &serde_json::Value) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn webhook_secret_matches(provided: Option<&str>, expected: &str) -> bool {
+    if expected.is_empty() {
+        return false;
+    }
+    provided == Some(expected)
+}
+
+async fn run_automation_webhook_server() -> Result<()> {
+    use axum::{
+        extract::State,
+        http::{HeaderMap, StatusCode},
+        routing::post,
+        Json, Router,
+    };
+    use std::sync::Arc;
+
+    #[derive(Clone)]
+    struct HookState {
+        secret: Arc<String>,
+    }
+
+    async fn hook_handler(
+        State(state): State<HookState>,
+        headers: HeaderMap,
+        Json(body): Json<serde_json::Value>,
+    ) -> StatusCode {
+        let token = headers
+            .get("x-aura-webhook-secret")
+            .and_then(|v| v.to_str().ok());
+        if !webhook_secret_matches(token, state.secret.as_str()) {
+            return StatusCode::UNAUTHORIZED;
+        }
+        let workflow_id = body
+            .get("workflow_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if workflow_id.is_empty() {
+            return StatusCode::BAD_REQUEST;
+        }
+        if let Err(e) = trigger_workflow_by_id(workflow_id).await {
+            tracing::warn!("webhook trigger failed: {}", e);
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        }
+        StatusCode::OK
+    }
+
+    let secret = std::env::var("AURA_AUTOMATION_WEBHOOK_SECRET").unwrap_or_default();
+    if secret.is_empty() {
+        return Ok(());
+    }
+    let port = std::env::var("AURA_AUTOMATION_WEBHOOK_PORT").unwrap_or_else(|_| "19081".into());
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{port}").parse()?;
+    let state = HookState {
+        secret: Arc::new(secret),
+    };
+    let app = Router::new()
+        .route("/hook", post(hook_handler))
+        .with_state(state);
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+async fn trigger_workflow_by_id(workflow_id: &str) -> Result<()> {
+    storage::init().await?;
+    let Some(raw) = storage::get_kv("automation_workflows", workflow_id).await? else {
+        anyhow::bail!("workflow not found");
+    };
+    let workflow: Workflow = serde_json::from_value(raw)?;
+    if !workflow.enabled {
+        anyhow::bail!("workflow disabled");
+    }
+    execute_actions(&workflow.actions).await?;
+    Ok(())
+}
+
 async fn run_script_file(script: &Script) -> Result<String> {
     let scripts_dir = automation_scripts_dir()?;
     tokio::fs::create_dir_all(&scripts_dir).await?;
@@ -656,6 +741,14 @@ mod tests {
         let out = workflows_from_storage_values(items);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id, "w1");
+    }
+
+    #[test]
+    fn webhook_secret_matches_expected() {
+        assert!(webhook_secret_matches(Some("sekrit"), "sekrit"));
+        assert!(!webhook_secret_matches(Some("wrong"), "sekrit"));
+        assert!(!webhook_secret_matches(None, "sekrit"));
+        assert!(!webhook_secret_matches(Some("x"), ""));
     }
 
     #[test]

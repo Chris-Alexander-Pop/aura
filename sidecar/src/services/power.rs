@@ -307,6 +307,10 @@ async fn emit_profile_if_changed() -> Result<()> {
     Ok(())
 }
 
+pub(crate) async fn set_profile_by_name(profile_str: &str) -> Result<()> {
+    set_profile(parse_profile_str(profile_str)).await
+}
+
 async fn set_profile(profile: PowerProfile) -> Result<()> {
     if process::exec_command(&["which", "powerprofilesctl"])
         .await
