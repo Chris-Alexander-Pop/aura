@@ -26,6 +26,7 @@ pub mod processes;
 pub mod notifications;
 pub mod keybinds;
 pub mod settings;
+pub mod dashboard;
 pub mod capture;
 
 use crate::types::JsonRpcRequest;

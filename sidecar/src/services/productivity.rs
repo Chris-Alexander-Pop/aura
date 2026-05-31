@@ -334,27 +334,31 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Productivity.GetStats", |_params| async move {
-        let timers = TIMERS.read().await;
-        let active_timers = timers.iter().filter(|t| t.active).count();
-        let pomodoro = POMODORO.read().await.clone();
-
-        storage::init().await?;
-        let focus_mode_enabled = focus_mode_enabled_from_value(
-            storage::get_kv("productivity", "focus_mode").await?.as_ref(),
-        );
-        let items = storage::scan_namespace("productivity_tasks").await?;
-        let tasks = tasks_from_storage_values(items);
-        let open_tasks = tasks.iter().filter(|t| !t.completed).count();
-
-        Ok(build_productivity_stats(
-            active_timers,
-            timers.len(),
-            pomodoro.as_ref(),
-            focus_mode_enabled,
-            open_tasks,
-            tasks.len(),
-        ))
+        Ok(snapshot_productivity_stats().await?)
     });
+}
+
+pub(crate) async fn snapshot_productivity_stats() -> anyhow::Result<serde_json::Value> {
+    let timers = TIMERS.read().await;
+    let active_timers = timers.iter().filter(|t| t.active).count();
+    let pomodoro = POMODORO.read().await.clone();
+
+    storage::init().await?;
+    let focus_mode_enabled = focus_mode_enabled_from_value(
+        storage::get_kv("productivity", "focus_mode").await?.as_ref(),
+    );
+    let items = storage::scan_namespace("productivity_tasks").await?;
+    let tasks = tasks_from_storage_values(items);
+    let open_tasks = tasks.iter().filter(|t| !t.completed).count();
+
+    Ok(build_productivity_stats(
+        active_timers,
+        timers.len(),
+        pomodoro.as_ref(),
+        focus_mode_enabled,
+        open_tasks,
+        tasks.len(),
+    ))
 }
 
 pub(crate) fn tasks_from_storage_values(items: Vec<serde_json::Value>) -> Vec<Task> {

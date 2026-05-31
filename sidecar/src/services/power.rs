@@ -107,6 +107,15 @@ fn powerprofilesctl_mode(profile: &PowerProfile) -> &'static str {
     }
 }
 
+pub(crate) async fn snapshot_battery() -> BatteryState {
+    current_battery_state().await
+}
+
+pub(crate) async fn snapshot_profile_name() -> String {
+    let state = STATE.read().await;
+    profile_to_str(&state.active_profile).to_string()
+}
+
 async fn current_battery_state() -> BatteryState {
     let state = STATE.read().await;
     BatteryState {

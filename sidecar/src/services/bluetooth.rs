@@ -187,6 +187,22 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 }
 
+pub(crate) async fn snapshot_bluetooth_quick() -> serde_json::Value {
+    let state = BLUETOOTH_STATE.read().await;
+    let powered = state.adapters.first().map(|a| a.powered).unwrap_or(false);
+    let connected: Vec<&BluetoothDevice> = state.devices.iter().filter(|d| d.connected).collect();
+    serde_json::json!({
+        "powered": powered,
+        "adapter_count": state.adapters.len(),
+        "connected_count": connected.len(),
+        "primary_device": connected.first().map(|d| serde_json::json!({
+            "name": d.name,
+            "alias": d.alias,
+            "address": d.address,
+        })),
+    })
+}
+
 fn device_address_from_params(
     params: Option<serde_json::Value>,
 ) -> Result<String> {

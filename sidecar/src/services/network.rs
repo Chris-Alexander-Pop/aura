@@ -167,8 +167,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Network.GetStatus", |_params| async move {
-        let state = STATE.read().await;
-        Ok(serde_json::to_value(&state.status)?)
+        Ok(serde_json::to_value(snapshot_network_status().await)?)
     });
 
     registry.register("Network.ListSaved", |_params| async move {
@@ -201,6 +200,11 @@ pub fn register(registry: &mut ServiceRegistry) {
         process::exec_command(&["nmcli", "connection", "delete", &target]).await?;
         Ok(serde_json::json!({ "success": true }))
     });
+}
+
+pub(crate) async fn snapshot_network_status() -> NetworkStatus {
+    let state = STATE.read().await;
+    state.status.clone()
 }
 
 async fn connect_open_or_saved(ssid: &str) -> Result<()> {

@@ -317,6 +317,23 @@ pub(crate) fn schedule_calendar_events_emit_for_tests(reason: &str) {
 }
 
 
+pub(crate) async fn snapshot_upcoming(limit: usize) -> Result<Vec<CalendarEvent>> {
+    storage::init().await?;
+    let mut events =
+        events_from_storage_values(storage::scan_namespace("calendar_events").await?);
+    let now = chrono::Utc::now().timestamp();
+    let horizon = now + 7 * 86_400;
+    events.retain(|e| e.end >= now && e.start <= horizon);
+    events.sort_by_key(|e| e.start);
+    events.truncate(limit);
+    Ok(events)
+}
+
+pub(crate) async fn snapshot_next_event() -> Result<Option<CalendarEvent>> {
+    let mut events = snapshot_upcoming(1).await?;
+    Ok(events.pop())
+}
+
 pub(crate) fn events_from_storage_values(items: Vec<serde_json::Value>) -> Vec<CalendarEvent> {
     items
         .into_iter()

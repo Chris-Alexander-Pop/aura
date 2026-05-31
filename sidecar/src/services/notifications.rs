@@ -221,6 +221,11 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 }
 
+pub(crate) async fn snapshot_dnd() -> Result<DndPrefs> {
+    storage::init().await?;
+    load_dnd().await
+}
+
 async fn load_dnd() -> Result<DndPrefs> {
     match storage::get_kv(NS, DND_KEY).await? {
         Some(v) => Ok(serde_json::from_value(v)?),

@@ -811,6 +811,25 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 }
 
+pub(crate) async fn snapshot_audio_tile() -> serde_json::Value {
+    let state = PIPEWIRE_STATE.read().await;
+    let default_sink = state
+        .sinks
+        .iter()
+        .find(|s| s.is_default)
+        .or(state.sinks.first());
+    serde_json::json!({
+        "sink_count": state.sinks.len(),
+        "source_count": state.sources.len(),
+        "default_sink": default_sink.map(|s| serde_json::json!({
+            "id": s.id,
+            "name": s.name,
+            "volume": s.volume,
+            "muted": s.muted,
+        })),
+    })
+}
+
 fn device_id_from_params(params: &Option<serde_json::Value>) -> Result<i32> {
     Ok(serde_json::from_value(
         params

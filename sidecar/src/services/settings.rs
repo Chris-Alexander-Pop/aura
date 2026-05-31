@@ -105,7 +105,7 @@ pub fn merge_partial(base: &AuraSettings, partial: &Map<String, Value>) -> Resul
     Ok(out)
 }
 
-async fn load_settings() -> Result<AuraSettings> {
+pub(crate) async fn load_settings() -> Result<AuraSettings> {
     storage::init().await?;
     if let Some(raw) = storage::get_kv(SETTINGS_NS, SETTINGS_KEY).await? {
         let settings: AuraSettings = serde_json::from_value(raw)?;
