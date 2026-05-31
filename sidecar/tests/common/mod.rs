@@ -218,10 +218,16 @@ use std::sync::Mutex;
 
 static STORAGE_TEST_LOCK: Mutex<()> = Mutex::new(());
 static LAUNCHER_TEST_LOCK: Mutex<()> = Mutex::new(());
+static AUTOMATION_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 /// Serialize launcher tests that override `AURA_LAUNCHER_DESKTOP_DIRS`.
 pub fn launcher_test_lock() -> std::sync::MutexGuard<'static, ()> {
     LAUNCHER_TEST_LOCK.lock().unwrap()
+}
+
+/// Serialize automation storage tests (SQLite + cron tick side effects).
+pub fn automation_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    AUTOMATION_TEST_LOCK.lock().unwrap()
 }
 
 pub struct StorageTestDb {
@@ -338,7 +344,7 @@ pub fn load_api_ts_methods() -> std::collections::BTreeSet<String> {
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let re = regex::Regex::new(
-        r#""((?:Power|Network|Bluetooth|Audio|System|Weather|Vpn|Calendar|Packages|Notifications|Keybinds|Logs|Security|Performance|DevOps|Productivity|Automation|Communication|Fitness|Brightness|Hyprland|Session|Aura|Apps|Media|Process|Settings|Capture)\.[A-Za-z]+)""#,
+        r#""((?:Power|Network|Bluetooth|Audio|System|Weather|Vpn|Calendar|Packages|Notifications|Keybinds|Logs|Security|Performance|DevOps|Productivity|Automation|Communication|Fitness|Brightness|Hyprland|Session|Aura|Apps|Media|Process|Settings|Capture|Launcher|Todos|Vault|Dashboard|Sidebar)\.[A-Za-z.]+)""#,
     )
     .expect("api method regex");
     re.captures_iter(&text)
@@ -371,6 +377,7 @@ pub fn is_safe_readonly_rpc(method: &str) -> bool {
         || verb.starts_with("Filter")
         || verb == "IsEnabled"
         || verb == "ExportIcs"
+        || matches!(verb, "Query" | "Recent" | "ParseDueDate" | "Status")
 }
 
 /// Collect RPC method names invoked via [`call_method`] / [`call_rpc`] in integration test sources.

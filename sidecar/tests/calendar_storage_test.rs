@@ -7,14 +7,19 @@ use ags_sidecar::notify;
 use common::{call_method_unchecked, call_rpc, load_fixture, setup_temp_storage_db};
 use serde_json::json;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::Mutex;
 use std::time::Duration;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast;
 
-static CALENDAR_NOTIFY_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static CALENDAR_STORAGE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+fn calendar_storage_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    CALENDAR_STORAGE_TEST_LOCK.lock().unwrap()
+}
 
 #[tokio::test]
 async fn calendar_crud_and_upcoming() {
+    let _guard = calendar_storage_test_lock();
     setup_temp_storage_db().await;
     let registry = build_registry();
 
@@ -55,6 +60,7 @@ async fn calendar_crud_and_upcoming() {
 
 #[tokio::test]
 async fn calendar_import_ics_fixture_round_trip() {
+    let _guard = calendar_storage_test_lock();
     let _db = setup_temp_storage_db().await;
     let registry = build_registry();
 
@@ -121,10 +127,7 @@ async fn calendar_import_ics_fixture_round_trip() {
 
 #[tokio::test]
 async fn calendar_create_emits_events_changed_after_debounce() {
-    let _notify_guard = CALENDAR_NOTIFY_TEST_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .await;
+    let _guard = calendar_storage_test_lock();
     let _db = setup_temp_storage_db().await;
     let tx = notify::init_for_tests();
     let mut rx = tx.subscribe();
@@ -145,6 +148,8 @@ async fn calendar_create_emits_events_changed_after_debounce() {
     )
     .await
     .expect("Calendar.CreateEvent");
+
+    tokio::time::sleep(Duration::from_millis(350)).await;
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
     loop {

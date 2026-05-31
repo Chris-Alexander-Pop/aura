@@ -84,5 +84,12 @@ async fn settings_get_schema_lists_fields() {
         .await
         .unwrap();
     assert_eq!(schema.get("schema_version").and_then(|v| v.as_i64()), Some(1));
-    assert!(schema.get("fields").is_some());
+    let fields = schema.get("fields").and_then(|v| v.as_object()).expect("fields");
+    let theme = fields.get("theme").and_then(|v| v.as_object()).expect("theme field");
+    let examples = theme
+        .get("examples")
+        .and_then(|v| v.as_array())
+        .expect("theme examples");
+    assert!(examples.iter().any(|v| v.as_str() == Some("dark")));
+    assert!(examples.iter().any(|v| v.as_str() == Some("catppuccin-mocha")));
 }

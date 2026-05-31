@@ -3,12 +3,13 @@
 mod common;
 
 use ags_sidecar::build_registry;
-use common::{call_method_unchecked, call_rpc, setup_temp_storage_db};
+use common::{automation_test_lock, call_method_unchecked, call_rpc, setup_temp_storage_db};
 use serde_json::json;
 
 #[tokio::test]
 async fn automation_workflow_round_trip_and_trigger() {
-    setup_temp_storage_db().await;
+    let _guard = automation_test_lock();
+    let _db = setup_temp_storage_db().await;
     let registry = build_registry();
 
     let created = call_method_unchecked(
@@ -64,7 +65,8 @@ async fn automation_workflow_round_trip_and_trigger() {
 
 #[tokio::test]
 async fn automation_enable_flag_and_run_count_round_trip() {
-    setup_temp_storage_db().await;
+    let _guard = automation_test_lock();
+    let _db = setup_temp_storage_db().await;
     let registry = build_registry();
 
     let created = call_method_unchecked(
