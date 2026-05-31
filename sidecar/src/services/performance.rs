@@ -1,7 +1,7 @@
 use crate::notify;
 use crate::services::processes::{self, ProcessRow};
 use crate::services::ServiceRegistry;
-use crate::utils::{privileged, process};
+use crate::utils::process;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -173,7 +173,7 @@ pub fn register(registry: &mut ServiceRegistry) {
                 i
             );
             let script = format!("echo '{}' > '{}'", governor.replace('\'', ""), governor_path);
-            privileged::run_privileged(&["sh", "-c", &script]).await?;
+            crate::utils::polkit::run_privileged(&["sh", "-c", &script]).await?;
         }
 
         Ok(serde_json::json!({ "success": true }))

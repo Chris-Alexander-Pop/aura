@@ -45,6 +45,7 @@ const CC_PANE_IDS: &[&str] = &[
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct AuraSettings {
     pub bar_section_order: Vec<String>,
     pub cc_enabled_panes: Vec<String>,

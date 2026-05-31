@@ -82,12 +82,20 @@ impl ServiceRegistry {
 
     pub async fn handle_request(&self, request: JsonRpcRequest) -> Result<serde_json::Value> {
         let method = request.method.clone();
-        let params = request.params;
+        let params = request.params.clone();
+        let started = std::time::Instant::now();
 
-        if let Some(handler) = self.handlers.get(&method) {
-            handler(params).await
+        let result = if let Some(handler) = self.handlers.get(&method) {
+            handler(params.clone()).await
         } else {
-            Err(anyhow::Error::new(MethodNotFound(method)))
-        }
+            Err(anyhow::Error::new(MethodNotFound(method.clone())))
+        };
+
+        crate::utils::rpc_log::log_rpc_completed(
+            &method,
+            params.as_ref(),
+            started.elapsed(),
+        );
+        result
     }
 }

@@ -202,6 +202,7 @@ async fn websocket_receives_calendar_events_changed() {
     assert_eq!(v["params"]["reason"], "create");
 }
 
+/// Synthetic push only (`notify::emit` payload). Live sysfs → `Power` poll → WS is `[~]` in BACKEND_TODO §0.6.
 #[tokio::test]
 async fn websocket_receives_power_battery_state() {
     let notify_tx = test_notify_bus();

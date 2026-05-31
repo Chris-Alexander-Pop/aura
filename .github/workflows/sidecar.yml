@@ -1,0 +1,35 @@
+name: sidecar
+
+on:
+  push:
+    paths:
+      - "sidecar/**"
+      - "scripts/sidecar-test-fast.sh"
+      - "scripts/generate-rpc-manifest.sh"
+      - "scripts/check-api-rpc-contract.sh"
+      - "ui/src/lib/api.ts"
+      - ".github/workflows/sidecar.yml"
+  pull_request:
+    paths:
+      - "sidecar/**"
+      - "scripts/sidecar-test-fast.sh"
+      - "scripts/generate-rpc-manifest.sh"
+      - "scripts/check-api-rpc-contract.sh"
+      - "ui/src/lib/api.ts"
+      - ".github/workflows/sidecar.yml"
+
+jobs:
+  fast-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Fast sidecar gate
+        run: ./scripts/sidecar-test-fast.sh

@@ -19,6 +19,7 @@ const NS_PROJECTS: &str = "todo_projects";
 const NS_REMINDERS_FIRED: &str = "todo_reminders";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct TodoItem {
     pub id: String,
     pub title: String,
@@ -32,6 +33,7 @@ pub struct TodoItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct TodoProject {
     pub id: String,
     pub name: String,

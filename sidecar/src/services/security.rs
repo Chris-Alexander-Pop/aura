@@ -1,5 +1,5 @@
 use crate::services::ServiceRegistry;
-use crate::utils::{privileged, process};
+use crate::utils::process;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -419,10 +419,10 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     registry.register("Security.EnableFirewall", |_params| async move {
         let enabled = if process::exec_command(&["command", "-v", "ufw"]).await.is_ok() {
-            privileged::run_privileged(&["ufw", "enable"]).await?;
+            crate::utils::polkit::run_privileged(&["ufw", "enable"]).await?;
             probe_firewall_enabled().await
         } else if process::exec_command(&["command", "-v", "firewall-cmd"]).await.is_ok() {
-            privileged::run_privileged(&["systemctl", "start", "firewalld"]).await?;
+            crate::utils::polkit::run_privileged(&["systemctl", "start", "firewalld"]).await?;
             probe_firewall_enabled().await
         } else {
             anyhow::bail!("no supported firewall tool found")
@@ -432,10 +432,10 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     registry.register("Security.DisableFirewall", |_params| async move {
         let disabled = if process::exec_command(&["command", "-v", "ufw"]).await.is_ok() {
-            privileged::run_privileged(&["ufw", "disable"]).await?;
+            crate::utils::polkit::run_privileged(&["ufw", "disable"]).await?;
             !probe_firewall_enabled().await
         } else if process::exec_command(&["command", "-v", "firewall-cmd"]).await.is_ok() {
-            privileged::run_privileged(&["systemctl", "stop", "firewalld"]).await?;
+            crate::utils::polkit::run_privileged(&["systemctl", "stop", "firewalld"]).await?;
             !probe_firewall_enabled().await
         } else {
             anyhow::bail!("no supported firewall tool found")
@@ -618,7 +618,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         if !probe_clamav_installed().await {
             anyhow::bail!("clamscan not installed");
         }
-        let output = privileged::run_privileged(&["clamscan", "-r", &path]).await?;
+        let output = crate::utils::polkit::run_privileged(&["clamscan", "-r", &path]).await?;
         Ok(serde_json::json!({ "success": true, "output": output }))
     });
 

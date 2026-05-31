@@ -70,14 +70,14 @@ Fast-gate flakes, `api.ts` for Launcher/Todos/Vault/Dashboard/Capture, §0.4 pro
 
 - [x] Document **Arch-first** stance in [sidecar/README.md](../sidecar/README.md) (pacman branches; multi-distro not a goal)
 - [x] `sidecar/README.md`: build, HTTP `:9080`, env vars, deny-list, coverage
-- [~] **Binary path:** documented (`AURA_SIDECAR`, XDG path, dev clone under `Engineering/Productivity/ags`); GTK resolver not fully generalized (ADR)
+- [x] **Binary path:** `AURA_SIDECAR`, XDG path, dev clone walk in `src/lib/sidecar.ts` (see ADR)
 - [x] Machine-readable **RPC manifest** + regeneration in `./scripts/sidecar-test-fast.sh`
 - [x] **`DevOps`** casing in `ui/src/lib/api.ts` (not `Devops`)
 
 ### 0.2 Shared types (`sidecar/src/types.rs`)
 
 - [~] Audit DTOs vs `ui/src/lib/api-types.ts` (ongoing per service)
-- [ ] `#[serde(deny_unknown_fields)]` on stable outward types where feasible
+- [~] `#[serde(deny_unknown_fields)]` on stable outward types where feasible (Settings `AuraSettings`, `Todos`, `Launcher` result; more per service)
 - [~] Mirror types in `src/lib/types.ts` (partial; VPN and others updated ad hoc)
 - [x] Version RPC: `Sidecar.GetVersion` (+ HTTP tests in `server_http_test.rs`)
 
@@ -90,18 +90,19 @@ Fast-gate flakes, `api.ts` for Launcher/Todos/Vault/Dashboard/Capture, §0.4 pro
 - [x] Migrations table + schema version
 - [x] Unit tests: round-trip, concurrent writes, corrupt JSON handling
 
-### 0.4 Process & privileges (`utils/process.rs`, `utils/keyring.rs`)
+### 0.4 Process & privileges (`utils/process.rs`, `utils/polkit.rs`, `utils/keyring.rs`)
 
-- [~] Allowlist pattern in launcher, capture, hyprland dispatch, automation (not one central module)
-- [~] Timeouts on many `exec_command` call sites (not universal)
-- [~] Polkit/pkexec used ad hoc (packages, security firewall, VPN); no shared helper
+- [x] Central allowlist: `run_allowlisted` / `run_allowlisted_detached` in `utils/process.rs` (launcher, capture migrated)
+- [x] Default timeout (30s) + max output (1 MiB) on `exec_command` / allowlisted runs
+- [x] Polkit helper: `utils/polkit.rs` `run_privileged` (security firewall, packages, performance)
 - [~] Keyring: network/VPN paths (not full OAuth)
-- [ ] Unit tests with **mocked** command runner (inject trait)
+- [x] Unit tests: `MockCommandRunner` + allowlist rejection in `utils/process.rs`
+- [~] Remaining services still use `exec_command` without allowlist (hyprland, logs, …)
 
 ### 0.5 Service registry
 
 - [x] Unknown method: `MethodNotFound` → structured JSON-RPC / HTTP 404
-- [ ] Request logging behind `RUST_LOG` with **redaction**
+- [x] Request logging: method + duration at `debug`; `AURA_RPC_LOG_PARAMS=1` with redaction (`utils/rpc_log.rs`)
 - [x] `Security.Offensive.*` behind `offensive-security` feature ([security_offensive.rs](../sidecar/src/services/security_offensive.rs))
 - [x] ~~Register alias handlers~~ — **decided:** rename clients, no aliases (ADR); `Automation.ListRules` aliases `GetWorkflows` in Rust only
 
@@ -111,7 +112,7 @@ Fast-gate flakes, `api.ts` for Launcher/Todos/Vault/Dashboard/Capture, §0.4 pro
 - [x] Emit on: battery, network, Bluetooth, Audio (partial); Performance, Productivity, Hyprland, Calendar
 - [~] GTK `sidecar.ts` listens for some events; not all React namespaces wired
 - [x] WS tests: `server_http_test.rs` (synthetic `notify::emit`; Calendar, Power, etc.)
-- [ ] Integration test: **live** host change → WS (not only synthetic emit)
+- [~] Integration test: **live** host change → WS (`server_http_test.rs` covers synthetic `Power.BatteryState` only)
 
 ### 0.7 Test infrastructure
 
@@ -119,8 +120,8 @@ Fast-gate flakes, `api.ts` for Launcher/Todos/Vault/Dashboard/Capture, §0.4 pro
 - [x] Integration tests via full `build_registry()` + `call_method` deny-list
 - [x] HTTP integration: `server_http_test.rs` on `127.0.0.1:0`
 - [x] Fixture directory `sidecar/tests/fixtures/` (hyprland, nmcli, audio, power_supply, brightness, packages, security, vpn, calendar, desktop, vault, …)
-- [~] CI job: fast gate script exists; no `.github/workflows` doc in-repo yet
-- [~] Manual test matrix: partial notes in `sidecar/tests/README.md`
+- [x] CI job: `.github/workflows/sidecar.yml` → `./scripts/sidecar-test-fast.sh`
+- [x] Manual test matrix: `sidecar/README.md` hardware table
 - [x] P0 / brightness smoke via registry (`integration_test.rs`, `brightness_rpc_shapes.rs`)
 - [x] `api_ts_readonly_methods_resolve` for safe `api.ts` RPCs
 

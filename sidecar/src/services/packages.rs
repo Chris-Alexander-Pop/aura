@@ -1,5 +1,5 @@
 use crate::services::ServiceRegistry;
-use crate::utils::{privileged, process, storage, transactions};
+use crate::utils::{process, storage, transactions};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -80,7 +80,7 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     registry.register("Packages.Install", |params| async move {
         let name: String = package_name_from_params(params)?;
-        let result = privileged::run_privileged(&["pacman", "-S", "--noconfirm", &name]).await;
+        let result = crate::utils::polkit::run_privileged(&["pacman", "-S", "--noconfirm", &name]).await;
         log_result("install", vec![name.clone()], &result).await;
         result?;
         Ok(serde_json::json!({ "success": true }))
@@ -88,21 +88,21 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     registry.register("Packages.Remove", |params| async move {
         let name: String = package_name_from_params(params)?;
-        let result = privileged::run_privileged(&["pacman", "-R", "--noconfirm", &name]).await;
+        let result = crate::utils::polkit::run_privileged(&["pacman", "-R", "--noconfirm", &name]).await;
         log_result("remove", vec![name.clone()], &result).await;
         result?;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Packages.Update", |_params| async move {
-        let result = privileged::run_privileged(&["pacman", "-Sy"]).await;
+        let result = crate::utils::polkit::run_privileged(&["pacman", "-Sy"]).await;
         log_result("update", vec![], &result).await;
         result?;
         Ok(serde_json::json!({ "success": true }))
     });
 
     registry.register("Packages.Upgrade", |_params| async move {
-        let result = privileged::run_privileged(&["pacman", "-Syu", "--noconfirm"]).await;
+        let result = crate::utils::polkit::run_privileged(&["pacman", "-Syu", "--noconfirm"]).await;
         log_result("upgrade", vec![], &result).await;
         result?;
         Ok(serde_json::json!({ "success": true }))

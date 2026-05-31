@@ -1,6 +1,6 @@
 # Process, privileges, and platform harness
 
-**Status:** Planned  
+**Status:** Implemented (2026-05-31)  
 **Depends on:** [foundation_contracts.md](../foundation_contracts.md)  
 **Aligns with:** [BACKEND_TODO.md](../../BACKEND_TODO.md) §0.2–0.4, §0.5–0.6, §0.7, §7 item 3
 

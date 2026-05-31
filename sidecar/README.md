@@ -27,6 +27,7 @@ System packages (Arch): `libssl-dev` / `openssl` + `pkg-config` for `openssl-sys
 | `AURA_SIDECAR` | Absolute path to the binary (GTK shell; see `src/lib/sidecar.ts`) |
 | `AURA_STORAGE_DB` | SQLite path for `Storage.*` and namespaced prefs (tests use a temp file) |
 | `RUST_LOG` | Tracing filter, e.g. `ags_sidecar=debug` (see `tracing_subscriber`) |
+| `AURA_RPC_LOG_PARAMS` | Set `1` to log RPC params at `debug` (secrets redacted; never logs `Storage.*` / `Settings.*` bodies) |
 | `AURA_HYPRLAND_EVENTS` | Set `0` to disable Hyprland socket2 push listener |
 | `AURA_LAUNCHER_DESKTOP_DIRS` | Colon-separated directories of `.desktop` files (tests use `tests/fixtures/desktop`) |
 | `VICINAE_SOCKET` | *(planned)* Unix socket path for Vicinae daemon RPC — `Vicinae.Exec` not implemented yet |
@@ -43,7 +44,24 @@ Symlink or copy builds into `~/.config/ags/sidecar/target/` when using `~/.confi
 
 **Arch-first** today: NetworkManager, PipeWire + WirePlumber, `powerprofilesctl`, pacman, Podman, GNOME Keyring, Freedesktop notifications D-Bus. Other distros may need alternate code paths later — see [../docs/ARCHITECTURE_DECISIONS.md](../docs/ARCHITECTURE_DECISIONS.md).
 
-Polkit: privileged helpers (VPN, firewall, some package actions) expect a working polkit agent when those RPCs are invoked from the UI.
+Polkit: elevated commands go through `utils/polkit.rs` (`run_privileged` → `pkexec` when on PATH, else `sudo`). Used by firewall toggles (`Security.*`), package install/upgrade (`Packages.*`), and some performance helpers. A polkit agent must be available when those RPCs run from the UI.
+
+### CI
+
+GitHub Actions: [`.github/workflows/sidecar.yml`](../.github/workflows/sidecar.yml) runs `./scripts/sidecar-test-fast.sh` on pushes touching `sidecar/` or API contract scripts.
+
+### Manual hardware matrix (pre-release smoke)
+
+Run on a Hyprland session with the real stack (NetworkManager, PipeWire, etc.). Use read-only RPCs in scripts where possible; mutating rows need explicit operator approval.
+
+| Area | Procedure | Expected |
+|------|-----------|----------|
+| Wi-Fi connect | Control center → Network → connect to known SSID | `Network.StateChanged` WS event; bar shows connected SSID |
+| Bluetooth pair | Scan → pair trusted device | Device appears connected; `Bluetooth.StateChanged` |
+| Battery | Unplug AC, wait for poll | `Power.BatteryState` on `/ws` (GTK `battery-state` signal) |
+| VPN dry-run | `Vpn.GetStatus` / connect with test profile | Status JSON updates; no crash if agent missing (graceful error) |
+| Screenshot | `Capture.Screenshot` region → clipboard | `grim`/`slurp`/`wl-copy` path OK or `tool_missing` |
+| Packages | `Packages.GetUpgradable` (read-only) | List returns; install only with polkit agent |
 
 ## Real-time push (WebSocket + GTK)
 

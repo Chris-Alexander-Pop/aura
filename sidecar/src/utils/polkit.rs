@@ -1,3 +1,5 @@
+//! Polkit / elevated command helper (`pkexec` when available, else `sudo`).
+
 use anyhow::Result;
 use crate::utils::process;
 
@@ -11,8 +13,13 @@ pub(crate) fn privilege_wrapper(has_pkexec: bool) -> &'static str {
 }
 
 /// Run a command with elevated privileges via `pkexec` when available, else `sudo`.
+///
+/// The wrapper is prepended to `args` (e.g. `["ufw", "enable"]` → `pkexec ufw enable`).
 pub async fn run_privileged(args: &[&str]) -> Result<String> {
-    let wrapper = if process::exec_command(&["which", "pkexec"]).await.is_ok() {
+    let wrapper = if process::run_allowlisted(&["which", "pkexec"])
+        .await
+        .is_ok()
+    {
         privilege_wrapper(true)
     } else {
         privilege_wrapper(false)
