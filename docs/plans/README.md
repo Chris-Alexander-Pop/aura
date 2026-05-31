@@ -13,23 +13,31 @@ Plans are **vertical slices** aligned with [BACKEND_TODO.md](../BACKEND_TODO.md)
 | [foundation_contracts.md](foundation_contracts.md) | Done (2026-05-31) | §0, §1 — README, manifest gate, `api.ts` sweep, fixtures, unknown-method errors |
 | [automation_workflows.md](automation_workflows.md) | Done (2026-05-31) | §2.21 — SQLite workflows, cron tick, trigger/run logging, UI history |
 | [session_lock_extended.md](session_lock_extended.md) | Done (2026-05-31) | §2.9, §3.8 — logind session actions, lock/sleep RPCs |
+| [p0_daily_hardening.md](p0_daily_hardening.md) | Done (2026-05-31) | §2.5–2.6 — `System.GetStats`, multi-monitor brightness, fixtures |
+| [dashboard_aggregation.md](dashboard_aggregation.md) | Done (2026-05-31) | §3.13 — `Dashboard.GetQuickStatus`, `Sidebar.GetTileData` |
 
 ## Remaining (suggested order)
 
-| Order | Plan | Priority | BACKEND_TODO focus |
-|------:|------|----------|-------------------|
-| 1 | [p0_daily_hardening.md](p0_daily_hardening.md) | P0–P1 | §2.1–2.6, §2.5 — Power/Network/Audio fixtures, Brightness, `System.GetStats` |
-| 2 | [control_center_hardening.md](control_center_hardening.md) | P2 | §2.15–2.18, §2.12, §2.11, §2.16 — Packages, Security defensive, Performance data, Weather, Processes, Logs follow |
-| 3 | [launcher_vicinae.md](launcher_vicinae.md) | P2 | §3.3 — Launcher / Vicinae (needs foundation + shell platform) |
-| 4 | [dashboard_aggregation.md](dashboard_aggregation.md) | P2 | §3.13 — dropdown + sidebar tiles (needs `Settings.*`) |
-| 5 | [vpn_service.md](vpn_service.md) | P1 | §2.7 — VPN profiles and connect |
-| 6 | [calendar_sync_todos.md](calendar_sync_todos.md) | P2–P3 | §2.23 CalDAV/ICS, §3.6 Todos |
-| 7 | [vault_p3_panels.md](vault_p3_panels.md) | P3 | §3.7, §2.22, §3.9–3.11, §3.14 stubs |
-| 8 | [offensive_security.md](offensive_security.md) | P4 | §2.17 — `offensive-security` feature flag |
+| Order | Plan | Priority | Depends on | BACKEND_TODO focus |
+|------:|------|----------|------------|-------------------|
+| 1 | [control_center_hardening.md](control_center_hardening.md) | P2 | p0, foundation | §2.15–2.18, §2.12, §2.11, §2.16 — Packages, Security defensive, Performance, Weather, Processes, Logs |
+| 2 | [launcher_vicinae.md](launcher_vicinae.md) | P2 | foundation, shell_platform | §3.3 — Launcher / Vicinae |
+| 3 | [vpn_service.md](vpn_service.md) | P1 | p0, foundation | §2.7 — VPN profiles and connect |
+| 4 | [calendar_sync_todos.md](calendar_sync_todos.md) | P2–P3 | control_center_depth, shell_platform | §2.23 CalDAV/ICS, §3.6 Todos |
+| 5 | [vault_p3_panels.md](vault_p3_panels.md) | P3 | foundation | §3.7, §2.22, §3.9–3.11, §3.14 stubs |
+| 6 | [offensive_security.md](offensive_security.md) | P4 | control_center_hardening | §2.17 — `offensive-security` feature flag |
 
 Run the fast gate after each slice: `./scripts/sidecar-test-fast.sh`.
 
-**Note:** Stabilize flaky `calendar_storage_test` / `automation_storage_test` timing before treating the fast gate as fully green.
+**Note:** Stabilize flaky `calendar_storage_test` / `automation_storage_test` debounce timing when touching calendar/automation.
+
+## In progress
+
+| Plan | Agent focus |
+|------|-------------|
+| [control_center_hardening.md](control_center_hardening.md) | Packages, Security defensive, Performance, Weather, Processes, Logs |
+| [launcher_vicinae.md](launcher_vicinae.md) | `launcher.rs`, Vicinae bridge |
+| [vpn_service.md](vpn_service.md) | `vpn.rs` profiles and status |
 
 ## Test layout (all plans)
 
@@ -43,7 +51,7 @@ Run the fast gate after each slice: `./scripts/sidecar-test-fast.sh`.
 | `tests/server_http_test.rs` | Ephemeral HTTP + `/ws` push (`127.0.0.1:0` only) |
 | `#[cfg(test)]` in `src/services/*.rs` | Parsers, argv builders, debouncers |
 
-Do **not** add bucket-named integration crates (e.g. `phaseN_*_test.rs`). Extend the domain file that owns the behavior.
+Do **not** add bucket-named integration crates. Extend the domain file that owns the behavior.
 
 Mutating RPCs stay on `tests/common/mod.rs` `DENIED_EXACT` / `DENIED_PREFIXES` unless documented under `#[ignore]` with isolation.
 
