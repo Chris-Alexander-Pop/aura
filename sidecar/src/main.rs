@@ -35,6 +35,7 @@ async fn run_server() -> Result<()> {
     notify::spawn_stdout_forwarder(notify_rx);
     ags_sidecar::services::notifications::spawn_dbus_listener();
     ags_sidecar::services::calendar::spawn_reminder_tick();
+    ags_sidecar::services::todos::spawn_reminder_tick();
     ags_sidecar::services::hyprland::spawn_event_listener();
 
     let registry = Arc::new(Mutex::new(build_registry()));

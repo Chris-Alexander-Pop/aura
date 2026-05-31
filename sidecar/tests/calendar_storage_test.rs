@@ -1,11 +1,12 @@
-//! Mutating `Calendar.*` event CRUD against a temporary storage DB (`call_method_unchecked`).
+//! Mutating `Calendar.*` event CRUD and ICS import against a temporary storage DB (`call_method_unchecked`).
 
 mod common;
 
 use ags_sidecar::build_registry;
 use ags_sidecar::notify;
-use common::{call_method_unchecked, call_rpc, setup_temp_storage_db};
+use common::{call_method_unchecked, call_rpc, load_fixture, setup_temp_storage_db};
 use serde_json::json;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::sync::{broadcast, Mutex};
@@ -50,6 +51,72 @@ async fn calendar_crud_and_upcoming() {
     .await
     .unwrap();
     assert_eq!(del.get("deleted"), Some(&json!(true)));
+}
+
+#[tokio::test]
+async fn calendar_import_ics_fixture_round_trip() {
+    let _db = setup_temp_storage_db().await;
+    let registry = build_registry();
+
+    let import_path = std::env::temp_dir().join(format!(
+        "aura-ics-import-{}-{}.ics",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::write(&import_path, load_fixture("calendar/multi_event.ics")).unwrap();
+
+    let import = call_method_unchecked(
+        &registry,
+        "Calendar.ImportIcs",
+        Some(json!({
+            "file_path": import_path.to_string_lossy(),
+            "calendar_id": "imported"
+        })),
+    )
+    .await
+    .unwrap();
+    assert_eq!(import.get("imported"), Some(&json!(2)));
+
+    let events = call_rpc(&registry, "Calendar.GetEvents", None)
+        .await
+        .unwrap();
+    let ids: Vec<_> = events
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|e| e.get("id").and_then(|v| v.as_str()))
+        .collect();
+    assert!(ids.contains(&"event-a@aura"));
+    assert!(ids.contains(&"event-b@aura"));
+
+    let export_path = std::env::temp_dir().join(format!(
+        "aura-ics-export-{}-{}.ics",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let export = call_method_unchecked(
+        &registry,
+        "Calendar.ExportIcs",
+        Some(json!({
+            "calendar_id": "imported",
+            "file_path": export_path.to_string_lossy()
+        })),
+    )
+    .await
+    .unwrap();
+    assert_eq!(export.get("exported"), Some(&json!(2)));
+
+    let body = std::fs::read_to_string(&export_path).unwrap();
+    let reparsed = ags_sidecar::services::ics::parse_ics(&body).unwrap();
+    assert_eq!(reparsed.len(), 2);
+    let _ = std::fs::remove_file(&import_path);
+    let _ = std::fs::remove_file(&export_path);
 }
 
 #[tokio::test]

@@ -152,8 +152,8 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Calendar.SyncCalendars", |_params| async move {
-        // Would integrate with khal/vdirsyncer
-        Ok(serde_json::json!({ "success": true }))
+        // TODO(Slice C): CalDAV/Google OAuth via keyring; read-only sync first.
+        Ok(serde_json::json!({ "success": true, "synced": 0 }))
     });
 
     registry.register("Calendar.GetUpcomingEvents", |params| async move {
@@ -206,34 +206,46 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Calendar.ImportIcs", |params| async move {
-        let _file_path: String = serde_json::from_value(
+        let file_path: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("file_path").cloned())
                 .ok_or_else(|| anyhow::anyhow!("Missing file_path"))?,
         )?;
 
-        // Would parse .ics file
-        Ok(serde_json::json!({ "success": true }))
+        let calendar_id: Option<String> = params
+            .as_ref()
+            .and_then(|p| p.get("calendar_id").cloned())
+            .and_then(|v| serde_json::from_value(v).ok());
+
+        let path = std::path::PathBuf::from(&file_path);
+        let parsed = crate::services::ics::read_ics_file(&path).await?;
+        let imported =
+            crate::services::ics::import_events_to_storage(&parsed, calendar_id).await?;
+        schedule_calendar_events_emit("import");
+        Ok(serde_json::json!({ "success": true, "imported": imported }))
     });
 
     registry.register("Calendar.ExportIcs", |params| async move {
-        let _calendar_id: String = serde_json::from_value(
-            params
-                .as_ref()
-                .and_then(|p| p.get("calendar_id").cloned())
-                .ok_or_else(|| anyhow::anyhow!("Missing calendar_id"))?,
-        )?;
+        let calendar_id: Option<String> = params
+            .as_ref()
+            .and_then(|p| p.get("calendar_id").cloned())
+            .and_then(|v| serde_json::from_value(v).ok());
 
-        let _file_path: String = serde_json::from_value(
+        let file_path: String = serde_json::from_value(
             params
                 .as_ref()
                 .and_then(|p| p.get("file_path").cloned())
                 .ok_or_else(|| anyhow::anyhow!("Missing file_path"))?,
         )?;
 
-        // Would export .ics file
-        Ok(serde_json::json!({ "success": true }))
+        let events =
+            crate::services::ics::load_events_for_export(calendar_id.as_deref()).await?;
+        let name = calendar_id.as_deref().unwrap_or("Aura");
+        let body = crate::services::ics::export_ics(&events, name);
+        let path = std::path::PathBuf::from(&file_path);
+        crate::services::ics::write_ics_file(&path, &body).await?;
+        Ok(serde_json::json!({ "success": true, "exported": events.len() }))
     });
 
 }
@@ -427,6 +439,18 @@ mod tests {
     #[test]
     fn events_from_storage_empty_namespace() {
         assert!(events_from_storage_values(vec![]).is_empty());
+    }
+
+    #[test]
+    fn ics_fixture_parses_via_services_ics() {
+        let path = format!(
+            "{}/tests/fixtures/calendar/single_event.ics",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let content = std::fs::read_to_string(&path).unwrap();
+        let events = crate::services::ics::parse_ics(&content).expect("parse fixture");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].summary, "Fixture Meeting");
     }
 
     #[tokio::test]
