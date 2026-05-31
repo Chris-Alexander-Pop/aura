@@ -64,6 +64,14 @@ pub mod contract_parsers {
         crate::services::network::parse_saved_connections(output)
     }
 
+    pub fn map_nmcli_connect_error(raw: &str) -> String {
+        crate::services::network::map_nmcli_connect_error(raw)
+    }
+
+    pub fn nmcli_connect_output_success(output: &str) -> bool {
+        crate::services::network::nmcli_connect_output_success(output)
+    }
+
     pub fn parse_wifi_radio_enabled(output: &str) -> bool {
         crate::services::network::parse_wifi_radio_enabled(output)
     }
@@ -116,6 +124,10 @@ pub mod contract_parsers {
 
     pub fn parse_devices(output: &str) -> (Vec<AudioDevice>, Vec<AudioDevice>) {
         crate::services::audio::parse_devices(output)
+    }
+
+    pub fn parse_pactl_list_sinks(output: &str) -> Vec<crate::services::audio::PactlSinkSummary> {
+        crate::services::audio::parse_pactl_list_sinks(output)
     }
 
     pub fn parse_streams(output: &str) -> Vec<AudioStream> {

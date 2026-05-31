@@ -1,3 +1,8 @@
+//! Bluetooth via `bluetoothctl`.
+//!
+//! **Deferred:** pairing agent / PIN UI (`Bluetooth.Pair` needs a shell prompt path) and
+//! A2DP/HSP profile switching (research `bluetoothctl` / BlueZ APIs; no RPC stub yet).
+
 use crate::notify;
 use crate::services::ServiceRegistry;
 use crate::utils::process;

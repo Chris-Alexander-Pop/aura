@@ -1,7 +1,10 @@
+//! PipeWire audio via `wpctl` / `pactl`. EasyEffects presets and saved routing profiles are
+//! gated behind `AURA_AUDIO_ADVANCED=1` (mutating RPCs also stay on the integration deny-list).
+
 use crate::notify;
 use crate::services::ServiceRegistry;
 use crate::utils::{process, storage};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::collections::HashMap;
@@ -40,6 +43,21 @@ pub struct AudioProfile {
 }
 
 static AUDIO_EMIT_GEN: AtomicU64 = AtomicU64::new(0);
+
+const AUDIO_ADVANCED_HINT: &str =
+    "Audio effects and routing profiles require AURA_AUDIO_ADVANCED=1 (EasyEffects / saved profiles)";
+
+fn audio_advanced_enabled() -> bool {
+    std::env::var("AURA_AUDIO_ADVANCED").ok().as_deref() == Some("1")
+}
+
+fn require_audio_advanced() -> Result<()> {
+    if audio_advanced_enabled() {
+        Ok(())
+    } else {
+        bail!(AUDIO_ADVANCED_HINT)
+    }
+}
 
 lazy_static::lazy_static! {
     static ref PIPEWIRE_STATE: RwLock<PipeWireState> = RwLock::new(PipeWireState::default());
@@ -386,6 +404,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Effects.Start", |_params| async move {
+        require_audio_advanced()?;
         process::exec_command_detached(&["easyeffects", "--gapplication-service"]).await?;
         let mut state = EASYEFFECTS_STATE.write().await;
         state.running = true;
@@ -393,6 +412,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Effects.Stop", |_params| async move {
+        require_audio_advanced()?;
         // Use D-Bus to quit EasyEffects
         let _ = process::exec_command(&[
             "dbus-send",
@@ -415,6 +435,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Effects.LoadPreset", |params| async move {
+        require_audio_advanced()?;
         let preset_name: String = serde_json::from_value(
             params
                 .as_ref()
@@ -439,6 +460,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Effects.SavePreset", |params| async move {
+        require_audio_advanced()?;
         let preset_name: String = serde_json::from_value(
             params
                 .as_ref()
@@ -462,6 +484,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Effects.SetEqBand", |params| async move {
+        require_audio_advanced()?;
         let band_index: usize = serde_json::from_value(
             params
                 .as_ref()
@@ -498,6 +521,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Effects.SetNoiseSuppression", |params| async move {
+        require_audio_advanced()?;
         let enabled: bool = serde_json::from_value(
             params
                 .as_ref()
@@ -522,6 +546,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Effects.SetMicGain", |params| async move {
+        require_audio_advanced()?;
         let gain_db: f64 = serde_json::from_value(
             params
                 .as_ref()
@@ -546,6 +571,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Effects.SetNoiseGate", |params| async move {
+        require_audio_advanced()?;
         let enabled: bool = serde_json::from_value(
             params
                 .as_ref()
@@ -590,6 +616,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Effects.Reset", |_params| async move {
+        require_audio_advanced()?;
         let _ = process::exec_command(&[
             "dbus-send",
             "--session",
@@ -607,6 +634,7 @@ pub fn register(registry: &mut ServiceRegistry) {
 
     // Audio Profiles Methods
     registry.register("Audio.Profiles.Save", |params| async move {
+        require_audio_advanced()?;
         let name: String = serde_json::from_value(
             params
                 .as_ref()
@@ -639,6 +667,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Profiles.Load", |params| async move {
+        require_audio_advanced()?;
         let name: String = serde_json::from_value(
             params
                 .as_ref()
@@ -674,6 +703,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Profiles.Delete", |params| async move {
+        require_audio_advanced()?;
         let name: String = serde_json::from_value(
             params
                 .as_ref()
@@ -716,6 +746,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Audio.Profiles.ApplyScenario", |params| async move {
+        require_audio_advanced()?;
         let scenario: String = serde_json::from_value(
             params
                 .as_ref()
@@ -989,6 +1020,41 @@ pub fn parse_device_line(line: &str) -> Option<AudioDevice> {
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PactlSinkSummary {
+    pub index: u32,
+    pub description: String,
+}
+
+/// Parse `pactl list sinks` blocks (contract tests / optional fallback discovery).
+pub fn parse_pactl_list_sinks(output: &str) -> Vec<PactlSinkSummary> {
+    let mut sinks = Vec::new();
+    let mut current_index: Option<u32> = None;
+    let mut current_desc: Option<String> = None;
+
+    let flush = |index: &mut Option<u32>, desc: &mut Option<String>, out: &mut Vec<PactlSinkSummary>| {
+        if let (Some(i), Some(d)) = (index.take(), desc.take()) {
+            out.push(PactlSinkSummary {
+                index: i,
+                description: d,
+            });
+        }
+    };
+
+    for line in output.lines() {
+        if let Some(rest) = line.strip_prefix("Sink #") {
+            flush(&mut current_index, &mut current_desc, &mut sinks);
+            current_index = rest.trim().parse().ok();
+            continue;
+        }
+        if let Some(desc) = line.trim().strip_prefix("Description: ") {
+            current_desc = Some(desc.trim().to_string());
+        }
+    }
+    flush(&mut current_index, &mut current_desc, &mut sinks);
+    sinks
+}
+
 async fn refresh_streams() -> Result<()> {
     let output = process::exec_command(&["pactl", "list", "sink-inputs"]).await?;
     let streams = parse_streams(&output);
@@ -1218,10 +1284,22 @@ mod tests {
     fn parse_wpctl_status_fixture() {
         let fixture = include_str!("../../tests/fixtures/audio/wpctl_status.txt");
         let (sinks, sources) = parse_devices(fixture);
-        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks.len(), 2);
         assert!(sinks[0].muted);
         assert!(sinks[0].is_default);
+        assert_eq!(sinks[1].id, 55);
+        assert!(!sinks[1].is_default);
         assert_eq!(sources.len(), 1);
+    }
+
+    #[test]
+    fn parse_pactl_list_sinks_fixture() {
+        let fixture = include_str!("../../tests/fixtures/audio/pactl_list_sinks.txt");
+        let sinks = parse_pactl_list_sinks(fixture);
+        assert_eq!(sinks.len(), 2);
+        assert_eq!(sinks[0].index, 47);
+        assert_eq!(sinks[0].description, "Headphones");
+        assert_eq!(sinks[1].description, "HDMI / DisplayPort");
     }
 
     #[test]
