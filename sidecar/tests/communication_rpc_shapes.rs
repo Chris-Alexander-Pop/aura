@@ -2,6 +2,7 @@
 
 mod common;
 
+use ags_sidecar::contract_parsers::communication_unread_counts_schema_valid as unread_counts_schema_valid;
 use common::{call_rpc, setup_temp_storage_db, test_registry};
 use serde_json::json;
 
@@ -90,4 +91,24 @@ async fn communication_stub_list_methods_and_settings_branches() {
         .await
         .expect("GetCommunicationApps");
     assert!(apps.is_array());
+}
+
+#[test]
+fn communication_unread_bridge_adapter_keys_schema() {
+    let empty = json!({});
+    assert!(unread_counts_schema_valid(&empty));
+
+    let bridges = json!({
+        "discord": 3,
+        "signal": 0,
+        "telegram": 12,
+        "matrix": null
+    });
+    assert!(unread_counts_schema_valid(&bridges));
+    for key in ["discord", "signal", "telegram", "matrix"] {
+        assert!(bridges.get(key).is_some(), "expected bridge key {key}");
+    }
+
+    assert!(!unread_counts_schema_valid(&json!({ "discord": "many" })));
+    assert!(!unread_counts_schema_valid(&json!([])));
 }

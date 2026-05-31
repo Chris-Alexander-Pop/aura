@@ -721,6 +721,7 @@ const READONLY_GAP_SLOW_HOST: &[&str] = &[
     "Security.GetPasswordPolicy",
     "Security.GetVpnConnections",
     "Security.ListFingerprints",
+    "Vault.List",
     "Weather.Get",
     "Weather.GetForecast",
     "Weather.GetHourly",
