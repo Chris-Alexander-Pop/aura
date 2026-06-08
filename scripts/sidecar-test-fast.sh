@@ -9,6 +9,8 @@ if [[ -f "${HOME}/.cargo/env" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/rust-cache-env.sh"
 
 "${ROOT}/scripts/generate-rpc-manifest.sh"
 "${ROOT}/scripts/generate-openapi.sh"

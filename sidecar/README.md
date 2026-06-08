@@ -113,6 +113,17 @@ From the repo root:
 
 Both run as part of `./scripts/sidecar-test-fast.sh`.
 
+## Build cache
+
+`sidecar/.cargo/config.toml` enables **sccache**, incremental builds, and the **lld** linker. Test/coverage scripts also source `scripts/rust-cache-env.sh`.
+
+```bash
+pacman -S sccache lld    # once on Arch
+sccache --show-stats     # hit rate after a few builds
+```
+
+Coverage uses a separate target dir (`sidecar/target/llvm-cov`) so the first llvm-cov run still compiles; sccache shares rustc artifacts across default and llvm-cov targets.
+
 ## Tests
 
 ### Fast gate (CI / pre-push)

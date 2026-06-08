@@ -46,6 +46,7 @@ fn default_manifest_excludes_offensive_methods() {
     );
 }
 
+#[cfg(not(feature = "offensive-security"))]
 #[tokio::test]
 async fn default_registry_excludes_offensive_methods() {
     let registry = test_registry();

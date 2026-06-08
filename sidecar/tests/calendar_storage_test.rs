@@ -20,7 +20,7 @@ fn calendar_storage_test_lock() -> std::sync::MutexGuard<'static, ()> {
 #[tokio::test]
 async fn calendar_crud_and_upcoming() {
     let _guard = calendar_storage_test_lock();
-    setup_temp_storage_db().await;
+    let _db = setup_temp_storage_db().await;
     let registry = build_registry();
 
     let now = chrono::Utc::now().timestamp();

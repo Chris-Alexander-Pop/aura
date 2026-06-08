@@ -8,6 +8,8 @@ if [[ -f "${HOME}/.cargo/env" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck disable=SC1091
+source "${ROOT}/scripts/rust-cache-env.sh"
 SIDECAR="${ROOT}/sidecar"
 OUT_DIR="${SIDECAR}/target/coverage"
 # Isolated target avoids stale/corrupt default llvm-cov-target (see sidecar/README.md).

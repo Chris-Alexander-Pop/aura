@@ -261,6 +261,7 @@ async fn websocket_receives_power_battery_state() {
     assert_eq!(v["params"]["time_remaining"], "3h");
 }
 
+#[cfg(not(feature = "offensive-security"))]
 #[tokio::test]
 async fn http_get_api_meta_offensive_disabled_by_default() {
     let (notify_tx, _) = tokio::sync::broadcast::channel(8);
@@ -278,6 +279,28 @@ async fn http_get_api_meta_offensive_disabled_by_default() {
         .expect("json");
 
     assert_eq!(body["offensiveEnabled"], false);
+
+    server_task.abort();
+}
+
+#[cfg(feature = "offensive-security")]
+#[tokio::test]
+async fn http_get_api_meta_offensive_enabled_when_feature_on() {
+    let (notify_tx, _) = tokio::sync::broadcast::channel(8);
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let body: serde_json::Value = client
+        .get(format!("http://{addr}/api/meta"))
+        .send()
+        .await
+        .expect("GET meta")
+        .json()
+        .await
+        .expect("json");
+
+    assert_eq!(body["offensiveEnabled"], true);
 
     server_task.abort();
 }

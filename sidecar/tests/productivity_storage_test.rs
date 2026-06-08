@@ -8,7 +8,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn productivity_task_round_trip_and_stats() {
-    setup_temp_storage_db().await;
+    let _db = setup_temp_storage_db().await;
     let registry = build_registry();
 
     let task = call_method_unchecked(

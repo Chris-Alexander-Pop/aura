@@ -8,7 +8,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn settings_get_defaults_without_row() {
-    setup_temp_storage_db().await;
+    let _db = setup_temp_storage_db().await;
     let registry = build_registry();
 
     let got = call_rpc(&registry, "Settings.Get", None).await.unwrap();
@@ -20,7 +20,7 @@ async fn settings_get_defaults_without_row() {
 
 #[tokio::test]
 async fn settings_set_merge_and_reset() {
-    setup_temp_storage_db().await;
+    let _db = setup_temp_storage_db().await;
     let registry = build_registry();
 
     let set = call_method_unchecked(
@@ -65,7 +65,7 @@ async fn settings_set_merge_and_reset() {
 
 #[tokio::test]
 async fn settings_set_rejects_unknown_key() {
-    setup_temp_storage_db().await;
+    let _db = setup_temp_storage_db().await;
     let registry = build_registry();
     let err = call_method_unchecked(
         &registry,
@@ -78,7 +78,7 @@ async fn settings_set_rejects_unknown_key() {
 
 #[tokio::test]
 async fn settings_get_schema_lists_fields() {
-    setup_temp_storage_db().await;
+    let _db = setup_temp_storage_db().await;
     let registry = build_registry();
     let schema = call_rpc(&registry, "Settings.GetSchema", None)
         .await
