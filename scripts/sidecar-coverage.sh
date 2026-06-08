@@ -28,7 +28,7 @@ cd "${SIDECAR}"
 
 if [[ "${1:-}" == "--summary-only" ]]; then
   shift
-  cargo llvm-cov --all-features --summary-only "$@"
+  cargo llvm-cov --all-features --summary-only -- --test-threads=1 "$@"
   exit 0
 fi
 
@@ -42,6 +42,7 @@ cargo llvm-cov \
   --all-features \
   --lcov \
   --output-path "${OUT_DIR}/lcov.info" \
+  -- --test-threads=1 \
   "$@"
 
 cargo llvm-cov report \
@@ -57,3 +58,5 @@ fi
 echo ""
 echo "HTML report: file://${HTML_INDEX}"
 echo "LCOV:        ${OUT_DIR}/lcov.info"
+
+"${ROOT}/scripts/sidecar-target-prune.sh" --coverage-only

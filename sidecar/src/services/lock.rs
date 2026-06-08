@@ -245,4 +245,27 @@ mod tests {
         partial.insert("evil".into(), json!(true));
         assert!(merge_lock_partial(&base, &partial).is_err());
     }
+
+    #[test]
+    fn merge_lock_partial_updates_all_known_flags() {
+        let base = default_lock_config();
+        let mut partial = Map::new();
+        partial.insert("show_clock".into(), json!(false));
+        partial.insert("show_notifications".into(), json!(true));
+        partial.insert("show_calendar".into(), json!(true));
+        partial.insert("show_media".into(), json!(true));
+        let merged = merge_lock_partial(&base, &partial).unwrap();
+        assert!(!merged.show_clock);
+        assert!(merged.show_notifications);
+        assert!(merged.show_calendar);
+        assert!(merged.show_media);
+    }
+
+    #[test]
+    fn merge_lock_partial_empty_leaves_base_unchanged() {
+        let base = default_lock_config();
+        let partial = Map::new();
+        let merged = merge_lock_partial(&base, &partial).unwrap();
+        assert_eq!(merged, base);
+    }
 }

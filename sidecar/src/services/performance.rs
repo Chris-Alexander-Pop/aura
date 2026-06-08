@@ -424,6 +424,8 @@ mod preset_tests {
     #[test]
     fn preset_targets_known() {
         assert_eq!(preset_targets("meeting"), Some(("balanced", "powersave")));
+        assert_eq!(preset_targets("compile"), Some(("performance", "performance")));
+        assert_eq!(preset_targets("game"), Some(("performance", "performance")));
         assert!(preset_targets("unknown").is_none());
     }
 }

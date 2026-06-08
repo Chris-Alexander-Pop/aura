@@ -3,7 +3,7 @@
 mod common;
 
 use ags_sidecar::contract_parsers::communication_unread_counts_schema_valid as unread_counts_schema_valid;
-use common::{call_rpc, setup_temp_storage_db, test_registry};
+use common::{call_method_unchecked, call_rpc, setup_temp_storage_db, test_registry};
 use serde_json::json;
 
 #[tokio::test]
@@ -91,6 +91,62 @@ async fn communication_stub_list_methods_and_settings_branches() {
         .await
         .expect("GetCommunicationApps");
     assert!(apps.is_array());
+}
+
+#[tokio::test]
+async fn communication_set_notification_settings_round_trip() {
+    let _db = setup_temp_storage_db().await;
+    let registry = test_registry();
+
+    call_method_unchecked(
+        &registry,
+        "Communication.SetNotificationSettings",
+        Some(json!({
+            "settings": {
+                "mute_all": true,
+                "per_app": { "discord": { "mute": true } }
+            }
+        })),
+    )
+    .await
+    .expect("SetNotificationSettings");
+
+    let loaded = call_rpc(&registry, "Communication.GetNotificationSettings", None)
+        .await
+        .expect("GetNotificationSettings");
+    assert_eq!(loaded.get("mute_all"), Some(&json!(true)));
+    assert_eq!(
+        loaded
+            .get("per_app")
+            .and_then(|v| v.get("discord"))
+            .and_then(|v| v.get("mute")),
+        Some(&json!(true))
+    );
+}
+
+#[tokio::test]
+async fn communication_notification_settings_array_and_null_branches() {
+    let _db = setup_temp_storage_db().await;
+    let registry = test_registry();
+
+    for corrupt in [json!([]), json!(null), json!(0)] {
+        call_rpc(
+            &registry,
+            "Storage.Set",
+            Some(json!({
+                "namespace": "communication",
+                "key": "notification_settings",
+                "value": corrupt
+            })),
+        )
+        .await
+        .expect("Storage.Set corrupt");
+
+        let normalized = call_rpc(&registry, "Communication.GetNotificationSettings", None)
+            .await
+            .expect("normalized settings");
+        assert_eq!(normalized, json!({}));
+    }
 }
 
 #[test]

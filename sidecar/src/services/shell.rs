@@ -242,8 +242,9 @@ pub fn resolve_lock_command() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        app_launch_argv, aura_window_allowed, classify_session_stderr, resolve_lock_command,
-        resolve_logout_argv, resolve_session_command, SessionAction, SessionCommand,
+        app_launch_argv, aura_window_allowed, classify_session_stderr, format_session_error,
+        resolve_lock_command, resolve_logout_argv, resolve_session_command, SessionAction,
+        SessionCommand,
     };
 
     #[test]
@@ -260,6 +261,11 @@ mod tests {
     fn app_launch_map_known_ids() {
         assert_eq!(app_launch_argv("terminal"), Some(vec!["kitty"]));
         assert_eq!(app_launch_argv("browser"), Some(vec!["firefox"]));
+        assert_eq!(app_launch_argv("files"), Some(vec!["nautilus"]));
+        assert_eq!(app_launch_argv("code"), Some(vec!["cursor"]));
+        assert_eq!(app_launch_argv("music"), Some(vec!["spotify"]));
+        assert_eq!(app_launch_argv("discord"), Some(vec!["discord"]));
+        assert_eq!(app_launch_argv("firefox"), Some(vec!["firefox"]));
         assert!(app_launch_argv("unknown-app").is_none());
     }
 
@@ -344,5 +350,41 @@ mod tests {
             "not_supported"
         );
         assert_eq!(classify_session_stderr("some other fault"), "failed");
+    }
+
+    #[test]
+    fn classify_session_stderr_auth_variants() {
+        for msg in [
+            "Access denied",
+            "Authentication required",
+            "Interactive authentication needed",
+            "Polkit error",
+            "Permission denied",
+            "Operation not permitted",
+        ] {
+            assert_eq!(
+                classify_session_stderr(msg),
+                "auth_required",
+                "expected auth for {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn format_session_error_uses_first_line_and_truncates() {
+        let short = format_session_error("failed", "line one\nline two");
+        assert!(short.contains("line one"));
+        assert!(!short.contains("line two"));
+        let long_detail = "x".repeat(300);
+        let truncated = format_session_error("auth_required", &long_detail);
+        assert!(truncated.len() < 280);
+        assert!(truncated.contains("auth_required"));
+    }
+
+    #[test]
+    fn resolve_logout_empty_session_id_falls_back_to_user() {
+        let argv = resolve_logout_argv(Some(""), Some("carol"));
+        assert_eq!(argv[1], "terminate-user");
+        assert_eq!(argv[2], "carol");
     }
 }

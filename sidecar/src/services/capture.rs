@@ -1,5 +1,8 @@
 //! Screenshot and screen recording via allowlisted host tools (grim, slurp, wl-copy, wf-recorder).
 
+/// Subprocess injection for capture tests (see [`crate::utils::process::CommandRunner`]).
+pub use crate::utils::process::CommandRunner as CaptureProcess;
+
 use crate::services::ServiceRegistry;
 use crate::utils::process;
 use anyhow::{bail, Result};
@@ -118,8 +121,16 @@ fn recorder_state_dir() -> Result<PathBuf> {
     Ok(base.join("ags-sidecar"))
 }
 
+pub(crate) fn recorder_state_dir_for_tests() -> Result<PathBuf> {
+    recorder_state_dir()
+}
+
 fn pid_file_path() -> Result<PathBuf> {
     Ok(recorder_state_dir()?.join(RECORDER_PID_FILE))
+}
+
+pub(crate) fn pid_file_path_for_tests() -> Result<PathBuf> {
+    pid_file_path()
 }
 
 async fn run_screenshot(mode: &str, output: &str, path: Option<&str>) -> Result<serde_json::Value> {
@@ -292,9 +303,33 @@ mod tests {
     }
 
     #[test]
+    fn validate_path_rejects_empty() {
+        assert!(validate_screenshot_path("").is_err());
+    }
+
+    #[test]
+    fn validate_path_rejects_absolute_outside_home() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        let outside = if home == "/" {
+            "/etc/passwd".to_string()
+        } else {
+            format!("/etc/aura-capture-outside-home.png")
+        };
+        assert!(validate_screenshot_path(&outside).is_err());
+    }
+
+    #[test]
     fn validate_path_accepts_relative_under_home() {
         let p = validate_screenshot_path("Pictures/test.png").unwrap();
         assert!(p.to_string_lossy().contains("Pictures"));
+    }
+
+    #[test]
+    fn validate_path_accepts_absolute_under_home() {
+        let home = std::env::var("HOME").expect("HOME set");
+        let path = format!("{home}/Pictures/aura-abs.png");
+        let resolved = validate_screenshot_path(&path).unwrap();
+        assert!(resolved.to_string_lossy().contains("Pictures/aura-abs.png"));
     }
 
     #[test]
@@ -305,8 +340,28 @@ mod tests {
     }
 
     #[test]
+    fn grim_full_and_slurp_argv_tables() {
+        assert_eq!(grim_full_argv(), vec!["grim".to_string()]);
+        assert_eq!(slurp_argv(), vec!["slurp".to_string()]);
+    }
+
+    #[test]
     fn wl_copy_argv_has_png_type() {
         let argv = wl_copy_argv();
         assert!(argv.contains(&"image/png".to_string()));
+    }
+
+    #[test]
+    fn recorder_pid_file_under_xdg_data_home() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let data = tmp.path().join("data");
+        std::env::set_var("XDG_DATA_HOME", data.to_str().expect("utf8"));
+        let pid_path = pid_file_path_for_tests().expect("pid path");
+        assert!(pid_path.starts_with(&data));
+        assert!(pid_path.ends_with(RECORDER_PID_FILE));
+        let state_dir = recorder_state_dir_for_tests().expect("state dir");
+        assert!(state_dir.starts_with(&data));
+        assert!(state_dir.ends_with("ags-sidecar"));
+        std::env::remove_var("XDG_DATA_HOME");
     }
 }

@@ -736,10 +736,12 @@ async fn is_vpn_process_running() -> bool {
 mod tests {
     use super::{
         apply_connect_start, apply_connected, apply_disconnected, apply_error,
-        assert_allowlisted_vpn_argv, default_profile_defs, ip_link_interface_up,
-        load_profile_defs_from_dir, parse_iface_ipv4, parse_ip_link_line, parse_wireguard_conf,
-        vpn_interface_connected, VpnProcess, VpnServiceState, VpnState, WireGuardConfigSummary,
+        assert_allowlisted_vpn_argv, connect_networkmanager, connect_wireguard,
+        default_profile_defs, ip_link_interface_up, load_profile_defs_from_dir,
+        parse_iface_ipv4, parse_ip_link_line, parse_wireguard_conf, vpn_interface_connected,
+        VpnProcess, VpnProfileDef, VpnProtocol, VpnServiceState, VpnState, WireGuardConfigSummary,
     };
+    use std::collections::HashMap;
     use std::path::PathBuf;
     use std::sync::Mutex;
 
@@ -753,6 +755,56 @@ mod tests {
 
     struct RecordingVpnProcess {
         calls: Mutex<Vec<Vec<String>>>,
+        detached_errors: Mutex<HashMap<String, String>>,
+        exec_errors: Mutex<HashMap<String, String>>,
+        exec_responses: Mutex<HashMap<String, String>>,
+    }
+
+    impl RecordingVpnProcess {
+        fn new() -> Self {
+            Self {
+                calls: Mutex::new(Vec::new()),
+                detached_errors: Mutex::new(HashMap::new()),
+                exec_errors: Mutex::new(HashMap::new()),
+                exec_responses: Mutex::new(HashMap::new()),
+            }
+        }
+
+        fn with_detached_error(self, binary: &str, message: &str) -> Self {
+            self.detached_errors
+                .lock()
+                .unwrap()
+                .insert(binary.to_string(), message.to_string());
+            self
+        }
+
+        fn with_exec_error(self, binary: &str, message: &str) -> Self {
+            self.exec_errors
+                .lock()
+                .unwrap()
+                .insert(binary.to_string(), message.to_string());
+            self
+        }
+
+        fn with_exec_response(self, binary: &str, stdout: &str) -> Self {
+            self.exec_responses
+                .lock()
+                .unwrap()
+                .insert(binary.to_string(), stdout.to_string());
+            self
+        }
+
+        fn recorded_calls(&self) -> Vec<Vec<String>> {
+            self.calls.lock().unwrap().clone()
+        }
+
+        fn primary_binary(cmd: &[&str]) -> String {
+            if cmd.first() == Some(&"sudo") {
+                cmd.get(1).map(|s| s.to_string()).unwrap_or_default()
+            } else {
+                cmd.first().map(|s| s.to_string()).unwrap_or_default()
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -762,6 +814,16 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(cmd.iter().map(|s| s.to_string()).collect());
+            let bin = Self::primary_binary(cmd);
+            if let Some(msg) = self.exec_errors.lock().unwrap().get(&bin) {
+                return Err(anyhow::anyhow!("{msg}"));
+            }
+            if let Some(out) = self.exec_responses.lock().unwrap().get(&bin) {
+                return Ok(out.clone());
+            }
+            if bin.ends_with("nmcli") {
+                return Ok(vpn_fixture("nmcli_connection_up_ok.txt"));
+            }
             Ok(String::new())
         }
 
@@ -770,6 +832,10 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(cmd.iter().map(|s| s.to_string()).collect());
+            let bin = Self::primary_binary(cmd);
+            if let Some(msg) = self.detached_errors.lock().unwrap().get(&bin) {
+                return Err(anyhow::anyhow!("{msg}"));
+            }
             Ok(())
         }
 
@@ -910,16 +976,150 @@ mod tests {
 
     #[tokio::test]
     async fn recording_backend_captures_disconnect_argv() {
-        let backend = RecordingVpnProcess {
-            calls: Mutex::new(Vec::new()),
-        };
+        let backend = RecordingVpnProcess::new();
         assert_allowlisted_vpn_argv(&["sudo", "pkill", "-SIGINT", "openconnect"]).unwrap();
         backend
             .exec_command(&["sudo", "pkill", "-SIGINT", "openconnect"])
             .await
             .unwrap();
-        let calls = backend.calls.lock().unwrap();
+        let calls = backend.recorded_calls();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0][0], "sudo");
+    }
+
+    #[test]
+    fn vpn_disconnected_fixture_has_no_tun_iface() {
+        let out = vpn_fixture("ip_o_addr_show_disconnected.txt");
+        assert!(!vpn_interface_connected(&out, "tun0", false));
+        assert!(!vpn_interface_connected(&out, "wg0", false));
+        assert!(vpn_interface_connected(&out, "eth0", false));
+    }
+
+    #[test]
+    fn nmcli_error_fixture_is_non_empty() {
+        let err = vpn_fixture("nmcli_connection_error.txt");
+        assert!(err.contains("Connection activation failed"));
+    }
+
+    #[test]
+    fn wg_quick_error_fixture_mentions_existing_iface() {
+        let err = vpn_fixture("wg_quick_error.txt");
+        assert!(err.contains("already exists"));
+    }
+
+    #[tokio::test]
+    async fn connect_networkmanager_records_nmcli_argv() {
+        let backend = RecordingVpnProcess::new();
+        let profile = VpnProfileDef {
+            id: "personal".into(),
+            name: "Personal".into(),
+            icon: "person".into(),
+            display_name: "Personal VPN".into(),
+            interface: "example-exit".into(),
+            requires_credentials: false,
+            protocol: VpnProtocol::Networkmanager,
+            server: None,
+            authgroup: None,
+            connection: Some("example-exit".into()),
+            config: None,
+        };
+        connect_networkmanager(&profile, &backend).await.unwrap();
+        let calls = backend.recorded_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0], vec!["nmcli", "connection", "up", "example-exit"]);
+    }
+
+    #[tokio::test]
+    async fn connect_networkmanager_propagates_nmcli_error_fixture() {
+        let backend = RecordingVpnProcess::new().with_detached_error(
+            "nmcli",
+            &vpn_fixture("nmcli_connection_error.txt"),
+        );
+        let profile = VpnProfileDef {
+            id: "personal".into(),
+            name: "Personal".into(),
+            icon: "person".into(),
+            display_name: "Personal VPN".into(),
+            interface: "example-exit".into(),
+            requires_credentials: false,
+            protocol: VpnProtocol::Networkmanager,
+            server: None,
+            authgroup: None,
+            connection: Some("example-exit".into()),
+            config: None,
+        };
+        let err = connect_networkmanager(&profile, &backend)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Connection activation failed"));
+    }
+
+    #[tokio::test]
+    async fn connect_wireguard_records_wg_quick_argv() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let conf = dir.path().join("lab.conf");
+        std::fs::write(&conf, vpn_fixture("wg_minimal.conf")).expect("write conf");
+
+        let backend = RecordingVpnProcess::new();
+        let profile = VpnProfileDef {
+            id: "lab-wg".into(),
+            name: "Lab".into(),
+            icon: "shield".into(),
+            display_name: "Lab WireGuard".into(),
+            interface: "wg0".into(),
+            requires_credentials: false,
+            protocol: VpnProtocol::Wireguard,
+            server: None,
+            authgroup: None,
+            connection: None,
+            config: Some("lab.conf".into()),
+        };
+        connect_wireguard(&profile, dir.path(), &backend)
+            .await
+            .unwrap();
+        let calls = backend.recorded_calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0][0], "sudo");
+        assert_eq!(calls[0][1], "wg-quick");
+        assert_eq!(calls[0][2], "up");
+    }
+
+    #[tokio::test]
+    async fn connect_wireguard_propagates_wg_quick_error_fixture() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let conf = dir.path().join("lab.conf");
+        std::fs::write(&conf, vpn_fixture("wg_minimal.conf")).expect("write conf");
+
+        let backend = RecordingVpnProcess::new().with_detached_error(
+            "wg-quick",
+            &vpn_fixture("wg_quick_error.txt"),
+        );
+        let profile = VpnProfileDef {
+            id: "lab-wg".into(),
+            name: "Lab".into(),
+            icon: "shield".into(),
+            display_name: "Lab WireGuard".into(),
+            interface: "wg0".into(),
+            requires_credentials: false,
+            protocol: VpnProtocol::Wireguard,
+            server: None,
+            authgroup: None,
+            connection: None,
+            config: Some("lab.conf".into()),
+        };
+        let err = connect_wireguard(&profile, dir.path(), &backend)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("already exists"));
+    }
+
+    #[tokio::test]
+    async fn recording_exec_returns_nmcli_fixture_stdout() {
+        let backend = RecordingVpnProcess::new();
+        let out = backend
+            .exec_command(&["nmcli", "connection", "down", "example-exit"])
+            .await
+            .unwrap();
+        assert!(out.contains("successfully activated") || out.contains("Connection"));
     }
 }

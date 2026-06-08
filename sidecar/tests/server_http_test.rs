@@ -344,3 +344,132 @@ async fn websocket_receives_logs_line_after_follow_logs() {
     server_task.abort();
     std::env::remove_var("AURA_LOGS_FOLLOW_FIXTURE");
 }
+
+#[tokio::test]
+async fn http_get_unknown_method_returns_404() {
+    let (notify_tx, _) = tokio::sync::broadcast::channel(8);
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .get(format!("http://{addr}/api/Not.A.RealMethod"))
+        .send()
+        .await
+        .expect("GET unknown");
+    assert_eq!(res.status(), reqwest::StatusCode::NOT_FOUND);
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["code"], "method_not_found");
+    assert_eq!(body["method"], "Not.A.RealMethod");
+
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn http_post_rpc_error_returns_500() {
+    let (notify_tx, _) = tokio::sync::broadcast::channel(8);
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post(format!("http://{addr}/api/Aura.ToggleWindow"))
+        .json(&json!({}))
+        .send()
+        .await
+        .expect("POST missing params");
+    assert_eq!(res.status(), reqwest::StatusCode::INTERNAL_SERVER_ERROR);
+    let body: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(body["ok"], false);
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or("")
+            .contains("missing name")
+    );
+
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn http_get_api_meta_includes_version() {
+    let (notify_tx, _) = tokio::sync::broadcast::channel(8);
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let body: serde_json::Value = client
+        .get(format!("http://{addr}/api/meta"))
+        .send()
+        .await
+        .expect("GET meta")
+        .json()
+        .await
+        .expect("json");
+
+    assert!(
+        body["version"]
+            .as_str()
+            .is_some_and(|v| !v.is_empty()),
+        "meta.version missing"
+    );
+
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn websocket_broadcasts_to_multiple_clients() {
+    let notify_tx = test_notify_bus();
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx.clone()).await;
+
+    let ws_url = format!("ws://{addr}/ws");
+    let (ws1, _) = connect_async(&ws_url).await.expect("ws1");
+    let (ws2, _) = connect_async(&ws_url).await.expect("ws2");
+    let (mut sink1, mut stream1) = ws1.split();
+    let (mut sink2, mut stream2) = ws2.split();
+    ws_wait_until_ready(&mut sink1, &mut stream1).await;
+    ws_wait_until_ready(&mut sink2, &mut stream2).await;
+
+    notify_tx
+        .send(json!({ "method": "Test.MultiClient", "params": { "n": 2 } }).to_string())
+        .expect("broadcast");
+
+    let v1 = ws_recv_method(&mut stream1, "Test.MultiClient").await;
+    let v2 = ws_recv_method(&mut stream2, "Test.MultiClient").await;
+    assert_eq!(v1["params"]["n"], 2);
+    assert_eq!(v2["params"]["n"], 2);
+
+    drop(sink1);
+    drop(sink2);
+    drop(stream1);
+    drop(stream2);
+    server_task.abort();
+}
+
+#[cfg(feature = "offensive-security")]
+#[tokio::test]
+async fn http_get_offensive_rate_limit_returns_429() {
+    std::env::remove_var("AURA_OFFENSIVE_SKIP_RATE_LIMIT");
+    let (notify_tx, _) = tokio::sync::broadcast::channel(8);
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let url = format!("http://{addr}/api/Security.Offensive.GetAuditLog");
+    let ok = client
+        .get(&url)
+        .send()
+        .await
+        .expect("first GET");
+    assert!(ok.status().is_success());
+
+    let limited = client.get(&url).send().await.expect("second GET");
+    assert_eq!(limited.status(), reqwest::StatusCode::TOO_MANY_REQUESTS);
+    let body: serde_json::Value = limited.json().await.expect("json");
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["code"], "rate_limited");
+
+    server_task.abort();
+}

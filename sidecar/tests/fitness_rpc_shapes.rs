@@ -2,13 +2,14 @@
 
 mod common;
 
-use common::{call_rpc, setup_temp_storage_db, test_registry};
+use ags_sidecar::build_registry;
+use common::{call_method_unchecked, call_rpc, setup_temp_storage_db};
 use serde_json::json;
 
 #[tokio::test]
 async fn fitness_get_activity_and_goals_from_storage() {
     let _db = setup_temp_storage_db().await;
-    let registry = test_registry();
+    let registry = build_registry();
 
     let activity = call_rpc(&registry, "Fitness.GetActivity", None)
         .await
@@ -57,7 +58,7 @@ async fn fitness_get_activity_and_goals_from_storage() {
 #[tokio::test]
 async fn fitness_workout_history_and_metric_stubs() {
     let _db = setup_temp_storage_db().await;
-    let registry = test_registry();
+    let registry = build_registry();
 
     for (method, key) in [
         ("Fitness.GetSteps", "steps"),
@@ -115,4 +116,24 @@ async fn fitness_workout_history_and_metric_stubs() {
         .await
         .expect("GetDevices");
     assert!(devices.as_array().map(|a| a.is_empty()).unwrap_or(false));
+}
+
+#[tokio::test]
+async fn fitness_set_goal_missing_params_errors() {
+    let _db = setup_temp_storage_db().await;
+    let registry = build_registry();
+
+    let err = call_method_unchecked(&registry, "Fitness.SetGoal", Some(json!({ "type": "steps" })))
+        .await
+        .expect_err("missing target");
+    assert!(err.to_string().to_lowercase().contains("target"));
+
+    let err = call_method_unchecked(
+        &registry,
+        "Fitness.SetGoal",
+        Some(json!({ "target": 1000.0 })),
+    )
+    .await
+    .expect_err("missing type");
+    assert!(err.to_string().to_lowercase().contains("type"));
 }

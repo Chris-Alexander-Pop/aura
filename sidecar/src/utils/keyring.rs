@@ -380,4 +380,40 @@ exit 1
         let value = lookup_wifi_password("EmptySSID").await.expect("lookup");
         assert!(value.is_none());
     }
+
+    #[tokio::test]
+    async fn store_and_lookup_caldav_password_via_mock_secret_tool() {
+        let _guard = keyring_test_lock().lock().await;
+        let _mock = MockKeyring::new();
+        store_caldav_password("alice@example.com", "cal-secret")
+            .await
+            .expect("store");
+        let value = lookup_caldav_password("alice@example.com")
+            .await
+            .expect("lookup")
+            .expect("some");
+        assert_eq!(value, "cal-secret");
+    }
+
+    #[tokio::test]
+    async fn store_and_lookup_vault_entry_via_mock_secret_tool() {
+        let _guard = keyring_test_lock().lock().await;
+        let _mock = MockKeyring::new();
+        store_vault_entry("api-token", "vault-value")
+            .await
+            .expect("store");
+        let value = lookup_vault_entry("api-token")
+            .await
+            .expect("lookup")
+            .expect("some");
+        assert_eq!(value, "vault-value");
+    }
+
+    #[tokio::test]
+    async fn lookup_vault_entry_missing_returns_none() {
+        let _guard = keyring_test_lock().lock().await;
+        let _mock = MockKeyring::new();
+        let value = lookup_vault_entry("missing-key").await.expect("lookup");
+        assert!(value.is_none());
+    }
 }

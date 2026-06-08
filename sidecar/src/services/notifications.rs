@@ -290,6 +290,7 @@ pub async fn record_notification(
         if let Some(internal) = SERVER_ID_MAP.read().await.get(&replaces_id).copied() {
             let mut map_update = None;
             if let Some(n) = store.iter_mut().find(|n| n.id == internal) {
+                n.app_name = app_name;
                 n.summary = summary;
                 n.body = body;
                 n.icon = icon;
@@ -466,16 +467,23 @@ impl DbusMonitorParser {
     }
 }
 
-/// Feed fixture lines through the dbus-monitor state machine (unit tests).
-pub(crate) async fn feed_dbus_monitor_fixture(text: &str) {
+/// Path to a checked-in `tests/fixtures/notifications/` dbus-monitor transcript.
+pub fn dbus_monitor_fixture_path(name: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/notifications")
+        .join(name)
+}
+
+/// Feed fixture lines through the dbus-monitor state machine (unit + integration tests).
+pub async fn feed_dbus_monitor_fixture(text: &str) {
     let mut parser = DbusMonitorParser::default();
     for line in text.lines() {
         parser.feed_line(line.trim()).await;
     }
 }
 
-#[cfg(test)]
-pub(crate) async fn reset_store_for_tests() {
+/// Clear in-memory notification history (serialize tests touching the global store).
+pub async fn reset_notifications_for_tests() {
     STORE.write().await.clear();
     SERVER_ID_MAP.write().await.clear();
 }
@@ -634,10 +642,15 @@ mod tests {
         assert!(actions.is_empty());
     }
 
+    fn load_dbus_monitor_fixture(name: &str) -> String {
+        std::fs::read_to_string(super::dbus_monitor_fixture_path(name))
+            .unwrap_or_else(|e| panic!("read dbus fixture {name}: {e}"))
+    }
+
     #[tokio::test]
     async fn list_empty_without_dbus() {
         let _guard = notification_test_lock().lock().await;
-        reset_store_for_tests().await;
+        reset_notifications_for_tests().await;
         let mut reg = ServiceRegistry::new();
         register(&mut reg);
         let v = reg
@@ -655,7 +668,7 @@ mod tests {
     #[tokio::test]
     async fn record_notification_visible_in_list() {
         let _guard = notification_test_lock().lock().await;
-        reset_store_for_tests().await;
+        reset_notifications_for_tests().await;
         record_notification(
             Some(9001),
             "test-app".into(),
@@ -686,9 +699,9 @@ mod tests {
     #[tokio::test]
     async fn dbus_monitor_notify_fixture_records_item() {
         let _guard = notification_test_lock().lock().await;
-        reset_store_for_tests().await;
-        let fixture = include_str!("../../tests/fixtures/notifications/dbus_monitor_notify.txt");
-        feed_dbus_monitor_fixture(fixture).await;
+        reset_notifications_for_tests().await;
+        let fixture = load_dbus_monitor_fixture("dbus_monitor_notify.txt");
+        feed_dbus_monitor_fixture(&fixture).await;
 
         let store = STORE.read().await;
         assert_eq!(store.len(), 1);
@@ -702,7 +715,7 @@ mod tests {
     #[tokio::test]
     async fn dbus_monitor_closed_fixture_marks_closed() {
         let _guard = notification_test_lock().lock().await;
-        reset_store_for_tests().await;
+        reset_notifications_for_tests().await;
         record_notification(
             Some(9001),
             "daemon-app".into(),
@@ -715,8 +728,8 @@ mod tests {
         )
         .await;
 
-        let closed = include_str!("../../tests/fixtures/notifications/dbus_monitor_closed.txt");
-        feed_dbus_monitor_fixture(closed).await;
+        let closed = load_dbus_monitor_fixture("dbus_monitor_closed.txt");
+        feed_dbus_monitor_fixture(&closed).await;
 
         let store = STORE.read().await;
         let item = store.iter().find(|n| n.server_id == Some(9001)).expect("item");
@@ -724,9 +737,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dbus_monitor_string_brief_fixture_records_item() {
+        let _guard = notification_test_lock().lock().await;
+        reset_notifications_for_tests().await;
+        let fixture = load_dbus_monitor_fixture("dbus_monitor_string_brief.txt");
+        feed_dbus_monitor_fixture(&fixture).await;
+
+        let store = STORE.read().await;
+        let item = store.back().expect("notification");
+        assert_eq!(item.app_name, "brief-app");
+        assert_eq!(item.summary, "Brief summary");
+        assert_eq!(item.body, "Brief body text");
+        assert_eq!(item.icon.as_deref(), Some("brief-icon"));
+    }
+
+    #[tokio::test]
+    async fn dbus_monitor_replace_fixture_updates_existing() {
+        let _guard = notification_test_lock().lock().await;
+        reset_notifications_for_tests().await;
+        record_notification(
+            Some(99),
+            "old-app".into(),
+            0,
+            "Old summary".into(),
+            "Old body".into(),
+            None,
+            1,
+            Vec::new(),
+        )
+        .await;
+        let internal_id = {
+            let store = STORE.read().await;
+            store.back().expect("seed").id
+        };
+        SERVER_ID_MAP.write().await.insert(42, internal_id);
+
+        let fixture = load_dbus_monitor_fixture("dbus_monitor_replace.txt");
+        feed_dbus_monitor_fixture(&fixture).await;
+
+        let store = STORE.read().await;
+        assert_eq!(store.len(), 1);
+        let item = store.back().expect("item");
+        assert_eq!(item.app_name, "thunderbird");
+        assert_eq!(item.summary, "3 new messages");
+        assert_eq!(item.body, "Inbox updated");
+    }
+
+    #[tokio::test]
     async fn list_excludes_closed_and_respects_since() {
         let _guard = notification_test_lock().lock().await;
-        reset_store_for_tests().await;
+        reset_notifications_for_tests().await;
         record_notification(None, "app-a".into(), 0, "Old".into(), "x".into(), None, 1, Vec::new())
             .await;
         {
@@ -761,7 +821,7 @@ mod tests {
     #[tokio::test]
     async fn replace_notification_updates_existing() {
         let _guard = notification_test_lock().lock().await;
-        reset_store_for_tests().await;
+        reset_notifications_for_tests().await;
 
         SERVER_ID_MAP.write().await.insert(42, 1);
         STORE.write().await.push_back(NotificationItem {

@@ -31,6 +31,16 @@ pub fn parse_now_playing_line(s: &str) -> (String, String) {
     (title, artist)
 }
 
+/// Non-empty lines from `playerctl -l` (active MPRIS player names).
+pub fn parse_playerctl_list(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 async fn playerctl_status() -> PlayerctlPlayback {
     match process::exec_command(&["playerctl", "status"]).await {
         Ok(s) => parse_playerctl_status(&s),
@@ -50,11 +60,7 @@ pub fn register(registry: &mut ServiceRegistry) {
                 let players = process::exec_command(&["playerctl", "-l"])
                     .await
                     .unwrap_or_default();
-                let player_name = players
-                    .lines()
-                    .find(|l| !l.trim().is_empty())
-                    .map(str::trim)
-                    .map(str::to_owned);
+                let player_name = parse_playerctl_list(&players).into_iter().next();
                 Ok(json!({
                     "playing": playing,
                     "paused": status == PlayerctlPlayback::Paused,
@@ -99,5 +105,34 @@ mod tests {
         assert_eq!(parse_playerctl_status(&text), PlayerctlPlayback::Playing);
         assert!(playing_from_status(PlayerctlPlayback::Playing));
         assert!(!playing_from_status(PlayerctlPlayback::Paused));
+    }
+
+    #[test]
+    fn parse_playerctl_status_variants() {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/audio");
+        let paused = fs::read_to_string(dir.join("playerctl_status_paused.txt")).unwrap();
+        assert_eq!(parse_playerctl_status(&paused), PlayerctlPlayback::Paused);
+        let stopped = fs::read_to_string(dir.join("playerctl_status_stopped.txt")).unwrap();
+        assert_eq!(parse_playerctl_status(&stopped), PlayerctlPlayback::Stopped);
+        assert_eq!(parse_playerctl_status("unknown"), PlayerctlPlayback::Unknown);
+    }
+
+    #[test]
+    fn parse_playerctl_metadata_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/audio/playerctl_metadata.txt");
+        let text = fs::read_to_string(path).unwrap();
+        let (title, artist) = parse_now_playing_line(&text);
+        assert_eq!(title, "Creep");
+        assert_eq!(artist, "Radiohead");
+    }
+
+    #[test]
+    fn parse_playerctl_list_fixture() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/audio/playerctl_list.txt");
+        let text = fs::read_to_string(path).unwrap();
+        let players = parse_playerctl_list(&text);
+        assert_eq!(players, vec!["spotify", "firefox"]);
     }
 }

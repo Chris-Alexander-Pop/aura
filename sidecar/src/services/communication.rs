@@ -183,5 +183,32 @@ mod tests {
         assert!(unread_counts_schema_valid(&json!({ "discord": 3, "slack": 0 })));
         assert!(!unread_counts_schema_valid(&json!([])));
         assert!(!unread_counts_schema_valid(&json!({ "x": "two" })));
+        assert!(unread_counts_schema_valid(&json!({ "matrix": null })));
+    }
+
+    #[test]
+    fn notification_settings_rejects_array_and_number_storage() {
+        assert_eq!(
+            notification_settings_from_storage(Some(&json!([]))),
+            json!({})
+        );
+        assert_eq!(
+            notification_settings_from_storage(Some(&json!(42))),
+            json!({})
+        );
+    }
+
+    #[test]
+    fn notification_settings_preserves_nested_per_app() {
+        let raw = json!({
+            "mute_all": false,
+            "per_app": {
+                "discord": { "mute": true, "badge": false },
+                "signal": true
+            }
+        });
+        let out = notification_settings_from_storage(Some(&raw));
+        assert_eq!(out["per_app"]["discord"]["mute"], true);
+        assert_eq!(out["per_app"]["signal"], true);
     }
 }

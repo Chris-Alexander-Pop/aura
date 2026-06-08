@@ -1,6 +1,6 @@
 # Sidecar coverage baseline
 
-**Date:** 2026-05-29 (compositor bar / hyprland+mpris refresh)  
+**Date:** 2026-06-08 (Stream A — harness + 70% coverage gate)  
 **Repo:** `~/.config/ags` (`sidecar/`)  
 **Toolchain:** `cargo-llvm-cov` + `llvm-tools-preview` (see `sidecar/README.md`)
 
@@ -34,9 +34,9 @@ cargo test --test integration_test readonly_gap_methods_resolve_slow_host -- --i
 
 | Metric | Value |
 |--------|------:|
-| **Total line coverage** | **46.64%** (5481 / 10272 lines) |
-| Total region coverage | 46.30% |
-| Total function coverage | 40.29% |
+| **Total line coverage** | **63.98%** (10780 / 16850 lines) |
+| Total region coverage | 62.82% |
+| Total function coverage | 59.74% |
 
 Generated via:
 
@@ -44,7 +44,16 @@ Generated via:
 ./scripts/sidecar-coverage.sh --summary-only
 ```
 
-(`scripts/sidecar-coverage.sh` uses `CARGO_TARGET_DIR=sidecar/target/llvm-cov`, runs `--lcov` then `--html --no-run`; no conflicting `--output-path` with `--html`.)
+(`scripts/sidecar-coverage.sh` uses `CARGO_TARGET_DIR=sidecar/target/llvm-cov`, runs `--all-features` tests, then `--summary-only` or LCOV + HTML.)
+
+**70% gate** (Stream A milestone — enforced once totals reach threshold; **currently fails** at ~64% lines):
+
+```bash
+./scripts/sidecar-coverage-gate.sh          # fails if line/region/function < 70%
+SIDECAR_COVERAGE_MIN=65 ./scripts/sidecar-coverage-gate.sh   # override threshold
+```
+
+Coverage runs use `--test-threads=1` in `sidecar-coverage.sh` to avoid SQLite / gamemode static races during `cargo llvm-cov`.
 
 ### Infrastructure modules (previously 0%)
 
@@ -120,7 +129,8 @@ Generated via:
 |------|---------|---------|
 | Fast | `./scripts/sidecar-test-fast.sh` | Pre-push; no ~5 min host sweep |
 | Full tests | `cd sidecar && cargo test` + optional `--ignored` slow gap |
-| Coverage | `./scripts/sidecar-coverage.sh` | LCOV + HTML; track toward **~90%** line goal |
+| Coverage report | `./scripts/sidecar-coverage.sh` | LCOV + HTML; track toward **70%** then **~90%** line goal |
+| Coverage gate | `./scripts/sidecar-coverage-gate.sh` | Fail if line/region/function &lt; 70% (override: `SIDECAR_COVERAGE_MIN`) |
 
 Authoring guidance: `sidecar/tests/README.md` (“one test, one branch”).
 

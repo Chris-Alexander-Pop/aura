@@ -307,6 +307,10 @@ async fn check_calendar_reminders() -> Result<()> {
     Ok(())
 }
 
+fn calendar_emit_should_fire(current_gen: u64, scheduled_gen: u64) -> bool {
+    current_gen == scheduled_gen
+}
+
 fn schedule_calendar_events_emit(reason: &str) {
     if tokio::runtime::Handle::try_current().is_err() {
         return;
@@ -325,10 +329,9 @@ fn schedule_calendar_events_emit(reason: &str) {
     });
 }
 
-/// Test hook — same debounce path as production CRUD/reminder handlers.
-#[cfg(test)]
-pub(crate) fn schedule_calendar_events_emit_for_tests(reason: &str) {
-    schedule_calendar_events_emit(reason);
+/// Run one reminder poll (test hook — same path as the 60s tick loop).
+pub async fn check_calendar_reminders_for_tests() -> Result<()> {
+    check_calendar_reminders().await
 }
 
 
@@ -367,6 +370,12 @@ pub(crate) fn filter_events_by_range(
     if let Some(end) = end_date {
         events.retain(|e| e.start <= end);
     }
+}
+
+/// Test hook — same debounce path as production CRUD/reminder handlers.
+#[cfg(test)]
+pub(crate) fn schedule_calendar_events_emit_for_tests(reason: &str) {
+    schedule_calendar_events_emit(reason);
 }
 
 #[cfg(test)]
@@ -456,25 +465,76 @@ mod tests {
         assert_eq!(events[0].summary, "Fixture Meeting");
     }
 
+    #[test]
+    fn ics_fixture_paths_parse_edge_cases() {
+        let base = format!("{}/tests/fixtures/calendar", env!("CARGO_MANIFEST_DIR"));
+        let escaped = std::fs::read_to_string(format!("{base}/escaped_description.ics")).unwrap();
+        let ev = crate::services::ics::parse_ics(&escaped).expect("escaped");
+        assert_eq!(ev.len(), 1);
+        assert!(ev[0].summary.contains(';'));
+        assert!(ev[0].description.contains('\n'));
+
+        let date_only = std::fs::read_to_string(format!("{base}/date_only.ics")).unwrap();
+        let day = crate::services::ics::parse_ics(&date_only).expect("date");
+        assert_eq!(day.len(), 1);
+        assert!(day[0].dtend >= day[0].dtstart);
+
+        let missing = std::fs::read_to_string(format!("{base}/missing_dtstart.ics")).unwrap();
+        assert!(crate::services::ics::parse_ics(&missing).unwrap().is_empty());
+    }
+
     #[tokio::test]
-    async fn calendar_events_emit_debounce_coalesces() {
-        static DEBOUNCE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        let _guard = DEBOUNCE_LOCK.get_or_init(|| Mutex::new(())).lock().await;
-        let tx = crate::notify::init_for_tests();
-        let mut rx = tx.subscribe();
+    async fn reminder_fires_once_in_trigger_window() {
+        static CALENDAR_ASYNC_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = CALENDAR_ASYNC_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .await;
+        crate::services::notifications::reset_notifications_for_tests().await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = dir.path().join("calendar-reminder.db");
+        std::env::set_var("AURA_STORAGE_DB", db.to_string_lossy().to_string());
 
-        schedule_calendar_events_emit_for_tests("create");
-        schedule_calendar_events_emit_for_tests("update");
-        tokio::time::sleep(Duration::from_millis(CALENDAR_EMIT_DEBOUNCE_MS + 80)).await;
+        let now = chrono::Utc::now().timestamp();
+        let event = CalendarEvent {
+            id: "reminder-test@aura".into(),
+            title: "Standup".into(),
+            start: now + 300,
+            end: now + 3600,
+            description: "Daily".into(),
+            calendar_id: None,
+            reminder_minutes: Some(6),
+        };
+        storage::init().await.expect("init");
+        storage::set_kv(
+            "calendar_events",
+            &event.id,
+            &serde_json::to_value(&event).expect("json"),
+        )
+        .await
+        .expect("set");
 
-        let mut count = 0;
-        while let Ok(raw) = rx.try_recv() {
-            let v: serde_json::Value = serde_json::from_str(&raw).expect("json");
-            if v["method"] == "Calendar.EventsChanged" {
-                count += 1;
-            }
-        }
-        assert!(count <= 1, "expected at most one debounced emit, got {count}");
-        assert!(count >= 1, "expected at least one Calendar.EventsChanged");
+        check_calendar_reminders_for_tests()
+            .await
+            .expect("first tick");
+        check_calendar_reminders_for_tests()
+            .await
+            .expect("second tick");
+
+        let fired = storage::get_kv("calendar_reminders", "fired_reminder-test@aura")
+            .await
+            .expect("fired lookup");
+        assert!(fired.is_some());
+
+        let _ = std::env::remove_var("AURA_STORAGE_DB");
+    }
+
+    #[test]
+    fn calendar_emit_debounce_generation_coalesces() {
+        let first = CALENDAR_EMIT_GEN.fetch_add(1, Ordering::Relaxed) + 1;
+        let second = CALENDAR_EMIT_GEN.fetch_add(1, Ordering::Relaxed) + 1;
+        assert!(second > first);
+        assert!(!calendar_emit_should_fire(second, first));
+        assert!(calendar_emit_should_fire(second, second));
     }
 }

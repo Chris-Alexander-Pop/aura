@@ -238,13 +238,13 @@ impl CommandRunner for TokioCommandRunner {
     }
 }
 
-#[cfg(test)]
+/// Test double for [`CommandRunner`] (integration tests and unit tests).
+#[doc(hidden)]
 pub struct MockCommandRunner {
     pub stdout: String,
     pub detached_ok: bool,
 }
 
-#[cfg(test)]
 #[async_trait]
 impl CommandRunner for MockCommandRunner {
     async fn run(&self, _cmd: &[&str], _opts: ExecOpts) -> Result<String> {

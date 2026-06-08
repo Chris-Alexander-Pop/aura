@@ -490,9 +490,20 @@ pub(crate) fn parse_controller_list_line(line: &str) -> Option<(String, String)>
     let rest = line.strip_prefix("Controller ")?;
     let mut parts = rest.split_whitespace();
     let address = parts.next()?.to_string();
+    if !is_bluetooth_mac(&address) {
+        return None;
+    }
     let name = parts.collect::<Vec<_>>().join(" ");
     let name = name.trim_end_matches("[default]").trim().to_string();
     Some((address, name))
+}
+
+fn is_bluetooth_mac(address: &str) -> bool {
+    let octets: Vec<_> = address.split(':').collect();
+    octets.len() == 6
+        && octets
+            .iter()
+            .all(|o| o.len() == 2 && o.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 #[cfg(test)]
@@ -581,5 +592,41 @@ mod tests {
         }
         assert_eq!(addresses.len(), 2);
         assert_eq!(addresses[0], "AA:BB:CC:DD:EE:FF");
+    }
+
+    #[test]
+    fn parse_devices_list_address_skips_chg_and_invalid_lines() {
+        assert!(parse_devices_list_address("[CHG] Device AA:BB:CC:DD:EE:FF RSSI: -50").is_none());
+        assert!(parse_devices_list_address("Device not-a-mac Name").is_none());
+        assert!(parse_devices_list_address("Controller AA:BB:CC:DD:EE:00").is_none());
+    }
+
+    #[test]
+    fn parse_controller_list_line_skips_invalid_address() {
+        assert!(parse_controller_list_line("Controller not-a-mac").is_none());
+        assert!(parse_controller_list_line("not a controller line").is_none());
+    }
+
+    #[test]
+    fn parse_device_info_battery_plain_percent() {
+        let output = "Device AA:BB:CC:DD:EE:FF (public)\n\tBattery Percentage: 72%\n";
+        let dev = parse_device_info("AA:BB:CC:DD:EE:FF", output);
+        assert_eq!(dev.battery_percentage, Some(72));
+    }
+
+    #[test]
+    fn parse_show_block_empty_output_yields_none_fields() {
+        let details = parse_show_block("");
+        assert!(details.name.is_none());
+        assert!(details.powered.is_none());
+        assert!(details.discoverable.is_none());
+    }
+
+    #[test]
+    fn parse_device_info_uses_address_when_name_missing() {
+        let output = "Device AA:BB:CC:DD:EE:FF (public)\n\tPaired: no\n";
+        let dev = parse_device_info("AA:BB:CC:DD:EE:FF", output);
+        assert_eq!(dev.name, "AA:BB:CC:DD:EE:FF");
+        assert_eq!(dev.alias, "AA:BB:CC:DD:EE:FF");
     }
 }

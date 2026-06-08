@@ -59,6 +59,12 @@ fn require_audio_advanced() -> Result<()> {
     }
 }
 
+/// Serializes `AURA_AUDIO_ADVANCED` env access across lib unit and integration tests.
+pub fn audio_env_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap()
+}
+
 lazy_static::lazy_static! {
     static ref PIPEWIRE_STATE: RwLock<PipeWireState> = RwLock::new(PipeWireState::default());
     static ref EASYEFFECTS_STATE: RwLock<EasyEffectsState> = RwLock::new(EasyEffectsState::default());
@@ -784,12 +790,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     // MPRIS Media Control Methods
     registry.register("Audio.Media.GetPlayers", |_params| async move {
         let output = process::exec_command(&["playerctl", "-l"]).await?;
-        let players: Vec<String> = output
-            .lines()
-            .filter(|l| !l.is_empty())
-            .map(|s| s.to_string())
-            .collect();
-
+        let players = crate::services::mpris::parse_playerctl_list(&output);
         Ok(serde_json::to_value(&players)?)
     });
 
@@ -1367,5 +1368,144 @@ mod tests {
         assert_eq!(streams[0].id, 12);
         assert_eq!(streams[0].app, "");
         assert_eq!(streams[0].sink_id, -1);
+    }
+
+    #[test]
+    fn parse_streams_multi_fixture() {
+        let fixture = include_str!("../../tests/fixtures/audio/pactl_sink_inputs_multi.txt");
+        let streams = parse_streams(fixture);
+        assert_eq!(streams.len(), 2);
+        assert_eq!(streams[0].id, 8);
+        assert_eq!(streams[0].app, "Spotify");
+        assert_eq!(streams[0].volume, 50);
+        assert_eq!(streams[0].sink_id, 47);
+        assert_eq!(streams[1].app, "Discord");
+        assert_eq!(streams[1].volume, 100);
+    }
+
+    #[test]
+    fn parse_wpctl_star_default_fixture() {
+        let fixture = include_str!("../../tests/fixtures/audio/wpctl_status_star_default.txt");
+        let (sinks, sources) = parse_devices(fixture);
+        assert_eq!(sinks.len(), 2);
+        assert!(sinks[0].is_default);
+        assert!(!sinks[1].is_default);
+        assert!(sinks[1].muted);
+        assert_eq!(sources.len(), 1);
+        assert!(sources[0].is_default);
+        assert!((sources[0].volume - 0.90).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parse_pactl_list_sinks_empty_description_skipped() {
+        let output = "Sink #1\n\tName: dummy\nSink #2\n\tDescription: Speakers\n";
+        let sinks = parse_pactl_list_sinks(output);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].index, 2);
+        assert_eq!(sinks[0].description, "Speakers");
+    }
+
+    #[test]
+    fn parse_devices_empty_wpctl_fixture() {
+        let fixture = include_str!("../../tests/fixtures/audio/wpctl_status_empty.txt");
+        let (sinks, sources) = parse_devices(fixture);
+        assert!(sinks.is_empty());
+        assert!(sources.is_empty());
+    }
+
+    #[test]
+    fn parse_devices_stops_at_video_section() {
+        let fixture = include_str!("../../tests/fixtures/audio/wpctl_status_video_boundary.txt");
+        let (sinks, sources) = parse_devices(fixture);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].id, 47);
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].id, 50);
+    }
+
+    #[test]
+    fn parse_devices_skips_sink_inputs_and_devices_subsections() {
+        let output = "\
+Audio
+ ├ Devices:
+ │      99. Phantom [vol: 1.00]
+ ├ Sinks:
+ │  ●   47. Headphones [vol: 0.50]
+ ├ Sink Inputs:
+ │      12. Firefox
+";
+        let (sinks, sources) = parse_devices(output);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].id, 47);
+        assert!(sources.is_empty());
+    }
+
+    #[test]
+    fn parse_pactl_list_sinks_skips_block_without_description() {
+        let output = "Sink #3\n\tName: null\nSink #4\n\tDescription: Monitor\n";
+        let sinks = parse_pactl_list_sinks(output);
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].index, 4);
+    }
+
+    #[test]
+    fn require_audio_advanced_blocked_without_env() {
+        let _lock = super::audio_env_test_lock();
+        std::env::remove_var("AURA_AUDIO_ADVANCED");
+        let err = require_audio_advanced().unwrap_err();
+        assert!(err.to_string().contains("AURA_AUDIO_ADVANCED"));
+        assert!(!audio_advanced_enabled());
+    }
+
+    #[test]
+    fn require_audio_advanced_enabled_when_env_is_one() {
+        let _lock = super::audio_env_test_lock();
+        std::env::set_var("AURA_AUDIO_ADVANCED", "1");
+        assert!(audio_advanced_enabled());
+        assert!(require_audio_advanced().is_ok());
+        std::env::remove_var("AURA_AUDIO_ADVANCED");
+    }
+
+    #[test]
+    fn audio_advanced_disabled_for_other_env_values() {
+        let _lock = super::audio_env_test_lock();
+        std::env::set_var("AURA_AUDIO_ADVANCED", "0");
+        assert!(!audio_advanced_enabled());
+        assert!(require_audio_advanced().is_err());
+        std::env::set_var("AURA_AUDIO_ADVANCED", "yes");
+        assert!(!audio_advanced_enabled());
+        std::env::remove_var("AURA_AUDIO_ADVANCED");
+    }
+
+    #[test]
+    fn device_id_from_params_requires_field() {
+        assert!(device_id_from_params(&None)
+            .unwrap_err()
+            .to_string()
+            .contains("Missing device_id"));
+        let params = Some(serde_json::json!({ "volume": 0.5 }));
+        assert!(device_id_from_params(&params).is_err());
+        let ok = Some(serde_json::json!({ "device_id": 47 }));
+        assert_eq!(device_id_from_params(&ok).unwrap(), 47);
+    }
+
+    #[test]
+    fn volume_from_params_requires_field() {
+        assert!(volume_from_params(&None)
+            .unwrap_err()
+            .to_string()
+            .contains("Missing volume"));
+        let params = Some(serde_json::json!({ "device_id": 1 }));
+        assert!(volume_from_params(&params).is_err());
+        let ok = Some(serde_json::json!({ "volume": 0.33 }));
+        assert!((volume_from_params(&ok).unwrap() - 0.33).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn snapshot_audio_tile_exposes_counts() {
+        let snap = snapshot_audio_tile().await;
+        assert!(snap.get("sink_count").and_then(|v| v.as_u64()).is_some());
+        assert!(snap.get("source_count").and_then(|v| v.as_u64()).is_some());
+        assert!(snap.get("default_sink").is_some());
     }
 }

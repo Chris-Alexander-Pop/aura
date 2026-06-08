@@ -43,7 +43,7 @@
 | Priority | Resolution |
 |----------|------------|
 | 1 | `AURA_SIDECAR` environment variable → absolute path to `ags-sidecar` |
-| 2 | `$XDG_CONFIG_HOME/ags/sidecar/target/debug/ags-sidecar`, then `release/` |
+| 2 | `$XDG_CONFIG_HOME/ags/sidecar/target/release/ags-sidecar`, then `debug/` |
 | 3 | **Dev:** walk from AGS config directory / repo root for `sidecar/target/{debug,release}/ags-sidecar` (code change tracked in `BACKEND_TODO` §0.1) |
 
 **Dev workflow (now):** Symlink or copy build artifacts into `~/.config/ags/sidecar/target/...` **or** set `AURA_SIDECAR` to the Engineering clone build.

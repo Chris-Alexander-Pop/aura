@@ -11,7 +11,7 @@ pub mod bluetooth;
 pub mod performance;
 pub mod security;
 #[cfg(feature = "offensive-security")]
-pub mod security_offensive;
+pub mod offensive;
 pub mod devops;
 pub mod productivity;
 pub mod calendar;

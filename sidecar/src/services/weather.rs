@@ -35,6 +35,13 @@ lazy_static::lazy_static! {
 const WEATHER_CACHE_TTL_SECS: u64 = 900;
 const WEATHER_RATE_LIMIT_SECS: u64 = 60;
 
+/// Test-only: clear process-global weather cache between integration tests.
+pub async fn reset_weather_cache_for_tests() {
+    *CACHED_WEATHER.write().await = None;
+    *LAST_UPDATE.write().await = None;
+    *LAST_FETCH.write().await = None;
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Weather.Get", |params| async move {
         let city: Option<String> = params
@@ -225,6 +232,10 @@ fn weather_rate_limit_secs() -> u64 {
     }
 }
 
+pub(crate) fn weather_cache_ttl_secs() -> u64 {
+    WEATHER_CACHE_TTL_SECS
+}
+
 /// wttr JSON fetch; integration tests set `AURA_WEATHER_WTTR_URL` to a mock HTTP endpoint.
 async fn fetch_wttr_json(city_name: &str) -> anyhow::Result<WttrResponse> {
     let url = std::env::var("AURA_WEATHER_WTTR_URL")
@@ -296,7 +307,58 @@ mod tests {
     fn weather_icon_codes() {
         assert_eq!(get_weather_icon("113"), "sunny");
         assert_eq!(get_weather_icon("116"), "partly_cloudy");
+        assert_eq!(get_weather_icon("119"), "cloudy");
+        assert_eq!(get_weather_icon("143"), "foggy");
+        assert_eq!(get_weather_icon("176"), "rainy");
+        assert_eq!(get_weather_icon("200"), "snowy");
         assert_eq!(get_weather_icon("999"), "cloud_alert");
+    }
+
+    #[test]
+    fn weather_skip_cache_and_rate_limit_env() {
+        std::env::set_var("AURA_WEATHER_SKIP_CACHE", "1");
+        assert!(weather_skip_cache());
+        std::env::remove_var("AURA_WEATHER_SKIP_CACHE");
+        assert!(!weather_skip_cache());
+
+        std::env::set_var("AURA_WEATHER_API_KEY", "test-key");
+        assert_eq!(weather_rate_limit_secs(), 30);
+        std::env::remove_var("AURA_WEATHER_API_KEY");
+        assert_eq!(weather_rate_limit_secs(), WEATHER_RATE_LIMIT_SECS);
+        assert_eq!(weather_cache_ttl_secs(), 900);
+    }
+
+    #[test]
+    fn current_weather_json_branches() {
+        let full = CurrentCondition {
+            temp_C: "18".into(),
+            temp_F: "64".into(),
+            FeelsLikeC: "17".into(),
+            FeelsLikeF: "63".into(),
+            humidity: "72".into(),
+            weatherDesc: vec![WeatherDesc {
+                value: "Partly cloudy".into(),
+            }],
+            weatherCode: "116".into(),
+        };
+        let json = current_weather_json(&full);
+        assert_eq!(json["icon"], "partly_cloudy");
+        assert_eq!(json["humidity"], 72);
+        assert_eq!(json["description"], "Partly cloudy");
+
+        let no_desc = CurrentCondition {
+            weatherDesc: vec![],
+            humidity: "not-a-number".into(),
+            weatherCode: "113".into(),
+            temp_C: "1".into(),
+            temp_F: "34".into(),
+            FeelsLikeC: "0".into(),
+            FeelsLikeF: "32".into(),
+        };
+        let sparse = current_weather_json(&no_desc);
+        assert_eq!(sparse["description"], "");
+        assert_eq!(sparse["humidity"], 0);
+        assert_eq!(sparse["icon"], "sunny");
     }
 
     #[test]
@@ -311,5 +373,17 @@ mod tests {
         assert_eq!(json["icon"], "partly_cloudy");
         assert_eq!(json["humidity"], 72);
         assert!(json["temp"].as_str().unwrap().contains("18"));
+    }
+
+    #[test]
+    fn parse_wttr_forecast_fixture_has_weather_days() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/weather/wttr_forecast.json"
+        );
+        let text = std::fs::read_to_string(path).expect("fixture");
+        let data: WttrResponse = serde_json::from_str(&text).expect("json");
+        assert_eq!(data.weather.len(), 3);
+        assert_eq!(data.current_condition[0].weatherCode, "113");
     }
 }

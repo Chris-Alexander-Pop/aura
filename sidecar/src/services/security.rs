@@ -623,7 +623,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     #[cfg(feature = "offensive-security")]
-    super::security_offensive::register(registry);
+    super::offensive::register(registry);
 }
 
 #[cfg(test)]

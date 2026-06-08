@@ -58,11 +58,16 @@ pub fn offensive_method_is_mutating(method: &str) -> bool {
     let suffix = method.strip_prefix("Security.Offensive.").unwrap_or("");
     !suffix.contains("Get")
         && !suffix.ends_with(".List")
+        && !suffix.ends_with("ListScans")
+        && !suffix.ends_with("ScanResults")
         && method != "Security.Offensive.GetAuditLog"
 }
 
 pub fn check_rate_limit(method: &str) -> Result<()> {
     if !method.starts_with("Security.Offensive.") {
+        return Ok(());
+    }
+    if std::env::var("AURA_OFFENSIVE_SKIP_RATE_LIMIT").ok().as_deref() == Some("1") {
         return Ok(());
     }
     let cooldown = if method.contains("Nmap") {
@@ -105,7 +110,7 @@ pub async fn get_audit_log(limit: usize, offset: usize) -> Result<Vec<OffensiveA
         .into_iter()
         .filter_map(|v| serde_json::from_value(v).ok())
         .collect();
-    entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    entries.sort_by(|a, b| b.id.cmp(&a.id));
     let end = (offset + limit).min(entries.len());
     if offset >= entries.len() {
         return Ok(Vec::new());
@@ -115,4 +120,55 @@ pub async fn get_audit_log(limit: usize, offset: usize) -> Result<Vec<OffensiveA
 
 pub fn offensive_feature_enabled() -> bool {
     cfg!(feature = "offensive-security")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rate_limit_blocks_rapid_repeat() {
+        std::env::remove_var("AURA_OFFENSIVE_SKIP_RATE_LIMIT");
+        let method = "Security.Offensive.Session.List";
+        check_rate_limit(method).expect("first");
+        assert!(check_rate_limit(method).is_err());
+    }
+
+    #[test]
+    fn list_scans_and_scan_results_are_read_only() {
+        assert!(!offensive_method_is_mutating("Security.Offensive.Nmap.ListScans"));
+        assert!(!offensive_method_is_mutating("Security.Offensive.Nmap.ScanResults"));
+        assert!(!offensive_method_is_mutating("Security.Offensive.GetAuditLog"));
+        assert!(offensive_method_is_mutating("Security.Offensive.Nmap.Scan"));
+    }
+
+    #[test]
+    fn hash_params_differs_for_none_and_some() {
+        let a = hash_params(&None);
+        let b = hash_params(&Some(serde_json::json!({ "target": "127.0.0.1" })));
+        assert_ne!(a, b);
+        assert_eq!(a.len(), 16);
+    }
+
+    #[test]
+    fn skip_rate_limit_env_allows_rapid_calls() {
+        std::env::set_var("AURA_OFFENSIVE_SKIP_RATE_LIMIT", "1");
+        let method = "Security.Offensive.Test.SkipRate";
+        check_rate_limit(method).expect("first");
+        check_rate_limit(method).expect("second with skip");
+        std::env::remove_var("AURA_OFFENSIVE_SKIP_RATE_LIMIT");
+    }
+
+    #[test]
+    fn non_offensive_methods_bypass_rate_limit() {
+        std::env::remove_var("AURA_OFFENSIVE_SKIP_RATE_LIMIT");
+        check_rate_limit("Security.GetStatus").expect("non-offensive ok");
+    }
+
+    #[tokio::test]
+    async fn get_audit_log_offset_past_end_empty() {
+        let _ = crate::utils::storage::init().await;
+        let entries = get_audit_log(10, 999_999).await.expect("audit");
+        assert!(entries.is_empty());
+    }
 }

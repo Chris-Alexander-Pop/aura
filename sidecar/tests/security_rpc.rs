@@ -59,6 +59,21 @@ async fn default_registry_excludes_offensive_methods() {
     );
 }
 
+/// With `offensive-security`, handlers are registered; the integration harness still
+/// blocks `call_method` for `Security.Offensive.*` (see `common::guard_tests`).
+#[cfg(feature = "offensive-security")]
+#[tokio::test]
+async fn offensive_registry_includes_offensive_methods() {
+    let registry = test_registry();
+    let err = call_method_unchecked(&registry, OFFENSIVE_SAMPLE, None)
+        .await
+        .expect_err("Nmap.Scan without target should fail validation, not MethodNotFound");
+    assert!(
+        err.downcast_ref::<MethodNotFound>().is_none(),
+        "offensive RPC must be registered in offensive-security build, got: {err}"
+    );
+}
+
 #[tokio::test]
 async fn security_get_status_shape() {
     let registry = test_registry();

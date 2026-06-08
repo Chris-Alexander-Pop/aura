@@ -13,10 +13,10 @@ description: >-
 
 | Goal | Command |
 |------|---------|
-| Full dev (Rust build, optional cargo-watch, UI build, Tailwind + AGS) | `./aura` from repo root |
+| Full dev (release sidecar, optional cargo-watch, UI build, Tailwind + AGS) | `./aura` from repo root |
 | Same without React UI build | `./aura --no-ui-build` |
 | Same without Rust watch | `./aura --no-rust-watch` |
-| Release sidecar | `./aura --release` |
+| Debug sidecar (symbols, ~200 MB binary) | `./aura --debug` |
 | CSS + AGS only (no `./aura` pipeline) | `bun run watch` |
 
 Ensure `bun install` has been run at repo root; `ui/` uses `npm` for `npm run build` inside `./aura`.
@@ -30,10 +30,10 @@ Ensure `bun install` has been run at repo root; `ui/` uses `npm` for `npm run bu
 
 `src/lib/sidecar.ts` spawns only:
 
-1. `$HOME/.config/ags/sidecar/target/debug/ags-sidecar`
-2. Else `$HOME/.config/ags/sidecar/target/release/ags-sidecar`
+1. `$HOME/.config/ags/sidecar/target/release/ags-sidecar`
+2. Else `$HOME/.config/ags/sidecar/target/debug/ags-sidecar`
 
-`./aura` runs `cargo build` in **`sidecar/` relative to the script** (the repo where `./aura` lives). If that repo is not `~/.config/ags`, the built binary may not be where the running `app.ts` looks — align checkout or copy the binary into the expected path until the resolver is improved.
+`./aura` runs `cargo build --release` by default and sets `AURA_SIDECAR` to the built binary for that session. Use `./aura --debug` for a debug build. If the repo is not `~/.config/ags`, align checkout or copy the binary into the expected path until the resolver is improved.
 
 ## What `./aura` cleans up
 

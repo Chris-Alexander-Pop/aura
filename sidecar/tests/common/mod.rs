@@ -221,6 +221,9 @@ use std::sync::Mutex;
 static STORAGE_TEST_LOCK: Mutex<()> = Mutex::new(());
 static LAUNCHER_TEST_LOCK: Mutex<()> = Mutex::new(());
 static AUTOMATION_TEST_LOCK: Mutex<()> = Mutex::new(());
+static GAMEMODE_TEST_LOCK: Mutex<()> = Mutex::new(());
+static PERFORMANCE_TEST_LOCK: Mutex<()> = Mutex::new(());
+static WEATHER_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 /// Serialize launcher tests that override `AURA_LAUNCHER_DESKTOP_DIRS`.
 pub fn launcher_test_lock() -> std::sync::MutexGuard<'static, ()> {
@@ -230,6 +233,21 @@ pub fn launcher_test_lock() -> std::sync::MutexGuard<'static, ()> {
 /// Serialize automation storage tests (SQLite + cron tick side effects).
 pub fn automation_test_lock() -> std::sync::MutexGuard<'static, ()> {
     AUTOMATION_TEST_LOCK.lock().unwrap()
+}
+
+/// Serialize gamemode RPC tests (process-global `GAMEMODE_ENABLED` static).
+pub fn gamemode_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    GAMEMODE_TEST_LOCK.lock().unwrap()
+}
+
+/// Serialize performance preset tests that use `AURA_PERFORMANCE_DRY_RUN`.
+pub fn performance_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    PERFORMANCE_TEST_LOCK.lock().unwrap()
+}
+
+/// Serialize weather RPC tests (shared in-memory cache + wiremock env).
+pub fn weather_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    WEATHER_TEST_LOCK.lock().unwrap()
 }
 
 pub struct StorageTestDb {

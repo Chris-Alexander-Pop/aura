@@ -73,6 +73,36 @@ mod tests {
         assert!(s.contains(REDACTED));
         assert!(s.contains("home"));
     }
+
+    #[test]
+    fn settings_and_keyring_methods_always_redacted() {
+        let p = json!({ "theme": "dark" });
+        assert_eq!(redact_params_for_log("Settings.Set", &p), REDACTED);
+        assert_eq!(redact_params_for_log("Keyring.StoreWifi", &p), REDACTED);
+        assert_eq!(
+            redact_params_for_log("Vpn.SaveCredentials", &p),
+            REDACTED
+        );
+        assert_eq!(redact_params_for_log("Vault.Store", &p), REDACTED);
+    }
+
+    #[test]
+    fn nested_sensitive_keys_redacted_in_objects() {
+        let p = json!({
+            "ssid": "guest",
+            "credentials": { "password": "hidden", "user": "alice" }
+        });
+        let s = redact_params_for_log("Network.Connect", &p);
+        assert!(s.contains(REDACTED));
+        assert!(s.contains("guest"));
+        assert!(!s.contains("hidden"));
+    }
+
+    #[test]
+    fn non_object_params_pass_through() {
+        let p = json!("plain");
+        assert_eq!(redact_params_for_log("Sidecar.GetVersion", &p), "\"plain\"");
+    }
 }
 
 pub fn log_rpc_completed(method: &str, params: Option<&Value>, elapsed: Duration) {

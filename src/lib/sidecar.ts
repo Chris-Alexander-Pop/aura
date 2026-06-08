@@ -47,10 +47,10 @@ class SidecarService extends GObject.Object {
         const home = GLib.get_home_dir()
         const xdgConfig = GLib.getenv('XDG_CONFIG_HOME') || `${home}/.config`
         const candidates = [
-            `${xdgConfig}/ags/sidecar/target/debug/ags-sidecar`,
             `${xdgConfig}/ags/sidecar/target/release/ags-sidecar`,
-            `${home}/Engineering/Productivity/ags/sidecar/target/debug/ags-sidecar`,
+            `${xdgConfig}/ags/sidecar/target/debug/ags-sidecar`,
             `${home}/Engineering/Productivity/ags/sidecar/target/release/ags-sidecar`,
+            `${home}/Engineering/Productivity/ags/sidecar/target/debug/ags-sidecar`,
         ]
 
         for (const path of candidates) {

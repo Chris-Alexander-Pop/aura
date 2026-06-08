@@ -47,6 +47,13 @@ pub struct CronJob {
     pub user: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct KubectlPodSummary {
+    pub name: String,
+    pub namespace: String,
+    pub phase: String,
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("DevOps.GetDockerContainers", |_params| async move {
         Ok(serde_json::to_value(&list_containers_preferred().await?)?)
@@ -419,6 +426,34 @@ pub fn git_status_dirty(porcelain: &str) -> bool {
     !porcelain.trim().is_empty()
 }
 
+/// Parse `kubectl get pods -o json` output into pod summaries.
+pub fn parse_kubectl_pod_list(json: &str) -> Option<Vec<KubectlPodSummary>> {
+    let root: serde_json::Value = serde_json::from_str(json).ok()?;
+    let items = root.get("items")?.as_array()?;
+    Some(
+        items
+            .iter()
+            .filter_map(|item| {
+                let meta = item.get("metadata")?;
+                let status = item.get("status")?;
+                Some(KubectlPodSummary {
+                    name: meta.get("name")?.as_str()?.to_string(),
+                    namespace: meta
+                        .get("namespace")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("default")
+                        .to_string(),
+                    phase: status
+                        .get("phase")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown")
+                        .to_string(),
+                })
+            })
+            .collect(),
+    )
+}
+
 pub fn parse_docker_ps_line(line: &str) -> Option<DockerContainer> {
     let line = line.trim();
     if line.is_empty() {
@@ -504,9 +539,48 @@ mod tests {
         let jobs: Vec<_> = cron.lines().filter_map(|l| parse_cron_line(l, "root")).collect();
         assert_eq!(jobs.len(), 1);
         assert_eq!(jobs[0].command, "/usr/bin/logrotate");
+        assert_eq!(jobs[0].schedule, "0 0 * * *");
+        assert_eq!(jobs[0].user, "root");
+        assert!(parse_cron_line("# only comment", "root").is_none());
+        assert!(parse_cron_line("0 0 * *", "root").is_none());
 
         assert!(!git_status_dirty(&fixture("git_porcelain_clean.txt")));
         assert!(git_status_dirty(&fixture("git_porcelain_dirty.txt")));
+        assert!(!git_status_dirty("   \n  "));
+    }
+
+    #[test]
+    fn parse_docker_ps_skips_malformed_lines() {
+        assert!(parse_docker_ps_line("").is_none());
+        assert!(parse_docker_ps_line("a|b|c").is_none());
+        let line = "id|name|image|Up|0.0.0.0:80->80/tcp";
+        let c = parse_docker_ps_line(line).unwrap();
+        assert_eq!(c.ports, "0.0.0.0:80->80/tcp");
+    }
+
+    #[test]
+    fn parse_systemd_timer_active_case_insensitive() {
+        let timer = parse_systemd_timer_line("foo.timer Mon last active").unwrap();
+        assert!(timer.active);
+        let inactive = parse_systemd_timer_line("bar.timer Tue last INACTIVE").unwrap();
+        assert!(!inactive.active);
+    }
+
+    #[test]
+    fn parse_kubectl_pod_list_fixtures() {
+        let empty = fixture("kubectl_pods_empty.json");
+        assert_eq!(parse_kubectl_pod_list(&empty), Some(vec![]));
+
+        let pods = fixture("kubectl_pods.json");
+        let list = parse_kubectl_pod_list(&pods).expect("pod list");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].name, "nginx-abc");
+        assert_eq!(list[0].phase, "Running");
+        assert_eq!(list[1].namespace, "aura");
+        assert_eq!(list[1].phase, "Pending");
+
+        assert!(parse_kubectl_pod_list("{").is_none());
+        assert!(parse_kubectl_pod_list(r#"{"items":"x"}"#).is_none());
     }
 }
 

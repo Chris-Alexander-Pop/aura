@@ -31,6 +31,25 @@ fn vpn_ip_link_and_wireguard_fixture_parsers() {
 }
 
 #[test]
+fn vpn_tun_only_and_nm_profile_fixtures() {
+    let tun = load_fixture("vpn/ip_o_addr_show_tun_only.txt");
+    assert!(vpn_interface_connected(&tun, "tun1", false));
+    assert_eq!(parse_iface_ipv4(&tun, "tun1").as_deref(), Some("10.0.0.3"));
+    assert!(!vpn_interface_connected(&tun, "eth0", false));
+
+    let nm = load_fixture("vpn/ip_o_addr_show_nm_profile.txt");
+    assert_eq!(parse_iface_ipv4(&nm, "example-exit").as_deref(), Some("192.168.1.5"));
+}
+
+#[test]
+fn vpn_wireguard_minimal_fixture() {
+    let wg = load_fixture("vpn/wg_minimal.conf");
+    let summary = parse_wireguard_conf(&wg);
+    assert_eq!(summary.addresses, vec!["192.168.6.2/32"]);
+    assert_eq!(summary.endpoint.as_deref(), Some("vpn.example.com:443"));
+}
+
+#[test]
 fn vpn_profiles_load_from_fixture_config_dir() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vpn");
     let profiles = load_vpn_profile_defs_from_dir(&dir);

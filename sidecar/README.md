@@ -47,8 +47,10 @@ Regenerate the OpenAPI spec after adding RPC methods:
 | `AURA_WEATHER_SKIP_CACHE` | Set `1` in tests to bypass weather cache |
 | `AURA_LOGS_FOLLOW_FIXTURE` | NDJSON/text lines for `Logs.FollowLogs` WS tests |
 | `AURA_CALDAV_FIXTURE` / `AURA_CALDAV_URL` | CalDAV read-only sync (fixture or live REPORT) |
+| `AURA_NMAP_XML_FIXTURE` | Nmap XML path for `Security.Offensive.Nmap.*` scans (tests; skips live nmap) |
 | `AURA_AUTOMATION_WEBHOOK_SECRET` | Shared secret for `127.0.0.1` webhook (`AURA_AUTOMATION_WEBHOOK_PORT`, default `19081`) |
 | `AURA_PERFORMANCE_DRY_RUN` | Set `1` so `Performance.ApplyPreset` returns targets without polkit |
+| `AURA_GAMEMODE_DRY_RUN` | Set `1` so `GameMode.Enable` / `Disable` skip `hyprctl` side effects |
 
 ### Offensive security feature
 
@@ -122,7 +124,18 @@ pacman -S sccache lld    # once on Arch
 sccache --show-stats     # hit rate after a few builds
 ```
 
-Coverage uses a separate target dir (`sidecar/target/llvm-cov`) so the first llvm-cov run still compiles; sccache shares rustc artifacts across default and llvm-cov targets.
+Coverage uses a separate target dir (`sidecar/target/llvm-cov`) so the first llvm-cov run still compiles; sccache shares rustc artifacts across default and llvm-cov targets. After each coverage run, `scripts/sidecar-target-prune.sh --coverage-only` drops the llvm-cov build trees (HTML/LCOV under `target/coverage/` are kept).
+
+### Target dir size cap
+
+Integration tests link ~200 MB binaries; repeated `cargo test` / `cargo-watch` rebuilds can leave many stale copies under `target/debug/deps`. `./scripts/sidecar-target-prune.sh` (also run from `./aura` and `./scripts/sidecar-test-fast.sh`) removes llvm-cov build trees and, when `sidecar/target/` exceeds **20 GB** (`AURA_TARGET_MAX_GB`), dedupes stale test artifacts. Optional: `cargo install cargo-sweep` for extra standby/old-file cleanup.
+
+```bash
+./scripts/sidecar-target-prune.sh              # prune if over limit
+./scripts/sidecar-target-prune.sh --force      # dedupe now
+AURA_TARGET_MAX_GB=10 ./scripts/sidecar-target-prune.sh
+AURA_TARGET_PRUNE_DRY_RUN=1 ./scripts/sidecar-target-prune.sh --force
+```
 
 ## Tests
 

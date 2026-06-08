@@ -13,8 +13,10 @@ use ags_sidecar::contract_parsers::{
     parse_docker_image_line, package_dependency_graph_from_qi, parse_networks, parse_pacman_q,
     parse_pacman_qu, parse_pacman_search,
     map_nmcli_connect_error, nmcli_connect_output_success, parse_pactl_list_sinks,
-    parse_powerprofilesctl_output, parse_proc_stat_cpu, parse_saved_connections,
+    parse_now_playing_line, parse_playerctl_list, parse_playerctl_status, parse_powerprofilesctl_output,
+    parse_proc_stat_cpu, parse_saved_connections, playing_from_status,
     parse_sensors_cpu_temp, parse_show_block_json, parse_streams, parse_systemd_timer_line,
+    PlayerctlPlayback,
 };
 use ags_sidecar::types::{AccessPoint, PowerProfile};
 use common::load_fixture;
@@ -364,6 +366,83 @@ fn contract_audio_pactl_empty_streams() {
 #[test]
 fn contract_audio_pactl_error_output_yields_no_streams() {
     assert!(parse_streams(&load_fixture("audio/pactl_error.txt")).is_empty());
+}
+
+#[test]
+fn contract_audio_pactl_multi_streams_json_shape() {
+    let streams = parse_streams(&load_fixture("audio/pactl_sink_inputs_multi.txt"));
+    assert_eq!(streams.len(), 2);
+    assert_eq!(streams[0].app, "Spotify");
+    assert_eq!(streams[0].volume, 50);
+    assert_eq!(streams[0].sink_id, 47);
+    assert_eq!(streams[1].app, "Discord");
+    assert_eq!(streams[1].volume, 100);
+    assert_eq!(streams[1].sink_id, 55);
+    for stream in &streams {
+        assert_audio_stream_contract(&serde_json::to_value(stream).unwrap());
+    }
+}
+
+#[test]
+fn contract_audio_pactl_malformed_stream_partial_parse() {
+    let streams = parse_streams(&load_fixture("audio/pactl_sink_inputs_malformed.txt"));
+    assert_eq!(streams.len(), 1);
+    assert_eq!(streams[0].id, 12);
+    assert_eq!(streams[0].sink_id, -1);
+    assert_audio_stream_contract(&serde_json::to_value(&streams[0]).unwrap());
+}
+
+#[test]
+fn contract_audio_wpctl_plain_name_device() {
+    let (sinks, sources) = parse_devices(&load_fixture("audio/wpctl_status_plain_name.txt"));
+    assert_eq!(sinks.len(), 1);
+    assert_eq!(sinks[0].name, "HDMI Output");
+    assert_eq!(sinks[0].info, "");
+    assert!(sources.is_empty());
+    assert_audio_device_contract(&serde_json::to_value(&sinks[0]).unwrap());
+}
+
+#[test]
+fn contract_audio_wpctl_star_default_marker() {
+    let (sinks, sources) = parse_devices(&load_fixture("audio/wpctl_status_star_default.txt"));
+    assert_eq!(sinks.len(), 2);
+    assert!(sinks[0].is_default);
+    assert!(!sinks[1].is_default);
+    assert!(sinks[1].muted);
+    assert_eq!(sources.len(), 1);
+    assert!(sources[0].is_default);
+    assert!((sources[0].volume - 0.90).abs() < f64::EPSILON);
+}
+
+#[test]
+fn contract_playerctl_status_fixtures() {
+    assert_eq!(
+        parse_playerctl_status(&load_fixture("audio/playerctl_status.txt")),
+        PlayerctlPlayback::Playing
+    );
+    assert!(playing_from_status(PlayerctlPlayback::Playing));
+    assert_eq!(
+        parse_playerctl_status(&load_fixture("audio/playerctl_status_paused.txt")),
+        PlayerctlPlayback::Paused
+    );
+    assert!(!playing_from_status(PlayerctlPlayback::Paused));
+    assert_eq!(
+        parse_playerctl_status(&load_fixture("audio/playerctl_status_stopped.txt")),
+        PlayerctlPlayback::Stopped
+    );
+}
+
+#[test]
+fn contract_playerctl_metadata_fixture() {
+    let (title, artist) = parse_now_playing_line(&load_fixture("audio/playerctl_metadata.txt"));
+    assert_eq!(title, "Creep");
+    assert_eq!(artist, "Radiohead");
+}
+
+#[test]
+fn contract_playerctl_list_fixture() {
+    let players = parse_playerctl_list(&load_fixture("audio/playerctl_list.txt"));
+    assert_eq!(players, vec!["spotify", "firefox"]);
 }
 
 #[test]

@@ -126,6 +126,95 @@ async fn calendar_import_ics_fixture_round_trip() {
 }
 
 #[tokio::test]
+async fn calendar_import_ics_edge_case_fixtures() {
+    let _guard = calendar_storage_test_lock();
+    let _db = setup_temp_storage_db().await;
+    let registry = build_registry();
+
+    for (fixture, expected_imported) in [
+        ("calendar/escaped_description.ics", 1usize),
+        ("calendar/date_only.ics", 1),
+        ("calendar/missing_dtstart.ics", 0),
+    ] {
+        let import_path = std::env::temp_dir().join(format!(
+            "aura-ics-edge-{}-{}-{}.ics",
+            fixture.replace('/', "-"),
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::write(&import_path, load_fixture(fixture)).unwrap();
+
+        let import = call_method_unchecked(
+            &registry,
+            "Calendar.ImportIcs",
+            Some(json!({
+                "file_path": import_path.to_string_lossy(),
+                "calendar_id": "edge"
+            })),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            import.get("imported"),
+            Some(&json!(expected_imported)),
+            "fixture {fixture}"
+        );
+        let _ = std::fs::remove_file(&import_path);
+    }
+}
+
+#[tokio::test]
+async fn calendar_set_reminder_and_fires_once() {
+    let _guard = calendar_storage_test_lock();
+    let _db = setup_temp_storage_db().await;
+    ags_sidecar::services::notifications::reset_notifications_for_tests().await;
+    let registry = build_registry();
+
+    let now = chrono::Utc::now().timestamp();
+    let created = call_method_unchecked(
+        &registry,
+        "Calendar.CreateEvent",
+        Some(json!({
+            "title": "Reminder RPC",
+            "start": now + 300,
+            "end": now + 3600,
+            "description": "ping",
+        })),
+    )
+    .await
+    .unwrap();
+    let id = created.get("id").and_then(|v| v.as_str()).unwrap();
+
+    call_method_unchecked(
+        &registry,
+        "Calendar.SetReminder",
+        Some(json!({ "event_id": id, "minutes_before": 6 })),
+    )
+    .await
+    .expect("SetReminder");
+
+    ags_sidecar::services::calendar::check_calendar_reminders_for_tests()
+        .await
+        .expect("tick");
+    ags_sidecar::services::calendar::check_calendar_reminders_for_tests()
+        .await
+        .expect("tick again");
+
+    let listed = call_rpc(
+        &registry,
+        "Notifications.List",
+        Some(json!({ "limit": 5, "app_name": "aura-calendar" })),
+    )
+    .await
+    .expect("Notifications.List");
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+    assert_eq!(listed[0]["summary"], "Upcoming: Reminder RPC");
+}
+
+#[tokio::test]
 async fn calendar_create_emits_events_changed_after_debounce() {
     let _guard = calendar_storage_test_lock();
     let _db = setup_temp_storage_db().await;

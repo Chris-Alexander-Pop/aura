@@ -798,4 +798,36 @@ mod tests {
         assert_eq!(next.hour(), 9);
         assert_eq!(next.minute(), 0);
     }
+
+    #[test]
+    fn scripts_from_storage_skips_corrupt_entries() {
+        let valid = Script {
+            id: "script_1".into(),
+            name: "hello".into(),
+            content: "echo hi".into(),
+            interpreter: "bash".into(),
+        };
+        let items = vec![
+            serde_json::to_value(&valid).unwrap(),
+            json!({ "name": "missing id" }),
+            json!("bare"),
+        ];
+        let scripts = scripts_from_storage_values(items);
+        assert_eq!(scripts.len(), 1);
+        assert_eq!(scripts[0].id, "script_1");
+    }
+
+    #[test]
+    fn workflow_cron_expr_extracts_time_trigger() {
+        let triggers = json!([
+            { "type": "manual" },
+            { "type": "time", "cron": "0 9 * * *" }
+        ]);
+        assert_eq!(
+            workflow_cron_expr(&triggers).as_deref(),
+            Some("0 9 * * *")
+        );
+        assert!(workflow_cron_expr(&json!([])).is_none());
+        assert!(workflow_cron_expr(&json!([{ "type": "manual" }])).is_none());
+    }
 }

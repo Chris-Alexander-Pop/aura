@@ -135,6 +135,24 @@ pub mod contract_parsers {
         crate::services::audio::parse_streams(output)
     }
 
+    pub use crate::services::mpris::PlayerctlPlayback;
+
+    pub fn parse_playerctl_status(s: &str) -> PlayerctlPlayback {
+        crate::services::mpris::parse_playerctl_status(s)
+    }
+
+    pub fn parse_now_playing_line(s: &str) -> (String, String) {
+        crate::services::mpris::parse_now_playing_line(s)
+    }
+
+    pub fn playing_from_status(status: PlayerctlPlayback) -> bool {
+        crate::services::mpris::playing_from_status(status)
+    }
+
+    pub fn parse_playerctl_list(output: &str) -> Vec<String> {
+        crate::services::mpris::parse_playerctl_list(output)
+    }
+
     pub fn parse_device_info(address: &str, output: &str) -> BluetoothDevice {
         crate::services::bluetooth::parse_device_info(address, output)
     }

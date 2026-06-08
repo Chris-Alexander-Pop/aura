@@ -94,7 +94,7 @@ check_dependencies() {
 }
 
 build_sidecar() {
-    local mode=${1:-debug}
+    local mode=${1:-release}
     echo -e "\n${CYAN}📦 Building sidecar (${mode})...${NC}"
     cd "$SIDECAR_DIR"
     if [ "$mode" = "release" ]; then
@@ -118,14 +118,14 @@ show_usage() {
     echo "Usage: aura [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --release       Sidecar in release mode"
-    echo "  --debug         Sidecar in debug mode [default]"
+    echo "  --debug         Sidecar in debug mode (symbols, slower)"
+    echo "  --release       Sidecar in release mode [default]"
     echo "  --no-rust-watch Do not auto-watch Rust"
     echo "  --no-ui-build   Skip React UI build (use existing dist)"
     echo "  --help, -h      Show this help"
 }
 
-BUILD_MODE="debug"
+BUILD_MODE="release"
 START_RUST_WATCH=true
 BUILD_UI=true
 
@@ -149,8 +149,15 @@ cleanup_environment
 echo -e "${CYAN}Checking dependencies...${NC}"
 check_dependencies
 
+if [ -x "$SCRIPT_DIR/scripts/sidecar-target-prune.sh" ]; then
+    "$SCRIPT_DIR/scripts/sidecar-target-prune.sh" --coverage-only >/dev/null 2>&1 || true
+    "$SCRIPT_DIR/scripts/sidecar-target-prune.sh" >/dev/null 2>&1 || true
+fi
+
 echo -e "\n${CYAN}Building sidecar...${NC}"
 build_sidecar "$BUILD_MODE"
+
+export AURA_SIDECAR="${SIDECAR_DIR}/target/${BUILD_MODE}/ags-sidecar"
 
 if [ "$BUILD_UI" = true ]; then
     build_ui

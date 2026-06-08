@@ -1,0 +1,11 @@
+method call sender=:1.50 -> dest=org.freedesktop.Notifications serial=4 path=/org/freedesktop/Notifications; interface=org.freedesktop.Notifications; member=Notify
+   string "thunderbird"
+   uint32 42
+   string "mail-unread"
+   string "3 new messages"
+   string "Inbox updated"
+   array [
+   ]
+   array [
+   ]
+   int32 -1

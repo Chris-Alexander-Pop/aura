@@ -18,6 +18,18 @@ When adding or extending tests:
 
 The harness enforces this: `call_method` / `call_rpc` panic if a blocklisted method is used. See `tests/common/mod.rs` (`is_denied_rpc_method`).
 
+### Process-global state (serialize parallel tests)
+
+Some handlers keep in-process state shared across all tests in one `cargo test` process:
+
+| Lock | Module | Why |
+|------|--------|-----|
+| `gamemode_test_lock()` | `GameMode.*` | `GAMEMODE_ENABLED` static; call `reset_gamemode_state_for_tests()` after acquiring |
+| `automation_test_lock()` | automation storage | SQLite + cron tick side effects |
+| `launcher_test_lock()` | launcher | `AURA_LAUNCHER_DESKTOP_DIRS` override |
+
+Acquire the lock at the start of each affected test (see `gamemode_rpc_shapes.rs`, `automation_storage_test.rs`).
+
 ## HTTP / WebSocket server tests
 
 `tests/server_http_test.rs` exercises `server.rs` and push delivery via `notify.rs`:
@@ -75,15 +87,23 @@ cargo test --test integration_test readonly_gap_methods_resolve_slow_host -- --i
 
 | Target | Role |
 |--------|------|
+| **70% line/region/function** (Stream A gate) | Enforced by `./scripts/sidecar-coverage-gate.sh`; current baseline ~64% lines |
 | **~90% line** (long-term) | Product goal for `sidecar/src/`; track via `cargo llvm-cov` |
-| **~48% baseline** (2026-05) | Current total after rpc/server/notify + contract tests; see `docs/sidecar_coverage_baseline.md` |
 | **Fast gate** | `./scripts/sidecar-test-fast.sh` — no slow host sweep |
-| **Full coverage run** | `./scripts/sidecar-coverage.sh` — LCOV + HTML (two llvm-cov passes; see script) |
+| **Full coverage run** | `./scripts/sidecar-coverage.sh` — LCOV + HTML (`--all-features`; see script) |
 
 ```bash
 ./scripts/sidecar-coverage.sh --summary-only   # quick total %
 ./scripts/sidecar-coverage.sh                  # LCOV + HTML under sidecar/target/coverage/
+./scripts/sidecar-coverage-gate.sh             # fail when any total metric < 70%
 ```
+
+### Offensive-security + `--all-features`
+
+Default builds exclude `Security.Offensive.*` from the registry and manifest. With `--features offensive-security` (or `--all-features` in coverage runs):
+
+- `security_rpc.rs`: `offensive_registry_includes_offensive_methods` asserts handlers are registered; `common::guard_tests` still deny `call_method` for offensive RPCs.
+- `security_offensive_rpc_shapes.rs`: feature-gated shapes (audit log, nmap fixture, rate limit).
 
 See `sidecar/README.md` for `cargo-llvm-cov` install steps.
 

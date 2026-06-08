@@ -442,6 +442,12 @@ mod tests {
         serde_json::from_str(&text).expect("fixture json")
     }
 
+    fn hyprland_fixture_path(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/hyprland")
+            .join(name)
+    }
+
     #[test]
     fn parse_workspaces_fixture() {
         let raw = fixture("workspaces.json");
@@ -480,6 +486,54 @@ mod tests {
         let mon = parse_monitors(&raw);
         assert_eq!(mon.len(), 1);
         assert_eq!(mon[0].name, "HDMI-A-1");
+    }
+
+    #[test]
+    fn parse_clients_skips_empty_address_fixture() {
+        let raw = fixture("clients_skip_empty_address.json");
+        let clients = parse_clients(&raw);
+        assert_eq!(clients.len(), 1);
+        assert_eq!(clients[0].class_name, "kitty");
+        assert!(clients[0].floating);
+    }
+
+    #[test]
+    fn parse_workspaces_non_array_returns_empty() {
+        let raw = fixture("workspaces_not_array.json");
+        assert!(parse_workspaces(&raw).is_empty());
+    }
+
+    #[test]
+    fn parse_active_window_null_fixture() {
+        let raw = fixture("activewindow_null.json");
+        assert!(parse_active_window(&raw).is_none());
+    }
+
+    #[test]
+    fn parse_monitors_snake_case_active_workspace() {
+        let raw = fixture("monitors_snake_case.json");
+        let mon = parse_monitors(&raw);
+        assert_eq!(mon.len(), 1);
+        assert_eq!(mon[0].active_workspace.id, 3);
+        assert_eq!(mon[0].active_workspace.name.as_deref(), Some("3"));
+    }
+
+    #[test]
+    fn hyprland_fixture_paths_exist() {
+        for name in [
+            "workspaces.json",
+            "clients.json",
+            "activewindow.json",
+            "activeworkspace.json",
+            "monitors.json",
+            "clients_skip_empty_address.json",
+            "workspaces_not_array.json",
+            "activewindow_null.json",
+            "monitors_snake_case.json",
+        ] {
+            let path = hyprland_fixture_path(name);
+            assert!(path.exists(), "missing fixture {}", path.display());
+        }
     }
 
     #[test]

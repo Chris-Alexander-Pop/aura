@@ -443,5 +443,40 @@ mod tests {
         let stats = build_productivity_stats(0, 0, None, true, 0, 0);
         assert_eq!(stats.get("focus_mode_enabled"), Some(&serde_json::json!(true)));
         assert!(stats.get("pomodoro_phase").map(|v| v.is_null()).unwrap_or(false));
+        assert_eq!(stats.get("pomodoro_active"), Some(&serde_json::json!(false)));
+    }
+
+    #[test]
+    fn tasks_from_storage_skips_corrupt_entries() {
+        let valid = Task {
+            id: "task_1".into(),
+            title: "ok".into(),
+            description: String::new(),
+            due_date: None,
+            completed: false,
+            created_at: 1,
+        };
+        let items = vec![
+            serde_json::to_value(&valid).unwrap(),
+            serde_json::json!({ "title": "missing id" }),
+            serde_json::json!("bare"),
+        ];
+        let tasks = tasks_from_storage_values(items);
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].id, "task_1");
+    }
+
+    #[test]
+    fn build_stats_counts_open_tasks_only() {
+        let stats = build_productivity_stats(0, 0, None, false, 2, 5);
+        assert_eq!(stats.get("open_task_count").and_then(|v| v.as_u64()), Some(2));
+        assert_eq!(stats.get("task_count").and_then(|v| v.as_u64()), Some(5));
+    }
+
+    #[test]
+    fn pomodoro_storage_json_rejects_corrupt_shapes() {
+        use serde_json::json;
+        assert!(serde_json::from_value::<PomodoroState>(json!("bad")).is_err());
+        assert!(serde_json::from_value::<PomodoroState>(json!({ "work_minutes": 25 })).is_err());
     }
 }

@@ -3,7 +3,7 @@
 mod common;
 
 use ags_sidecar::contract_parsers::parse_meminfo_cached_buffers_kb;
-use common::{call_method, call_method_unchecked, load_fixture, test_registry};
+use common::{call_method, call_method_unchecked, load_fixture, performance_test_lock, test_registry};
 use serde_json::json;
 
 #[test]
@@ -78,6 +78,7 @@ async fn performance_get_processes_aligns_with_list_top() {
 
 #[tokio::test]
 async fn performance_apply_preset_dry_run() {
+    let _lock = performance_test_lock();
     std::env::set_var("AURA_PERFORMANCE_DRY_RUN", "1");
     let registry = test_registry();
     let value = call_method_unchecked(
@@ -93,4 +94,56 @@ async fn performance_apply_preset_dry_run() {
         Some("balanced")
     );
     std::env::remove_var("AURA_PERFORMANCE_DRY_RUN");
+}
+
+#[tokio::test]
+async fn performance_apply_preset_dry_run_compile_and_game() {
+    let _lock = performance_test_lock();
+    std::env::set_var("AURA_PERFORMANCE_DRY_RUN", "1");
+    let registry = test_registry();
+
+    for (preset, profile, governor) in [
+        ("compile", "performance", "performance"),
+        ("game", "performance", "performance"),
+    ] {
+        let value = call_method_unchecked(
+            &registry,
+            "Performance.ApplyPreset",
+            Some(json!({ "preset": preset })),
+        )
+        .await
+        .unwrap_or_else(|e| panic!("Performance.ApplyPreset {preset}: {e}"));
+        assert_eq!(value.get("dry_run").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(value.get("profile").and_then(|v| v.as_str()), Some(profile));
+        assert_eq!(value.get("governor").and_then(|v| v.as_str()), Some(governor));
+    }
+
+    std::env::remove_var("AURA_PERFORMANCE_DRY_RUN");
+}
+
+#[tokio::test]
+async fn performance_apply_preset_unknown_errors() {
+    let registry = test_registry();
+    let err = call_method_unchecked(
+        &registry,
+        "Performance.ApplyPreset",
+        Some(json!({ "preset": "vacation" })),
+    )
+    .await
+    .expect_err("unknown preset");
+    assert!(err.to_string().to_lowercase().contains("unknown"));
+}
+
+#[tokio::test]
+async fn performance_get_systemd_services_shape() {
+    let registry = test_registry();
+    let value = call_method(&registry, "Performance.GetSystemdServices", None)
+        .await
+        .expect("Performance.GetSystemdServices");
+    let rows = value.as_array().expect("services array");
+    if let Some(row) = rows.first() {
+        for key in ["name", "status", "active", "enabled"] {
+            assert!(row.get(key).is_some(), "missing {key}");
+        }
+    }
 }

@@ -474,4 +474,17 @@ mod tests {
         let text = "Required By     : None\n";
         assert!(parse_pacman_qi_name_list(&parse_pacman_qi_field(text, "Required By")).is_empty());
     }
+
+    #[test]
+    fn parse_pacman_qu_empty_output() {
+        let fixture = include_str!("../../tests/fixtures/packages/pacman_qu_empty.txt");
+        assert!(parse_pacman_qu(fixture).is_empty());
+    }
+
+    #[test]
+    fn looks_like_pacman_version_rejects_bare_numbers() {
+        assert!(!looks_like_pacman_version("broken"));
+        assert!(!looks_like_pacman_version("1.0"));
+        assert!(looks_like_pacman_version("6.12.1-1"));
+    }
 }

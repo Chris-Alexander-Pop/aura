@@ -171,4 +171,47 @@ mod tests {
     fn workouts_from_storage_empty_namespace() {
         assert!(workouts_from_storage_values(vec![]).is_empty());
     }
+
+    #[test]
+    fn goals_from_storage_preserves_multiple_valid_entries() {
+        let g1 = Goal {
+            id: "g1".into(),
+            goal_type: "steps".into(),
+            target: 10_000.0,
+            current: 500.0,
+        };
+        let g2 = Goal {
+            id: "g2".into(),
+            goal_type: "calories".into(),
+            target: 500.0,
+            current: 120.0,
+        };
+        let items = vec![
+            serde_json::to_value(&g1).unwrap(),
+            serde_json::to_value(&g2).unwrap(),
+        ];
+        let out = goals_from_storage_values(items);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].goal_type, "steps");
+        assert_eq!(out[1].goal_type, "calories");
+    }
+
+    #[test]
+    fn workouts_from_storage_skips_corrupt_entries() {
+        let valid = Workout {
+            id: "w1".into(),
+            workout_type: "run".into(),
+            start_time: 100,
+            end_time: Some(200),
+            duration_seconds: Some(100),
+            data: json!({}),
+        };
+        let items = vec![
+            serde_json::to_value(&valid).unwrap(),
+            json!({ "incomplete": true }),
+        ];
+        let out = workouts_from_storage_values(items);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].workout_type, "run");
+    }
 }

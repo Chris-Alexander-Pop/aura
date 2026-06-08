@@ -99,3 +99,101 @@ async fn sidebar_get_tile_data_rejects_unknown_tile() {
     .expect_err("unknown tile");
     assert!(err.to_string().contains("unknown tile"));
 }
+
+#[tokio::test]
+async fn sidebar_get_tile_data_missing_tile_param_errors() {
+    let registry = test_registry();
+    let err = call_rpc(&registry, "Sidebar.GetTileData", None)
+        .await
+        .expect_err("missing tile");
+    assert!(err.to_string().contains("missing tile"));
+}
+
+#[tokio::test]
+async fn sidebar_get_tile_data_audio_shape() {
+    let registry = test_registry();
+    let value = call_rpc(
+        &registry,
+        "Sidebar.GetTileData",
+        Some(json!({ "tile": "audio" })),
+    )
+    .await
+    .expect("Sidebar.GetTileData audio");
+    assert_eq!(value.get("tile").and_then(|v| v.as_str()), Some("audio"));
+    let data = value.get("data").and_then(|v| v.as_object()).expect("data");
+    for key in ["sink_count", "source_count", "default_sink"] {
+        assert!(data.contains_key(key), "audio tile missing {key}");
+    }
+}
+
+#[tokio::test]
+async fn sidebar_get_tile_data_bluetooth_shape() {
+    let registry = test_registry();
+    let value = call_rpc(
+        &registry,
+        "Sidebar.GetTileData",
+        Some(json!({ "tile": "bluetooth" })),
+    )
+    .await
+    .expect("bluetooth tile");
+    let data = value.get("data").and_then(|v| v.as_object()).expect("data");
+    for key in ["powered", "connected_count"] {
+        assert!(data.contains_key(key), "bluetooth tile missing {key}");
+    }
+}
+
+#[tokio::test]
+async fn sidebar_get_tile_data_battery_shape() {
+    let registry = test_registry();
+    let value = call_rpc(
+        &registry,
+        "Sidebar.GetTileData",
+        Some(json!({ "tile": "battery" })),
+    )
+    .await
+    .expect("battery tile");
+    let data = value.get("data").and_then(|v| v.as_object()).expect("data");
+    assert!(data.get("battery").and_then(|v| v.as_object()).is_some());
+    assert!(data.get("power_profile").and_then(|v| v.as_str()).is_some());
+}
+
+#[tokio::test]
+async fn sidebar_get_tile_data_calendar_shape() {
+    let registry = test_registry();
+    let value = call_rpc(
+        &registry,
+        "Sidebar.GetTileData",
+        Some(json!({ "tile": "calendar" })),
+    )
+    .await
+    .expect("calendar tile");
+    let data = value.get("data").and_then(|v| v.as_object()).expect("data");
+    assert!(data.get("events").and_then(|v| v.as_array()).is_some());
+}
+
+#[tokio::test]
+async fn sidebar_get_tile_data_notifications_shape() {
+    let registry = test_registry();
+    let value = call_rpc(
+        &registry,
+        "Sidebar.GetTileData",
+        Some(json!({ "tile": "notifications" })),
+    )
+    .await
+    .expect("notifications tile");
+    let data = value.get("data").and_then(|v| v.as_object()).expect("data");
+    assert!(data.get("dnd").and_then(|v| v.as_object()).is_some());
+}
+
+#[tokio::test]
+async fn sidebar_get_tile_data_productivity_shape() {
+    let registry = test_registry();
+    let value = call_rpc(
+        &registry,
+        "Sidebar.GetTileData",
+        Some(json!({ "tile": "productivity" })),
+    )
+    .await
+    .expect("productivity tile");
+    assert!(value.get("data").is_some());
+}
