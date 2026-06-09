@@ -8,8 +8,8 @@ use ags_sidecar::contract_parsers::{
 };
 use ags_sidecar::services::audio::audio_env_test_lock;
 use common::{
-    assert_safe_rpc_method, call_method, call_method_unchecked, load_fixture, setup_temp_storage_db,
-    test_registry,
+    assert_safe_rpc_method, call_method, call_method_unchecked, load_fixture,
+    setup_temp_storage_db, test_registry, ExecFixtureGuard,
 };
 use serde_json::json;
 
@@ -109,11 +109,13 @@ async fn media_get_now_playing_shape() {
 
 #[tokio::test]
 async fn audio_media_get_players_shape() {
+    let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     let value = call_method(&registry, "Audio.Media.GetPlayers", None)
         .await
         .expect("Audio.Media.GetPlayers");
-    assert!(value.is_array());
+    let players = value.as_array().expect("players array");
+    assert!(!players.is_empty());
 }
 
 #[test]
