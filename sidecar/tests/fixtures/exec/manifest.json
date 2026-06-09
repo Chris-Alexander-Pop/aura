@@ -258,6 +258,13 @@
     },
     {
       "cmd": [
+        "gtk-launch"
+      ],
+      "stdout": "gtk-launch/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
         "grim"
       ],
       "stdout": "grim/empty.stdout",

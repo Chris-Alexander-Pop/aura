@@ -4,7 +4,9 @@ mod common;
 
 use ags_sidecar::build_registry;
 use ags_sidecar::services::launcher::invalidate_desktop_index_cache;
-use common::{call_method_unchecked, call_rpc, launcher_test_lock, setup_temp_storage_db};
+use common::{
+    call_method_unchecked, call_rpc, launcher_test_lock, setup_temp_storage_db, ExecFixtureGuard,
+};
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -70,6 +72,7 @@ async fn launcher_pin_round_trip_via_storage() {
 
 #[tokio::test]
 async fn launcher_run_records_recent() {
+    let _exec = ExecFixtureGuard::activate();
     let _guard = launcher_test_lock();
     let _db = setup_temp_storage_db().await;
     set_fixture_desktop_dirs();
