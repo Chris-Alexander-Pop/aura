@@ -49,31 +49,20 @@ async fn audio_media_now_playing_mocked() {
 
 #[tokio::test]
 async fn vpn_connect_disconnect_mocked() {
+    std::env::set_var("AURA_VPN_DRY_RUN", "1");
     let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
-    let profiles = call_method(&registry, "Vpn.GetProfiles", None)
-        .await
-        .expect("profiles");
-    let id = profiles
-        .as_array()
-        .and_then(|a| a.first())
-        .and_then(|p| p.get("id"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("lab-wg");
     call_method_unchecked(
         &registry,
         "Vpn.Connect",
-        Some(json!({ "profile_id": id })),
+        Some(json!({ "profile_id": "personal" })),
     )
     .await
     .expect("Vpn.Connect");
-    call_method_unchecked(
-        &registry,
-        "Vpn.Disconnect",
-        Some(json!({ "profile_id": id })),
-    )
-    .await
-    .expect("Vpn.Disconnect");
+    call_method_unchecked(&registry, "Vpn.Disconnect", None)
+        .await
+        .expect("Vpn.Disconnect");
+    std::env::remove_var("AURA_VPN_DRY_RUN");
 }
 
 #[tokio::test]
