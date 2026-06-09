@@ -6,7 +6,7 @@ mod common;
 
 use common::{
     call_method, call_rpc, is_denied_rpc_method, is_safe_readonly_rpc, load_api_ts_methods,
-    test_registry,
+    test_registry, ExecFixtureGuard,
 };
 use common::setup_temp_storage_db;
 use serde_json::{json, Value};
@@ -37,6 +37,7 @@ const P0_METHODS: &[&str] = &[
 
 #[tokio::test]
 async fn p0_methods_resolve_without_panic() {
+    let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     for method in P0_METHODS {
         let result = call_method(&registry, method, None).await;
@@ -188,6 +189,7 @@ async fn packages_get_upgradable_returns_array() {
 
 #[tokio::test]
 async fn packages_get_installed_returns_array() {
+    let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     let value = call_method(&registry, "Packages.GetInstalled", None)
         .await
@@ -197,6 +199,7 @@ async fn packages_get_installed_returns_array() {
 
 #[tokio::test]
 async fn packages_search_readonly_with_query() {
+    let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     let value = call_method(
         &registry,
@@ -401,6 +404,7 @@ const READONLY_BULK_SMOKE_METHODS: &[&str] = &[
 
 #[tokio::test]
 async fn readonly_bulk_smoke_methods_resolve() {
+    let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     for method in READONLY_BULK_SMOKE_METHODS {
         let result = call_method(&registry, method, None).await;
@@ -611,6 +615,7 @@ async fn network_list_saved_returns_array() {
 
 #[tokio::test]
 async fn network_scan_networks_returns_access_points() {
+    let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     let value = call_method(&registry, "Network.ScanNetworks", None)
         .await
@@ -863,49 +868,10 @@ async fn assert_readonly_gap_methods_resolve(methods: &[&str]) {
 
 #[tokio::test]
 async fn readonly_gap_methods_resolve() {
-    assert_readonly_gap_methods_resolve(READONLY_GAP_FAST).await;
-}
-
-/// One `call_method` per read-safe `ui/src/lib/api.ts` RPC (skips deny-list and mutating verbs).
-#[tokio::test]
-async fn api_ts_readonly_methods_resolve() {
-    let registry = test_registry();
-    let methods: Vec<String> = load_api_ts_methods()
-        .into_iter()
-        .filter(|m| is_safe_readonly_rpc(m) && !is_denied_rpc_method(m))
-        .collect();
-    assert!(!methods.is_empty(), "expected read-only api.ts RPC methods");
-
-    for method in methods {
-        let params = resolve_readonly_params(&registry, &method)
-            .await
-            .or_else(|| api_ts_rpc_params(&method));
-        let result = call_method(&registry, &method, params).await;
-        if readonly_gap_optional_skip(&method, &result) {
-            continue;
-        }
-        assert!(
-            result.is_ok(),
-            "api.ts method {} failed: {:?}",
-            method,
-            result.err()
-        );
-    }
-}
-
-#[tokio::test]
-async fn readonly_gap_methods_resolve_mocked() {
     assert_readonly_gap_methods_resolve_mocked(READONLY_GAP_FAST).await;
 }
 
-#[tokio::test]
-async fn readonly_gap_slow_host_methods_resolve_mocked() {
-    assert_readonly_gap_methods_resolve_mocked(READONLY_GAP_SLOW_HOST).await;
-}
-
-#[tokio::test]
-async fn api_ts_readonly_methods_resolve_mocked() {
-    use common::ExecFixtureGuard;
+async fn assert_api_ts_readonly_methods_resolve() {
     let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     let methods: Vec<String> = load_api_ts_methods()
@@ -929,6 +895,27 @@ async fn api_ts_readonly_methods_resolve_mocked() {
             result.err()
         );
     }
+}
+
+/// One `call_method` per read-safe `ui/src/lib/api.ts` RPC (skips deny-list and mutating verbs).
+#[tokio::test]
+async fn api_ts_readonly_methods_resolve() {
+    assert_api_ts_readonly_methods_resolve().await;
+}
+
+#[tokio::test]
+async fn readonly_gap_methods_resolve_mocked() {
+    assert_readonly_gap_methods_resolve_mocked(READONLY_GAP_FAST).await;
+}
+
+#[tokio::test]
+async fn readonly_gap_slow_host_methods_resolve_mocked() {
+    assert_readonly_gap_methods_resolve_mocked(READONLY_GAP_SLOW_HOST).await;
+}
+
+#[tokio::test]
+async fn api_ts_readonly_methods_resolve_mocked() {
+    assert_api_ts_readonly_methods_resolve().await;
 }
 
 #[tokio::test]
