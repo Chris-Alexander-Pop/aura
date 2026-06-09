@@ -1,0 +1,16 @@
+Sink Input #8
+	Driver: PipeWire
+	Sink: 47
+	Mute: no
+	Volume: front-left: 32768 /  50% / -18.06 dB,   front-right: 32768 /  50% / -18.06 dB
+	Properties:
+		application.name = "Spotify"
+		media.name = "Track One"
+Sink Input #9
+	Driver: PipeWire
+	Sink: 55
+	Mute: no
+	Volume: front-left: 65536 / 100% / 0.00 dB,   front-right: 65536 / 100% / 0.00 dB
+	Properties:
+		application.name = "Discord"
+		media.name = "Voice Chat"

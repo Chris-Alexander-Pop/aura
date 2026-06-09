@@ -268,4 +268,18 @@ mod tests {
         let merged = merge_lock_partial(&base, &partial).unwrap();
         assert_eq!(merged, base);
     }
+
+    #[tokio::test]
+    async fn test_fingerprint_ok_with_exec_fixture() {
+        std::env::set_var(
+            crate::utils::process::EXEC_FIXTURE_ENV,
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/exec")
+                .to_string_lossy()
+                .as_ref(),
+        );
+        let out = test_fingerprint().await.expect("fingerprint");
+        assert_eq!(out.get("ok").and_then(|v| v.as_bool()), Some(true));
+        std::env::remove_var(crate::utils::process::EXEC_FIXTURE_ENV);
+    }
 }

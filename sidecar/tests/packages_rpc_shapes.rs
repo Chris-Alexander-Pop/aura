@@ -25,6 +25,8 @@ fn contract_pactree_reverse_fixture() {
 
 #[tokio::test]
 async fn packages_get_dependencies_shape() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     let value = call_method(
         &registry,
@@ -41,6 +43,8 @@ async fn packages_get_dependencies_shape() {
 
 #[tokio::test]
 async fn packages_get_reverse_dependencies_shape() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     let value = call_method(
         &registry,
@@ -64,4 +68,30 @@ async fn packages_get_auto_update_policy_defaults() {
         value.get("reboot_hint").and_then(|v| v.as_bool()),
         Some(false)
     );
+}
+
+#[tokio::test]
+async fn packages_get_installed_mocked() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
+    let registry = test_registry();
+    let value = call_method(&registry, "Packages.GetInstalled", None)
+        .await
+        .expect("Packages.GetInstalled");
+    assert!(value.is_array());
+}
+
+#[tokio::test]
+async fn packages_search_mocked() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
+    let registry = test_registry();
+    let value = call_method(
+        &registry,
+        "Packages.Search",
+        Some(json!({ "query": "aura" })),
+    )
+    .await
+    .expect("Packages.Search");
+    assert!(value.is_array());
 }

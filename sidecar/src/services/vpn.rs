@@ -736,10 +736,11 @@ async fn is_vpn_process_running() -> bool {
 mod tests {
     use super::{
         apply_connect_start, apply_connected, apply_disconnected, apply_error,
-        assert_allowlisted_vpn_argv, connect_networkmanager, connect_wireguard,
-        default_profile_defs, ip_link_interface_up, load_profile_defs_from_dir,
-        parse_iface_ipv4, parse_ip_link_line, parse_wireguard_conf, vpn_interface_connected,
-        VpnProcess, VpnProfileDef, VpnProtocol, VpnServiceState, VpnState, WireGuardConfigSummary,
+        assert_allowlisted_vpn_argv, check_connection_status, connect_networkmanager,
+        connect_vpn, connect_wireguard, default_profile_defs, disconnect_vpn,
+        ip_link_interface_up, load_profile_defs_from_dir, parse_iface_ipv4, parse_ip_link_line,
+        parse_wireguard_conf, snapshot_vpn_status, vpn_interface_connected, VpnProcess,
+        VpnProfileDef, VpnProtocol, VpnServiceState, VpnState, WireGuardConfigSummary, VPN_STATE,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -1121,5 +1122,76 @@ mod tests {
             .await
             .unwrap();
         assert!(out.contains("successfully activated") || out.contains("Connection"));
+    }
+
+    fn set_exec_fixtures() {
+        std::env::set_var(
+            crate::utils::process::EXEC_FIXTURE_ENV,
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/exec")
+                .to_string_lossy()
+                .as_ref(),
+        );
+    }
+
+    fn clear_exec_fixtures() {
+        std::env::remove_var(crate::utils::process::EXEC_FIXTURE_ENV);
+    }
+
+    async fn reset_vpn_state() {
+        let mut state = VPN_STATE.write().await;
+        *state = VpnServiceState::default();
+    }
+
+    #[tokio::test]
+    async fn connect_vpn_dry_run_transitions_and_local_ip() {
+        reset_vpn_state().await;
+        std::env::set_var("AURA_VPN_DRY_RUN", "1");
+        set_exec_fixtures();
+        connect_vpn("personal", None, &RecordingVpnProcess::new())
+            .await
+            .expect("connect dry run");
+        let status = snapshot_vpn_status().await.expect("status");
+        assert_eq!(status.state, VpnState::Connected);
+        assert_eq!(status.local_ip.as_deref(), Some("192.168.1.5"));
+        disconnect_vpn(&RecordingVpnProcess::new())
+            .await
+            .expect("disconnect dry run");
+        let after = snapshot_vpn_status().await.expect("after");
+        assert_eq!(after.state, VpnState::Disconnected);
+        std::env::remove_var("AURA_VPN_DRY_RUN");
+        clear_exec_fixtures();
+    }
+
+    #[tokio::test]
+    async fn check_connection_status_keeps_connected_when_iface_up() {
+        reset_vpn_state().await;
+        set_exec_fixtures();
+        {
+            let mut state = VPN_STATE.write().await;
+            apply_connected(&mut state, "Connected");
+            state.active_profile_id = Some("personal".into());
+        }
+        check_connection_status().await.expect("check status");
+        let state = VPN_STATE.read().await;
+        assert_eq!(state.state, VpnState::Connected);
+        clear_exec_fixtures();
+    }
+
+    #[tokio::test]
+    async fn disconnect_vpn_nmcli_when_personal_active() {
+        reset_vpn_state().await;
+        set_exec_fixtures();
+        {
+            let mut state = VPN_STATE.write().await;
+            apply_connected(&mut state, "Connected");
+            state.active_profile_id = Some("personal".into());
+        }
+        disconnect_vpn(&RecordingVpnProcess::new())
+            .await
+            .expect("disconnect");
+        let state = VPN_STATE.read().await;
+        assert_eq!(state.state, VpnState::Disconnected);
+        clear_exec_fixtures();
     }
 }

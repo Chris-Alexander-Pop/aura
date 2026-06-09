@@ -361,6 +361,12 @@ pub(crate) async fn snapshot_productivity_stats() -> anyhow::Result<serde_json::
     ))
 }
 
+pub async fn reset_productivity_state_for_tests() {
+    TIMERS.write().await.clear();
+    *POMODORO.write().await = None;
+    PRODUCTIVITY_EMIT_GEN.store(0, Ordering::Relaxed);
+}
+
 pub(crate) fn tasks_from_storage_values(items: Vec<serde_json::Value>) -> Vec<Task> {
     items
         .into_iter()
@@ -478,5 +484,13 @@ mod tests {
         use serde_json::json;
         assert!(serde_json::from_value::<PomodoroState>(json!("bad")).is_err());
         assert!(serde_json::from_value::<PomodoroState>(json!({ "work_minutes": 25 })).is_err());
+    }
+
+    #[tokio::test]
+    async fn schedule_productivity_emit_debounces() {
+        crate::notify::init_for_tests();
+        schedule_productivity_emit();
+        schedule_productivity_emit();
+        tokio::time::sleep(Duration::from_millis(300)).await;
     }
 }

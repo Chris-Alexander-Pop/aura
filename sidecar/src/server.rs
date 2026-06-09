@@ -3,6 +3,7 @@ use crate::services::MethodNotFound;
 use crate::types::JsonRpcRequest;
 use anyhow::Result;
 use axum::{
+    body::Bytes,
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path, State,
@@ -137,9 +138,26 @@ async fn handle_get(
 async fn handle_post(
     State(state): State<AppState>,
     Path(method): Path<String>,
-    body: Option<Json<Value>>,
+    body: Bytes,
 ) -> Response {
-    let params = body.map(|Json(v)| v);
+    let params = if body.is_empty() {
+        None
+    } else {
+        match serde_json::from_slice::<Value>(&body) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "ok": false,
+                        "error": format!("invalid JSON: {e}"),
+                        "code": "invalid_json",
+                    })),
+                )
+                    .into_response();
+            }
+        }
+    };
     call_service(state, method, params).await
 }
 

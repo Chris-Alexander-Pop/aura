@@ -487,4 +487,25 @@ mod tests {
         assert!(!looks_like_pacman_version("1.0"));
         assert!(looks_like_pacman_version("6.12.1-1"));
     }
+
+    #[test]
+    fn parse_dep_token_splits_name_and_constraint() {
+        let ge = parse_dep_token("gcc>=12.0");
+        assert_eq!(ge.name, "gcc");
+        assert_eq!(ge.constraint.as_deref(), Some(">=12.0"));
+        let eq = parse_dep_token("linux=6.12");
+        assert_eq!(eq.name, "linux");
+        assert_eq!(eq.constraint.as_deref(), Some("=6.12"));
+        let plain = parse_dep_token("zlib");
+        assert_eq!(plain.name, "zlib");
+        assert!(plain.constraint.is_none());
+    }
+
+    #[test]
+    fn parse_pacman_dep_tokens_none_and_list() {
+        assert!(parse_pacman_dep_tokens("None").is_empty());
+        let deps = parse_pacman_dep_tokens("glibc>=2.38 libarchive");
+        assert_eq!(deps.len(), 2);
+        assert_eq!(deps[0].name, "glibc");
+    }
 }

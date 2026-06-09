@@ -46,6 +46,9 @@ fn param_str(params: Option<&serde_json::Value>, key: &str) -> Result<String> {
 }
 
 pub fn tool_on_path(name: &str) -> bool {
+    if process::exec_fixture_tool_available(name) {
+        return true;
+    }
     // Sync probe for early UI hints; allowlisted `which` is also used async in RPC paths.
     std::process::Command::new("which")
         .arg(name)
@@ -197,6 +200,10 @@ async fn capture_to_clipboard(mode: &str) -> Result<()> {
 }
 
 async fn pipe_to_wl_copy(bytes: &[u8]) -> Result<()> {
+    if process::exec_fixtures_active() {
+        let _ = process::run_allowlisted(&["which", "wl-copy"]).await?;
+        return Ok(());
+    }
     process::run_allowlisted(&["which", "wl-copy"]).await?;
     use tokio::io::AsyncWriteExt;
     use tokio::process::Command;

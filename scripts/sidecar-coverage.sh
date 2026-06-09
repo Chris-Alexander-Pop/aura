@@ -26,9 +26,14 @@ mkdir -p "${OUT_DIR}/html"
 
 cd "${SIDECAR}"
 
+IGNORE_ARGS=()
+if [[ -n "${SIDECAR_COVERAGE_IGNORE_REGEX:-}" ]]; then
+  IGNORE_ARGS=(--ignore-filename-regex "${SIDECAR_COVERAGE_IGNORE_REGEX}")
+fi
+
 if [[ "${1:-}" == "--summary-only" ]]; then
   shift
-  cargo llvm-cov --all-features --summary-only -- --test-threads=1 "$@"
+  cargo llvm-cov --all-features --summary-only "${IGNORE_ARGS[@]}" -- --test-threads=1 "$@"
   exit 0
 fi
 
@@ -42,12 +47,14 @@ cargo llvm-cov \
   --all-features \
   --lcov \
   --output-path "${OUT_DIR}/lcov.info" \
+  "${IGNORE_ARGS[@]}" \
   -- --test-threads=1 \
   "$@"
 
 cargo llvm-cov report \
   --html \
   --output-dir "${OUT_DIR}" \
+  "${IGNORE_ARGS[@]}" \
   "$@"
 
 HTML_INDEX="${OUT_DIR}/html/index.html"

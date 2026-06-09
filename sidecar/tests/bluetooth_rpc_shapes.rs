@@ -61,3 +61,25 @@ async fn bluetooth_get_device_info_shape_when_device_present() {
     }
     assert_eq!(obj.get("address").and_then(|v| v.as_str()), Some(addr));
 }
+
+#[tokio::test]
+async fn bluetooth_list_adapters_mocked() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
+    let registry = test_registry();
+    let adapters = call_method(&registry, "Bluetooth.GetAdapters", None)
+        .await
+        .expect("GetAdapters");
+    assert!(adapters.is_array());
+}
+
+#[tokio::test]
+async fn bluetooth_get_devices_mocked() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
+    let registry = test_registry();
+    let devices = call_method(&registry, "Bluetooth.GetDevices", None)
+        .await
+        .expect("GetDevices");
+    assert!(devices.is_array());
+}

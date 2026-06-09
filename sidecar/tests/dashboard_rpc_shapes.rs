@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{call_rpc, test_registry};
+use common::{call_rpc, ExecFixtureGuard, test_registry};
 use serde_json::json;
 
 #[tokio::test]
@@ -69,6 +69,7 @@ async fn dashboard_get_quick_status_has_aggregate_fields() {
 
 #[tokio::test]
 async fn sidebar_get_tile_data_network_shape() {
+    let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     let value = call_rpc(
         &registry,
@@ -187,6 +188,7 @@ async fn sidebar_get_tile_data_notifications_shape() {
 
 #[tokio::test]
 async fn sidebar_get_tile_data_productivity_shape() {
+    let _exec = ExecFixtureGuard::activate();
     let registry = test_registry();
     let value = call_rpc(
         &registry,

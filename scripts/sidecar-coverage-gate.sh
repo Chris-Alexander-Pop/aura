@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Fail when sidecar line/region/function coverage is below the threshold (default 70%).
+# Fail when sidecar core line/region/function coverage is below the threshold (default 85%).
+# Offensive modules are excluded from the gate denominator (deferred 60% target).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MIN="${SIDECAR_COVERAGE_MIN:-70}"
+MIN="${SIDECAR_COVERAGE_MIN:-85}"
+export SIDECAR_COVERAGE_IGNORE_REGEX="${SIDECAR_COVERAGE_IGNORE_REGEX:-(services/offensive|offensive_policy)}"
 
 summary="$("${ROOT}/scripts/sidecar-coverage.sh" --summary-only 2>&1)" || {
   echo "${summary}" >&2
@@ -22,7 +24,7 @@ region="$(awk '{ gsub(/%/, "", $4); print $4 }' <<<"${totals}")"
 function="$(awk '{ gsub(/%/, "", $7); print $7 }' <<<"${totals}")"
 line="$(awk '{ gsub(/%/, "", $10); print $10 }' <<<"${totals}")"
 
-echo "Sidecar coverage gate (minimum ${MIN}%):"
+echo "Sidecar core coverage gate (minimum ${MIN}%; offensive excluded):"
 echo "  regions:   ${region}%"
 echo "  functions: ${function}%"
 echo "  lines:     ${line}%"

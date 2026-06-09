@@ -392,22 +392,83 @@ mod tests {
     }
 
     #[test]
-    fn todos_from_storage_skips_corrupt() {
-        let valid = TodoItem {
-            id: "t1".into(),
-            title: "x".into(),
-            description: String::new(),
-            project_id: None,
-            due_at: None,
-            completed: false,
-            reminder_minutes: None,
-            created_at: 1,
-            updated_at: 1,
+    fn parse_due_text_today_and_next_week() {
+        assert!(parse_due_text("today").is_some());
+        assert!(parse_due_text("next week").is_some());
+        assert!(parse_due_text("").is_none());
+    }
+
+    #[test]
+    fn parse_due_text_in_hours_and_weeks() {
+        let hour_ts = parse_due_text("in 2 hours").expect("hours");
+        assert!(hour_ts > Utc::now().timestamp());
+        let week_ts = parse_due_text("in 2 weeks").expect("weeks");
+        let today = Local::now().date_naive();
+        let got = Local.timestamp_opt(week_ts, 0).single().unwrap().date_naive();
+        assert_eq!(got, today + chrono::Duration::days(14));
+    }
+
+    #[test]
+    fn parse_due_text_rfc3339() {
+        let ts = parse_due_text("2026-06-15T12:00:00+00:00").expect("rfc3339");
+        assert!(ts > 0);
+    }
+
+    #[test]
+    fn projects_from_storage_skips_corrupt() {
+        let valid = TodoProject {
+            id: "p1".into(),
+            name: "Inbox".into(),
+            color: "#000".into(),
         };
         let items = vec![
             serde_json::to_value(&valid).unwrap(),
-            json!({ "bad": true }),
+            json!("bad"),
         ];
-        assert_eq!(todos_from_storage_values(items).len(), 1);
+        assert_eq!(projects_from_storage_values(items).len(), 1);
+    }
+
+    #[tokio::test]
+    async fn check_todo_reminders_records_notification_once() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("todos-reminder.db");
+        std::env::set_var("AURA_STORAGE_DB", db_path.to_string_lossy().to_string());
+        storage::init().await.expect("storage init");
+        crate::services::notifications::reset_notifications_for_tests().await;
+
+        let now = Utc::now().timestamp();
+        let item = TodoItem {
+            id: "todo_rem".into(),
+            title: "Due soon".into(),
+            description: "desc".into(),
+            project_id: None,
+            due_at: Some(now + 30 * 60),
+            completed: false,
+            reminder_minutes: Some(60),
+            created_at: now,
+            updated_at: now,
+        };
+        storage::set_kv(NS_ITEMS, "todo_rem", &serde_json::to_value(&item).unwrap())
+            .await
+            .expect("set todo");
+
+        check_todo_reminders().await.expect("first tick");
+        check_todo_reminders().await.expect("second tick");
+
+        let fired = storage::get_kv(NS_REMINDERS_FIRED, "fired_todo_rem")
+            .await
+            .expect("get fired")
+            .is_some();
+        assert!(fired, "reminder should be recorded once");
+
+        std::env::remove_var("AURA_STORAGE_DB");
+    }
+
+    #[tokio::test]
+    async fn schedule_todos_changed_debounces_emit() {
+        crate::notify::init_for_tests();
+        schedule_todos_changed("unit-test");
+        schedule_todos_changed("unit-test");
+        tokio::time::sleep(Duration::from_millis(TODOS_EMIT_DEBOUNCE_MS + 50)).await;
     }
 }

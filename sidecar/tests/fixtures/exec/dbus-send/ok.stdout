@@ -1,0 +1,5 @@
+method return time=1234567890.123456 sender=org.freedesktop.DBus serial=3 reply_serial=2
+   array [
+      string "com.github.wwmm.easyeffects"
+      string "org.freedesktop.Notifications"
+   ]

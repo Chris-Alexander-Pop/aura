@@ -3,7 +3,7 @@
 mod common;
 
 use ags_sidecar::utils::keyring;
-use common::{call_rpc, setup_temp_storage_db, test_registry};
+use common::{call_method_unchecked, call_rpc, setup_temp_storage_db, test_registry};
 use serde_json::json;
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
@@ -110,5 +110,33 @@ async fn vault_get_entry_rpc_never_logs_secret() {
     assert_eq!(
         value.get("value").and_then(|v| v.as_str()),
         Some("secret-value")
+    );
+}
+
+#[tokio::test]
+async fn vault_set_entry_rpc_round_trip() {
+    let _guard = keyring_test_lock().lock().await;
+    let _mock = MockKeyring::new();
+    let _db = setup_temp_storage_db().await;
+    let registry = test_registry();
+
+    call_method_unchecked(
+        &registry,
+        "Vault.SetEntry",
+        Some(json!({ "key": "coverage-key", "value": "stored" })),
+    )
+    .await
+    .expect("Vault.SetEntry");
+
+    let loaded = call_rpc(
+        &registry,
+        "Vault.GetEntry",
+        Some(json!({ "key": "coverage-key" })),
+    )
+    .await
+    .expect("Vault.GetEntry");
+    assert_eq!(
+        loaded.get("value").and_then(|v| v.as_str()),
+        Some("stored")
     );
 }

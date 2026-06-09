@@ -23,3 +23,33 @@ async fn logs_get_entry_schema() {
         assert!(row.get("service").and_then(|v| v.as_str()).is_some());
     }
 }
+
+#[tokio::test]
+async fn logs_get_system_logs_mocked() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
+    let registry = test_registry();
+    let value = call_rpc(
+        &registry,
+        "Logs.GetSystemLogs",
+        Some(json!({ "lines": 10 })),
+    )
+    .await
+    .expect("Logs.GetSystemLogs");
+    assert!(value.get("logs").and_then(|v| v.as_str()).is_some());
+}
+
+#[tokio::test]
+async fn logs_filter_logs_mocked() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
+    let registry = test_registry();
+    let value = call_rpc(
+        &registry,
+        "Logs.FilterLogs",
+        Some(json!({ "level": "info", "lines": 5 })),
+    )
+    .await
+    .expect("Logs.FilterLogs");
+    assert!(value.get("logs").and_then(|v| v.as_str()).is_some());
+}

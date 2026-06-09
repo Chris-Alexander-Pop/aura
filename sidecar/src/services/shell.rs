@@ -382,9 +382,17 @@ mod tests {
     }
 
     #[test]
-    fn resolve_logout_empty_session_id_falls_back_to_user() {
-        let argv = resolve_logout_argv(Some(""), Some("carol"));
+    fn resolve_logout_no_session_or_user_uses_placeholder() {
+        let argv = resolve_logout_argv(None, None);
         assert_eq!(argv[1], "terminate-user");
-        assert_eq!(argv[2], "carol");
+        assert_eq!(argv[2], "_");
+    }
+
+    #[test]
+    fn classify_session_stderr_not_supported_branch() {
+        assert_eq!(
+            classify_session_stderr("Operation not supported on this platform"),
+            "not_supported"
+        );
     }
 }

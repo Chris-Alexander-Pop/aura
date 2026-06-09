@@ -1,0 +1,12 @@
+Available devices:
+Device 'intel_backlight' of class 'backlight':
+	Current brightness: 12121 (50%)
+	Max brightness: 24242
+
+Device 'eDP-1' of class 'backlight':
+	Current brightness: 80 (80%)
+	Max brightness: 100
+
+Device 'platform::mute' of class 'leds':
+	Current brightness: 1 (100%)
+	Max brightness: 1

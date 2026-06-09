@@ -293,6 +293,41 @@ pub fn load_fixture(rel: &str) -> String {
         .unwrap_or_else(|e| panic!("fixture {rel}: {e}"))
 }
 
+/// Default subprocess fixture tree for mocked exec integration tests.
+pub fn default_exec_fixture_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/exec")
+}
+
+/// RAII guard for `AURA_EXEC_FIXTURE_DIR` (see `sidecar/tests/README.md`).
+pub struct ExecFixtureGuard {
+    previous: Option<String>,
+}
+
+impl ExecFixtureGuard {
+    pub fn activate() -> Self {
+        Self::activate_dir(default_exec_fixture_dir())
+    }
+
+    pub fn activate_dir(dir: PathBuf) -> Self {
+        let previous = std::env::var(ags_sidecar::utils::process::EXEC_FIXTURE_ENV).ok();
+        std::env::set_var(
+            ags_sidecar::utils::process::EXEC_FIXTURE_ENV,
+            dir.to_string_lossy().as_ref(),
+        );
+        Self { previous }
+    }
+}
+
+impl Drop for ExecFixtureGuard {
+    fn drop(&mut self) {
+        if let Some(prev) = self.previous.take() {
+            std::env::set_var(ags_sidecar::utils::process::EXEC_FIXTURE_ENV, prev);
+        } else {
+            std::env::remove_var(ags_sidecar::utils::process::EXEC_FIXTURE_ENV);
+        }
+    }
+}
+
 pub fn test_registry() -> ServiceRegistry {
     INIT_NOTIFY.call_once(|| {
         notify::init_for_tests();

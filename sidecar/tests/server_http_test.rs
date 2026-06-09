@@ -448,6 +448,85 @@ async fn websocket_broadcasts_to_multiple_clients() {
     server_task.abort();
 }
 
+#[tokio::test]
+async fn http_openapi_json_served() {
+    let notify_tx = test_notify_bus();
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let body = client
+        .get(format!("http://{addr}/api/openapi.json"))
+        .send()
+        .await
+        .expect("GET openapi")
+        .text()
+        .await
+        .expect("text");
+    assert!(body.contains("\"openapi\""));
+
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn http_docs_serves_swagger_ui() {
+    let notify_tx = test_notify_bus();
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let html = client
+        .get(format!("http://{addr}/docs"))
+        .send()
+        .await
+        .expect("GET docs")
+        .text()
+        .await
+        .expect("html");
+    assert!(html.contains("swagger") || html.contains("Swagger"));
+
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn http_post_malformed_json_returns_error() {
+    let notify_tx = test_notify_bus();
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://{addr}/api/Power.GetBatteryState"))
+        .header("content-type", "application/json")
+        .body("{not-json")
+        .send()
+        .await
+        .expect("POST malformed");
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    eprintln!("status={status} body={body}");
+    assert!(status.is_client_error() || status.is_server_error());
+
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn http_static_missing_file_returns_404() {
+    let notify_tx = test_notify_bus();
+    let registry = Arc::new(Mutex::new(test_registry()));
+    let (addr, server_task, _ui) = spawn_ephemeral_server(registry, notify_tx).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("http://{addr}/no-such-static-file-aura-test.css"))
+        .send()
+        .await
+        .expect("GET missing static");
+    assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+
+    server_task.abort();
+}
+
 #[cfg(feature = "offensive-security")]
 #[tokio::test]
 async fn http_get_offensive_rate_limit_returns_429() {

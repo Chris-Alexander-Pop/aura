@@ -800,6 +800,21 @@ mod tests {
     }
 
     #[test]
+    fn cron_field_matches_star_exact_and_step() {
+        assert!(cron_field_matches("*", 12, 0, 59));
+        assert!(cron_field_matches("12", 12, 0, 59));
+        assert!(!cron_field_matches("13", 12, 0, 59));
+        assert!(cron_field_matches("*/5", 15, 0, 59));
+        assert!(!cron_field_matches("*/5", 16, 0, 59));
+    }
+
+    #[test]
+    fn extract_script_path_finds_last_token() {
+        let path = extract_script_path("bash /tmp/automation/hello.sh").expect("path");
+        assert!(path.ends_with("hello.sh"));
+    }
+
+    #[test]
     fn scripts_from_storage_skips_corrupt_entries() {
         let valid = Script {
             id: "script_1".into(),
@@ -829,5 +844,130 @@ mod tests {
         );
         assert!(workflow_cron_expr(&json!([])).is_none());
         assert!(workflow_cron_expr(&json!([{ "type": "manual" }])).is_none());
+    }
+
+    #[tokio::test]
+    async fn automation_cron_tick_runs_due_workflow() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db_path = dir.path().join("automation.db");
+        std::env::set_var("AURA_STORAGE_DB", db_path.to_string_lossy().to_string());
+        crate::utils::storage::init().await.expect("storage init");
+
+        let workflow = json!({
+            "id": "cron-wf",
+            "name": "Cron",
+            "enabled": true,
+            "triggers": [{"type": "time", "cron": "* * * * *"}],
+            "actions": [{"type": "send_notification", "title": "cron", "body": "tick"}],
+            "created_at": 0_i64,
+            "run_count": 0,
+            "last_run_at": null
+        });
+        crate::utils::storage::set_kv("automation_workflows", "cron-wf", &workflow)
+            .await
+            .expect("set workflow");
+
+        std::env::set_var(
+            crate::utils::process::EXEC_FIXTURE_ENV,
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/exec")
+                .to_string_lossy()
+                .as_ref(),
+        );
+        automation_cron_tick().await.expect("cron tick");
+
+        let updated = crate::utils::storage::get_kv("automation_workflows", "cron-wf")
+            .await
+            .expect("get")
+            .expect("workflow");
+        assert!(
+            updated.get("run_count").and_then(|v| v.as_u64()).unwrap_or(0) >= 1,
+            "expected run_count increment"
+        );
+
+        std::env::remove_var(crate::utils::process::EXEC_FIXTURE_ENV);
+        std::env::remove_var("AURA_STORAGE_DB");
+    }
+
+    #[tokio::test]
+    async fn execute_actions_runs_command_and_notification_fixtures() {
+        std::env::set_var(
+            crate::utils::process::EXEC_FIXTURE_ENV,
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/exec")
+                .to_string_lossy()
+                .as_ref(),
+        );
+        let actions = json!([
+            { "type": "execute_command", "command": "notify-send automation unit ok" },
+            { "type": "send_notification", "title": "Unit", "body": "ok" }
+        ]);
+        execute_actions(&actions).await.expect("execute actions");
+        std::env::remove_var(crate::utils::process::EXEC_FIXTURE_ENV);
+    }
+
+    #[tokio::test]
+    async fn run_workflow_by_id_rejects_disabled_workflow() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::env::set_var(
+            "AURA_STORAGE_DB",
+            dir.path().join("automation-disabled.db").to_string_lossy().to_string(),
+        );
+        crate::utils::storage::init().await.expect("storage init");
+        let workflow = json!({
+            "id": "disabled-wf",
+            "name": "Off",
+            "enabled": false,
+            "triggers": [],
+            "actions": [{ "type": "send_notification", "title": "t", "body": "b" }],
+            "created_at": 0_i64,
+            "run_count": 0,
+            "last_run_at": null
+        });
+        crate::utils::storage::set_kv("automation_workflows", "disabled-wf", &workflow)
+            .await
+            .expect("set workflow");
+        let err = run_workflow_by_id("disabled-wf").await.expect_err("disabled");
+        assert!(err.to_string().contains("disabled"));
+        std::env::remove_var("AURA_STORAGE_DB");
+    }
+
+    #[tokio::test]
+    async fn execute_actions_run_script_branch() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::env::set_var(
+            "AURA_STORAGE_DB",
+            dir.path().join("automation-script.db").to_string_lossy().to_string(),
+        );
+        std::env::set_var(
+            "AURA_AUTOMATION_SCRIPTS_DIR",
+            dir.path().join("scripts").to_string_lossy().to_string(),
+        );
+        std::env::set_var(
+            crate::utils::process::EXEC_FIXTURE_ENV,
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/exec")
+                .to_string_lossy()
+                .as_ref(),
+        );
+        crate::utils::storage::init().await.expect("storage init");
+        let script = Script {
+            id: "script_unit".into(),
+            name: "unit".into(),
+            content: "#!/bin/sh\necho ok\n".into(),
+            interpreter: "sh".into(),
+        };
+        crate::utils::storage::set_kv(
+            "automation_scripts",
+            "script_unit",
+            &serde_json::to_value(&script).unwrap(),
+        )
+        .await
+        .expect("set script");
+        let actions = json!([{ "type": "run_script", "script_id": "script_unit" }]);
+        execute_actions(&actions).await.expect("run script action");
+        std::env::remove_var(crate::utils::process::EXEC_FIXTURE_ENV);
+        std::env::remove_var("AURA_AUTOMATION_SCRIPTS_DIR");
+        std::env::remove_var("AURA_STORAGE_DB");
     }
 }

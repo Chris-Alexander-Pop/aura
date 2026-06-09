@@ -19,6 +19,6 @@ source "${ROOT}/scripts/rust-cache-env.sh"
 cd "${ROOT}/sidecar"
 
 cargo test --lib -- --test-threads=1
-cargo test --tests
+cargo test --tests -- --test-threads=1
 
 "${ROOT}/scripts/sidecar-target-prune.sh"

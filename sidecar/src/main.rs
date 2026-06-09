@@ -1,9 +1,9 @@
 use ags_sidecar::build_registry;
+use ags_sidecar::cli;
 use ags_sidecar::notify;
 use ags_sidecar::rpc::{create_success_response, error_response_for_registry_err, RpcServer};
 use ags_sidecar::types::{JsonRpcRequest, JsonRpcResponse};
 use anyhow::Result;
-use serde_json;
 use std::env;
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, Mutex};
@@ -15,13 +15,8 @@ async fn main() -> Result<()> {
         .init();
 
     let args: Vec<String> = env::args().collect();
-
-    if args.len() > 1 && args[1] == "client" {
-        return run_cli_client(&args[2..]).await;
-    }
-
-    if args.len() > 1 && args[1] == "test" {
-        return run_tests().await;
+    if args.len() > 1 {
+        return cli::run(&args[1..]);
     }
 
     run_server().await
@@ -65,42 +60,5 @@ async fn run_server() -> Result<()> {
     let rpc_server = RpcServer::new(request_tx);
     rpc_server.run().await?;
 
-    Ok(())
-}
-
-async fn run_cli_client(args: &[String]) -> Result<()> {
-    if args.is_empty() {
-        eprintln!("Usage: ags-sidecar client <method> [params_json]");
-        eprintln!("\nExamples:");
-        eprintln!("  ags-sidecar client Power.GetBatteryState");
-        eprintln!("  ags-sidecar client Power.SetProfile '{{\"profile\":\"performance\"}}'");
-        eprintln!("  ags-sidecar client Network.ScanNetworks");
-        return Ok(());
-    }
-
-    let method = &args[0];
-    let params = if args.len() > 1 {
-        Some(serde_json::from_str(&args[1])?)
-    } else {
-        None
-    };
-
-    let request = JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        method: method.clone(),
-        params,
-        id: Some(serde_json::Value::Number(1.into())),
-    };
-
-    let request_json = serde_json::to_string(&request)?;
-    println!("{}", request_json);
-    eprintln!("\nTo test: echo '{}' | ags-sidecar", request_json);
-    Ok(())
-}
-
-async fn run_tests() -> Result<()> {
-    println!("Use 'cargo test' to run tests.");
-    println!("  cargo test");
-    println!("  cargo test --test integration_test");
     Ok(())
 }

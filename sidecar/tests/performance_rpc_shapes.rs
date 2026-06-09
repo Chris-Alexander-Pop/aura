@@ -147,3 +147,28 @@ async fn performance_get_systemd_services_shape() {
         }
     }
 }
+
+#[tokio::test]
+async fn performance_get_cpu_stats_mocked() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
+    let registry = test_registry();
+    let value = call_method(&registry, "Performance.GetCpuStats", None)
+        .await
+        .expect("GetCpuStats");
+    let rows = value.as_array().expect("cpu cores array");
+    if let Some(row) = rows.first() {
+        assert!(row.get("usage_percent").is_some(), "core row missing usage_percent");
+    }
+}
+
+#[tokio::test]
+async fn performance_get_disk_stats_mocked() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
+    let registry = test_registry();
+    let value = call_method(&registry, "Performance.GetDiskStats", None)
+        .await
+        .expect("GetDiskStats");
+    assert!(value.is_array());
+}

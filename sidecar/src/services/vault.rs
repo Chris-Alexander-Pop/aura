@@ -193,4 +193,18 @@ mod tests {
             assert!(v.get(key).is_some(), "missing {key}");
         }
     }
+
+    #[test]
+    fn validate_vault_key_accepts_safe_names() {
+        assert!(validate_vault_key("api.token-1").is_ok());
+        assert!(validate_vault_key("note_v2").is_ok());
+    }
+
+    #[test]
+    fn validate_vault_key_rejects_empty_long_or_invalid_chars() {
+        assert!(validate_vault_key("").is_err());
+        assert!(validate_vault_key(&"x".repeat(129)).is_err());
+        assert!(validate_vault_key("bad key").is_err());
+        assert!(validate_vault_key("bad/key").is_err());
+    }
 }

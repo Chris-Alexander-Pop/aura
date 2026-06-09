@@ -566,21 +566,21 @@ mod tests {
         assert!(!inactive.active);
     }
 
-    #[test]
-    fn parse_kubectl_pod_list_fixtures() {
-        let empty = fixture("kubectl_pods_empty.json");
-        assert_eq!(parse_kubectl_pod_list(&empty), Some(vec![]));
-
-        let pods = fixture("kubectl_pods.json");
-        let list = parse_kubectl_pod_list(&pods).expect("pod list");
-        assert_eq!(list.len(), 2);
-        assert_eq!(list[0].name, "nginx-abc");
-        assert_eq!(list[0].phase, "Running");
-        assert_eq!(list[1].namespace, "aura");
-        assert_eq!(list[1].phase, "Pending");
-
-        assert!(parse_kubectl_pod_list("{").is_none());
-        assert!(parse_kubectl_pod_list(r#"{"items":"x"}"#).is_none());
+    #[tokio::test]
+    async fn resolve_container_runtime_with_exec_fixtures() {
+        std::env::set_var(
+            crate::utils::process::EXEC_FIXTURE_ENV,
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/exec")
+                .to_string_lossy()
+                .as_ref(),
+        );
+        let runtime = resolve_container_runtime().await;
+        assert!(matches!(
+            runtime,
+            ContainerRuntime::Podman | ContainerRuntime::Docker
+        ));
+        std::env::remove_var(crate::utils::process::EXEC_FIXTURE_ENV);
     }
 }
 

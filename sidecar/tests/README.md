@@ -8,7 +8,7 @@ When adding or extending tests:
 
 1. **No power or session actions** — do not call `Session.*`, `Power.SetProfile`, suspend/reboot/logout helpers, etc.
 2. **No package changes** — no `Packages.Install`, `Remove`, `Upgrade`, `Update`, or AUR install RPCs.
-3. **No privileged network mutations** — no `Network.Connect`, `Disconnect`, `Forget`, or `ToggleWifi`.
+3. **No privileged network mutations** — no `Network.Connect`, `Disconnect`, `Forget`, or `ToggleWifi` in default tests. Mocked coverage uses `ExecFixtureGuard` only; **`Network.ToggleWifi` must never be exercised in automated tests** (it can disable your radio). When `AURA_EXEC_FIXTURE_DIR` is set, missing fixtures **fail** instead of falling through to real `nmcli`.
 4. **No Hyprland side effects** — no `Hyprland.Dispatch`, `Keybinds.Reload`, or keybind writes (`Keybinds.Set` / `Unset` / `Import`).
 5. **No killing or controlling user processes** — no `Process.Kill`, `Performance.KillProcess`, or systemd service start/stop/restart RPCs.
 6. **No offensive / scanning security RPCs** — nothing under `Security.Offensive.*` or port-scan helpers.
@@ -83,19 +83,24 @@ cargo test
 cargo test --test integration_test readonly_gap_methods_resolve_slow_host -- --ignored
 ```
 
+## Subprocess fixtures (`AURA_EXEC_FIXTURE_DIR`)
+
+Integration tests that exercise RPC handlers calling `exec_command` / `run_allowlisted` should use [`ExecFixtureGuard`](common/mod.rs) (sets `AURA_EXEC_FIXTURE_DIR` to `tests/fixtures/exec/`). Fixture lookup uses `manifest.json` and `{binary}/{args}.stdout` files — never rely on live `nmcli`, `wpctl`, or `grim` in coverage runs.
+
 ## Coverage goals
 
 | Target | Role |
 |--------|------|
-| **70% line/region/function** (Stream A gate) | Enforced by `./scripts/sidecar-coverage-gate.sh`; current baseline ~64% lines |
-| **~90% line** (long-term) | Product goal for `sidecar/src/`; track via `cargo llvm-cov` |
+| **85% line/region/function (core)** | Enforced by `./scripts/sidecar-coverage-gate.sh`; excludes `services/offensive/*` and `offensive_policy.rs` |
+| **Offensive (deferred)** | Separate 60% target; not enforced in the core gate |
 | **Fast gate** | `./scripts/sidecar-test-fast.sh` — no slow host sweep |
 | **Full coverage run** | `./scripts/sidecar-coverage.sh` — LCOV + HTML (`--all-features`; see script) |
 
 ```bash
 ./scripts/sidecar-coverage.sh --summary-only   # quick total %
 ./scripts/sidecar-coverage.sh                  # LCOV + HTML under sidecar/target/coverage/
-./scripts/sidecar-coverage-gate.sh             # fail when any total metric < 70%
+./scripts/sidecar-coverage-gate.sh             # fail when any core metric < 85%
+SIDECAR_COVERAGE_MIN=70 ./scripts/sidecar-coverage-gate.sh   # override threshold
 ```
 
 ### Offensive-security + `--all-features`

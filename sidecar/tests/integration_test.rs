@@ -813,6 +813,37 @@ fn readonly_gap_optional_skip(method: &str, result: &Result<Value, anyhow::Error
         .unwrap_or(false)
 }
 
+
+fn readonly_gap_skip_under_fixtures(method: &str, result: &Result<Value, anyhow::Error>) -> bool {
+    if readonly_gap_optional_skip(method, result) {
+        return true;
+    }
+    result
+        .as_ref()
+        .err()
+        .map(|e| e.to_string().contains("no exec fixture"))
+        .unwrap_or(false)
+}
+
+async fn assert_readonly_gap_methods_resolve_mocked(methods: &[&str]) {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
+    let registry = test_registry();
+    for method in methods {
+        let params = resolve_readonly_params(&registry, method).await;
+        let result = call_rpc(&registry, method, params).await;
+        if readonly_gap_skip_under_fixtures(method, &result) {
+            continue;
+        }
+        assert!(
+            result.is_ok(),
+            "method {} failed: {:?}",
+            method,
+            result.err()
+        );
+    }
+}
+
 async fn assert_readonly_gap_methods_resolve(methods: &[&str]) {
     let registry = test_registry();
     for method in methods {
@@ -851,6 +882,44 @@ async fn api_ts_readonly_methods_resolve() {
             .or_else(|| api_ts_rpc_params(&method));
         let result = call_method(&registry, &method, params).await;
         if readonly_gap_optional_skip(&method, &result) {
+            continue;
+        }
+        assert!(
+            result.is_ok(),
+            "api.ts method {} failed: {:?}",
+            method,
+            result.err()
+        );
+    }
+}
+
+#[tokio::test]
+async fn readonly_gap_methods_resolve_mocked() {
+    assert_readonly_gap_methods_resolve_mocked(READONLY_GAP_FAST).await;
+}
+
+#[tokio::test]
+async fn readonly_gap_slow_host_methods_resolve_mocked() {
+    assert_readonly_gap_methods_resolve_mocked(READONLY_GAP_SLOW_HOST).await;
+}
+
+#[tokio::test]
+async fn api_ts_readonly_methods_resolve_mocked() {
+    use common::ExecFixtureGuard;
+    let _exec = ExecFixtureGuard::activate();
+    let registry = test_registry();
+    let methods: Vec<String> = load_api_ts_methods()
+        .into_iter()
+        .filter(|m| is_safe_readonly_rpc(m) && !is_denied_rpc_method(m))
+        .collect();
+    assert!(!methods.is_empty(), "expected read-only api.ts RPC methods");
+
+    for method in methods {
+        let params = resolve_readonly_params(&registry, &method)
+            .await
+            .or_else(|| api_ts_rpc_params(&method));
+        let result = call_method(&registry, &method, params).await;
+        if readonly_gap_skip_under_fixtures(&method, &result) {
             continue;
         }
         assert!(

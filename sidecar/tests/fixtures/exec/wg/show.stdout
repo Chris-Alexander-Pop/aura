@@ -1,0 +1,10 @@
+interface: wg0
+  public key: AbCdEf1234567890=
+  private key: (hidden)
+  listening port: 51820
+
+peer: XyZ9876543210=
+  endpoint: vpn.example.com:443
+  allowed ips: 0.0.0.0/0
+  latest handshake: 1 minute ago
+  transfer: 1.00 KiB received, 2.00 KiB sent
