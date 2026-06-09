@@ -137,17 +137,8 @@ pub(crate) fn pid_file_path_for_tests() -> Result<PathBuf> {
 }
 
 async fn run_screenshot(mode: &str, output: &str, path: Option<&str>) -> Result<serde_json::Value> {
-    if !tool_on_path("grim") {
-        return Ok(json!({ "ok": false, "tool_missing": true, "tool": "grim" }));
-    }
-
     match mode {
-        "full" => {}
-        "region" => {
-            if !tool_on_path("slurp") {
-                return Ok(json!({ "ok": false, "tool_missing": true, "tool": "slurp" }));
-            }
-        }
+        "full" | "region" => {}
         "window" => {
             return Ok(json!({
                 "ok": false,
@@ -155,6 +146,19 @@ async fn run_screenshot(mode: &str, output: &str, path: Option<&str>) -> Result<
             }));
         }
         _ => bail!("invalid mode: {mode}"),
+    }
+
+    match output {
+        "clipboard" | "file" => {}
+        _ => bail!("invalid output: {output}"),
+    }
+
+    if !tool_on_path("grim") {
+        return Ok(json!({ "ok": false, "tool_missing": true, "tool": "grim" }));
+    }
+
+    if mode == "region" && !tool_on_path("slurp") {
+        return Ok(json!({ "ok": false, "tool_missing": true, "tool": "slurp" }));
     }
 
     match output {
@@ -180,7 +184,7 @@ async fn run_screenshot(mode: &str, output: &str, path: Option<&str>) -> Result<
                 "path": dest.to_string_lossy(),
             }))
         }
-        _ => bail!("invalid output: {output}"),
+        _ => unreachable!("output validated above"),
     }
 }
 
