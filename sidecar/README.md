@@ -117,7 +117,7 @@ Both run as part of `./scripts/sidecar-test-fast.sh`.
 
 ## Build cache
 
-`sidecar/.cargo/config.toml` enables **sccache**, incremental builds, and the **lld** linker. Test/coverage scripts also source `scripts/rust-cache-env.sh`.
+`sidecar/.cargo/config.toml` enables incremental builds and the **lld** linker. Test/coverage scripts source `scripts/rust-cache-env.sh`, which enables **sccache** when installed.
 
 ```bash
 pacman -S sccache lld    # once on Arch

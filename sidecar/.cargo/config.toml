@@ -1,7 +1,6 @@
-# Faster local builds: sccache + incremental + LLD linker (Arch: extra/lld).
-# sccache: pacman -S sccache  (scripts/rust-cache-env.sh also sets RUSTC_WRAPPER)
+# Faster local builds: incremental + LLD linker (Arch: extra/lld).
+# sccache: pacman -S sccache — enabled via scripts/rust-cache-env.sh when installed
 [build]
-rustc-wrapper = "sccache"
 incremental = true
 
 [target.x86_64-unknown-linux-gnu]
