@@ -1,9 +1,14 @@
 import { motion } from "framer-motion"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
-import api from "@/lib/api"
-import { connectWs, useWsStore } from "@/lib/ws"
+import api, { type PowerProfile } from "@/lib/api"
 import { cn } from "@/lib/utils"
+
+const POWER_LABELS: Record<PowerProfile, string> = {
+  performance: "Performance",
+  balanced: "Balanced",
+  saver: "Power saver",
+}
 
 // ── Safe numeric / record guards (no @/lib/api-types in tree) ─────────────────
 
@@ -224,15 +229,6 @@ function MiniGauge({
 export function PerformancePane() {
   const qc = useQueryClient()
 
-  useEffect(() => {
-    connectWs()
-    const off = useWsStore.getState().on("Performance.MetricsChanged", () => {
-      void qc.invalidateQueries({ queryKey: ["performance-metrics"] })
-      void qc.invalidateQueries({ queryKey: ["system-stats", "performance-pane"] })
-    })
-    return off
-  }, [qc])
-
   const statsQuery = useQuery({
     queryKey: ["system-stats", "performance-pane"],
     queryFn: api.getSystemStats,
@@ -250,6 +246,22 @@ export function PerformancePane() {
     queryKey: ["process-top"],
     queryFn: () => api.processListTop(12),
     refetchInterval: 4000,
+  })
+
+  const powerProfileQuery = useQuery({
+    queryKey: ["performance", "power-profile"],
+    queryFn: api.getPowerProfile,
+    refetchInterval: 15_000,
+  })
+
+  const powerMut = useMutation({
+    mutationFn: (profile: PowerProfile) => api.setPowerProfile(profile),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["performance", "power-profile"] }),
+  })
+
+  const killMut = useMutation({
+    mutationFn: (pid: number) => api.processKill(pid),
+    onSuccess: () => void processesQuery.refetch(),
   })
 
   const parsedStats = useMemo(() => parseSystemStats(statsQuery.data ?? null), [statsQuery.data])
@@ -296,6 +308,44 @@ export function PerformancePane() {
           below still updates.
         </div>
       )}
+
+      <section className="glass-card p-4 flex flex-col gap-3">
+        <h3 className="text-sm font-medium text-text flex items-center gap-2">
+          <span className="icon text-base text-peach">bolt</span>
+          Power profile
+        </h3>
+        {powerProfileQuery.isLoading ? (
+          <div className="skeleton h-8 rounded-lg" />
+        ) : powerProfileQuery.isError ? (
+          <p className="text-xs text-red">
+            {powerProfileQuery.error instanceof Error
+              ? powerProfileQuery.error.message
+              : "Could not load power profile"}
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(POWER_LABELS) as PowerProfile[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                disabled={powerMut.isPending}
+                onClick={() => powerMut.mutate(p)}
+                className={cn(
+                  "toggle-chip text-xs",
+                  powerProfileQuery.data?.profile === p && "active"
+                )}
+              >
+                {POWER_LABELS[p]}
+              </button>
+            ))}
+          </div>
+        )}
+        {powerMut.isError && (
+          <p className="text-xs text-red">
+            {powerMut.error instanceof Error ? powerMut.error.message : "Could not set profile"}
+          </p>
+        )}
+      </section>
 
       <section className="glass-card p-4 flex flex-col gap-4">
         <h3 className="text-sm font-medium text-text flex items-center gap-2">
@@ -496,6 +546,12 @@ export function PerformancePane() {
         <h3 className="text-sm font-medium text-text">Top processes</h3>
         {processesQuery.isLoading ? (
           <p className="text-xs text-subtext0">Loading…</p>
+        ) : processesQuery.isError ? (
+          <p className="text-xs text-red">
+            {processesQuery.error instanceof Error
+              ? processesQuery.error.message
+              : "Could not load processes"}
+          </p>
         ) : (processesQuery.data?.length ?? 0) === 0 ? (
           <p className="text-xs text-subtext0">No process data</p>
         ) : (
@@ -510,13 +566,19 @@ export function PerformancePane() {
                   type="button"
                   className="toggle-chip text-[10px] text-red"
                   title="Kill process"
-                  onClick={() => void api.processKill(p.pid).then(() => processesQuery.refetch())}
+                  disabled={killMut.isPending}
+                  onClick={() => killMut.mutate(p.pid)}
                 >
-                  kill
+                  {killMut.isPending ? "…" : "kill"}
                 </button>
               </li>
             ))}
           </ul>
+        )}
+        {killMut.isError && (
+          <p className="text-xs text-red">
+            {killMut.error instanceof Error ? killMut.error.message : "Kill failed"}
+          </p>
         )}
       </section>
     </motion.div>

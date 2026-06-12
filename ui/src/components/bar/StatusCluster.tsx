@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useRef, type Ref, type RefObject } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useCallback, useRef, type Ref, type RefObject } from "react"
+import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
-import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import type { StatusFlyoutId } from "./useFlyoutHover"
 
@@ -11,7 +10,6 @@ type Props = {
 }
 
 export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props) {
-  const qc = useQueryClient()
   const netRef = useRef<HTMLButtonElement>(null)
   const btRef = useRef<HTMLButtonElement>(null)
   const audioRef = useRef<HTMLButtonElement>(null)
@@ -19,27 +17,14 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
   const battRef = useRef<HTMLButtonElement>(null)
   const winRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
-    connectWs()
-    const offBatt = useWsStore.getState().on("Power.BatteryState", () => {
-      void qc.invalidateQueries({ queryKey: ["batt"] })
-    })
-    const offNet = useWsStore.getState().on("Network.StateChanged", () => {
-      void qc.invalidateQueries({ queryKey: ["net"] })
-    })
-    const offAudio = useWsStore.getState().on("Audio.StateChanged", () => {
-      void qc.invalidateQueries({ queryKey: ["audio-devices"] })
-    })
-    return () => {
-      offBatt()
-      offNet()
-      offAudio()
-    }
-  }, [qc])
-
   const { data: net } = useQuery({ queryKey: ["net"], queryFn: api.getNetworkStatus, refetchInterval: 5000 })
   const { data: audio } = useQuery({ queryKey: ["audio-devices"], queryFn: api.getAudioDevices, refetchInterval: 5000 })
   const { data: batt } = useQuery({ queryKey: ["batt"], queryFn: api.getBatteryState, refetchInterval: 8000 })
+  const { data: brightness } = useQuery({
+    queryKey: ["brightness", "active"],
+    queryFn: () => api.getBrightness("active"),
+    refetchInterval: 8000,
+  })
   const { data: adapters } = useQuery({ queryKey: ["bt-ad"], queryFn: api.getBluetoothAdapters, refetchInterval: 8000 })
   const { data: devices } = useQuery({ queryKey: ["bt-dev"], queryFn: api.getBluetoothDevices, refetchInterval: 8000 })
 
@@ -48,6 +33,8 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
   const defaultSink = audio?.sinks.find((s) => s.is_default) ?? audio?.sinks[0]
   const sinkMuted = !!defaultSink?.muted
   const sinkLow = defaultSink && !sinkMuted && defaultSink.volume <= 0.05
+  const brightPct = Math.round((brightness?.brightness ?? 0.5) * 100)
+  const brightLow = brightPct <= 25
 
   // Y is viewport-relative — matches the flyout window's coordinate space
   // (same marginTop as the strip, so viewport Y transfers directly).
@@ -109,7 +96,13 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
         sinkMuted ? "volume_off" : sinkLow ? "volume_mute" : "volume_up",
         !sinkMuted && !sinkLow
       )}
-      {segment("brightness", brightRef, "Brightness", "brightness_6", false)}
+      {segment(
+        "brightness",
+        brightRef,
+        `${brightPct}% brightness`,
+        brightLow ? "brightness_4" : brightPct >= 75 ? "brightness_7" : "brightness_6",
+        !brightLow
+      )}
       {segment(
         "battery",
         battRef,

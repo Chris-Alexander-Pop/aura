@@ -32,6 +32,8 @@ import {
   type PerformanceMetricsView,
   type SecurityStatusView,
 } from "./api-types"
+import { requestControlCenterPane } from "./control-center-pane"
+import type { PaneId } from "@/pages/control-center/navigation"
 
 export type { AuraSettingsView }
 
@@ -190,6 +192,8 @@ export const api = {
     call("Audio.SetSourceMute", { device_id, muted }),
   setSinkVolume: (device_id: number, volume: number) =>
     call("Audio.SetSinkVolume", { device_id, volume }),
+  setSourceVolume: (device_id: number, volume: number) =>
+    call("Audio.SetSourceVolume", { device_id, volume }),
   setDefaultAudioDevice: (device_id: number, type: "output" | "input" = "output") =>
     call("Audio.SetDefaultDevice", { device_id, type }),
   refreshAudio: () => call("Audio.Refresh"),
@@ -234,7 +238,14 @@ export const api = {
   // Packages
   getPackageUpdates: () => callData("Packages.GetUpgradable").then(adaptPackageUpdates),
   searchPackages: (query: string) =>
-    call<Array<{ name: string; version: string; description: string }>>("Packages.Search", { query }),
+    call<Array<{ name: string; version: string; description: string; installed?: boolean }>>(
+      "Packages.Search",
+      { query }
+    ),
+  installPackage: (name: string) =>
+    call<{ success?: boolean; error?: string }>("Packages.Install", { name }),
+  removePackage: (name: string) =>
+    call<{ success?: boolean; error?: string }>("Packages.Remove", { name }),
   upgradePackages: () => call<{ success?: boolean; error?: string }>("Packages.Upgrade"),
   getPackageDependencies: (name: string) =>
     call<{ dependencies: string[] }>("Packages.GetPackageDependencies", { name }),
@@ -265,7 +276,10 @@ export const api = {
 
   // Keybinds
   listKeybinds: (category?: string) =>
-    callData("Keybinds.List", category ? { category } : undefined),
+    call<Array<{ combo: string; action: string; file: string; category: string; bind_type?: string }>>(
+      "Keybinds.List",
+      category ? { category } : undefined
+    ),
   validateKeybinds: () => call<{ duplicates: string[]; unknown_dispatches: string[] }>("Keybinds.Validate"),
 
   // Logs
@@ -305,6 +319,15 @@ export const api = {
     call("Productivity.CreateTask", { title, description: description ?? "" }),
   deleteProductivityTask: (taskId: string) =>
     call("Productivity.DeleteTask", { task_id: taskId }),
+  updateProductivityTask: (
+    taskId: string,
+    updates: {
+      title?: string
+      description?: string
+      completed?: boolean
+      due_date?: number | null
+    }
+  ) => call<{ success: boolean }>("Productivity.UpdateTask", { task_id: taskId, updates }),
   setProductivityFocusMode: (enabled: boolean) =>
     call("Productivity.SetFocusMode", { enabled }),
   getAutomationRules: () =>
@@ -332,6 +355,11 @@ export const api = {
     }),
   getUnreadMessages:     () => call<Record<string, number>>("Communication.GetUnread"),
   getFitnessStats:       () => call<Record<string, unknown>>("Fitness.GetGoals"),
+  fitnessSetGoal: (type: string, target: number) =>
+    call<{ id: string; goal_type: string; target: number; current: number }>("Fitness.SetGoal", {
+      type,
+      target,
+    }),
 
   // Brightness
   getBrightness: (monitor: string) => call<{ brightness: number }>("Brightness.Get", { monitor }),
@@ -357,6 +385,10 @@ export const api = {
   sessionPowerOff: () => call<{ ok: boolean }>("Session.PowerOff"),
   auraToggleWindow: (name: "control-center" | "calendar" | "dropdown" | "sidebar" | "launcher") =>
     call<{ ok: boolean }>("Aura.ToggleWindow", { name }),
+  openControlCenterPane: (pane: PaneId) => {
+    requestControlCenterPane(pane)
+    return call<{ ok: boolean }>("Aura.ToggleWindow", { name: "control-center" })
+  },
   appsLaunch: (id: string) => call<{ ok: boolean }>("Apps.Launch", { id }),
 
   // Media (playerctl / MPRIS)

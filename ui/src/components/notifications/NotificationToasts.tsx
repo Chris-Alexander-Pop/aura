@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { AnimatePresence, motion } from "framer-motion"
 import api, { type NotificationItemView } from "@/lib/api"
-import { connectWs, useWsStore } from "@/lib/ws"
+import { notificationQueryKeys } from "@/lib/ws-invalidation"
 import { cn } from "@/lib/utils"
 
 const MAX_TOASTS = 4
@@ -13,24 +13,22 @@ type Toast = NotificationItemView & { shownAt: number }
 export default function NotificationToasts() {
   const qc = useQueryClient()
   const seenRef = useRef<Set<number>>(new Set())
+  const bootstrappedRef = useRef(false)
   const [toasts, setToasts] = useState<Toast[]>([])
 
   const { data: list } = useQuery({
-    queryKey: ["notifications-list"],
+    queryKey: notificationQueryKeys.list,
     queryFn: () => api.listNotifications(20),
     refetchInterval: 30_000,
   })
 
   useEffect(() => {
-    connectWs()
-    const off = useWsStore.getState().on("Notifications.Changed", () => {
-      void qc.invalidateQueries({ queryKey: ["notifications-list"] })
-    })
-    return off
-  }, [qc])
-
-  useEffect(() => {
-    if (!list?.length) return
+    if (list === undefined) return
+    if (!bootstrappedRef.current) {
+      for (const n of list) seenRef.current.add(n.id)
+      bootstrappedRef.current = true
+      return
+    }
     const now = Date.now()
     const fresh = list.filter((n) => !seenRef.current.has(n.id))
     if (fresh.length === 0) return
@@ -53,7 +51,14 @@ export default function NotificationToasts() {
   const dismiss = (id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id))
     void api.dismissNotification(id).then(() => {
-      void qc.invalidateQueries({ queryKey: ["notifications-list"] })
+      void qc.invalidateQueries({ queryKey: notificationQueryKeys.list })
+    })
+  }
+
+  const invokeAction = (id: number, actionKey: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id))
+    void api.invokeNotificationAction(id, actionKey).then(() => {
+      void qc.invalidateQueries({ queryKey: notificationQueryKeys.list })
     })
   }
 
@@ -95,7 +100,7 @@ export default function NotificationToasts() {
                     key={a.key}
                     type="button"
                     className="toggle-chip text-[10px]"
-                    onClick={() => void api.invokeNotificationAction(t.id, a.key)}
+                    onClick={() => invokeAction(t.id, a.key)}
                   >
                     {a.label}
                   </button>

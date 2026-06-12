@@ -18,6 +18,8 @@ export default function OSD(gdkmonitor: Gdk.Monitor) {
     let hideId: number | null = null
     let coalesceId: number | null = null
     let pending: { kind: OsdKind; label: string; percent: number } | null = null
+    let lastSinkKey = ""
+    let lastSourceMuted: boolean | null = null
 
     const applyShow = (k: OsdKind, text: string, percent: number) => {
         setKind(k)
@@ -45,17 +47,40 @@ export default function OSD(gdkmonitor: Gdk.Monitor) {
     onMount(() => {
         const unregister = registerOsdHandler(show)
 
-        const onAudio = () => {
-            sidecar.getAudioState().then((s: { sinks?: Array<{ is_default?: boolean; volume?: number; muted?: boolean }> }) => {
-                const def = (s.sinks || []).find((d) => d.is_default)
-                if (!def) return
-                const muted = !!def.muted
-                const p = Math.round((def.volume ?? 0) * 100)
-                show("volume", muted ? "Muted" : `${p}%`, muted ? 0 : p)
-            }).catch(() => {})
+        const onAudio = (state: unknown) => {
+            if (!state || typeof state !== "object") return
+            const s = state as {
+                sinks?: Array<{ is_default?: boolean; volume?: number; muted?: boolean }>
+                sources?: Array<{ is_default?: boolean; muted?: boolean }>
+            }
+            const sink = (s.sinks || []).find((d) => d.is_default) ?? s.sinks?.[0]
+            const source = (s.sources || []).find((d) => d.is_default) ?? s.sources?.[0]
+
+            const sinkKey = sink
+                ? `${sink.muted ? 1 : 0}:${Math.round((sink.volume ?? 0) * 100)}`
+                : ""
+            const sourceMuted = source?.muted ?? null
+            const sinkChanged = sinkKey.length > 0 && sinkKey !== lastSinkKey
+            const sourceChanged =
+                sourceMuted !== null && sourceMuted !== lastSourceMuted
+
+            if (sinkKey.length > 0) lastSinkKey = sinkKey
+            if (sourceMuted !== null) lastSourceMuted = sourceMuted
+
+            if (sourceChanged && !sinkChanged && source) {
+                const muted = !!source.muted
+                show("mic", muted ? "Mic muted" : "Mic on", muted ? 0 : 100)
+                return
+            }
+
+            if (!sink) return
+            const muted = !!sink.muted
+            const p = Math.round((sink.volume ?? 0) * 100)
+            show("volume", muted ? "Muted" : `${p}%`, muted ? 0 : p)
         }
 
-        const onNotif = (_method: string, params: unknown) => {
+        const onNotif = (method: string, params: unknown) => {
+            if (method !== "Shell.Osd") return
             if (!params || typeof params !== "object") return
             const p = params as Record<string, unknown>
             if (p.kind === "brightness" || p.kind === "volume" || p.kind === "mic") {
@@ -79,7 +104,13 @@ export default function OSD(gdkmonitor: Gdk.Monitor) {
     })
 
     const iconName = () => {
-        if (kind() === "brightness") return "brightness_6"
+        if (kind() === "brightness") {
+            const p = pct()
+            if (p <= 25) return "brightness_2"
+            if (p <= 50) return "brightness_4"
+            if (p <= 75) return "brightness_6"
+            return "brightness_7"
+        }
         if (kind() === "mic") return pct() === 0 || label().toLowerCase().includes("mute") ? "mic_off" : "mic"
         return pct() === 0 || label().toLowerCase().includes("mute") ? "volume_off" : "volume_up"
     }

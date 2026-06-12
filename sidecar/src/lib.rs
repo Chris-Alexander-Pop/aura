@@ -1,6 +1,7 @@
 //! Library surface for integration tests and shared registry setup.
 pub mod cli;
 pub mod notify;
+pub mod osd;
 pub mod openapi;
 pub mod rpc;
 pub mod server;

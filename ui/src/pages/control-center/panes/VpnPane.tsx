@@ -52,6 +52,7 @@ export function VpnPane() {
     onSuccess: async () => {
       setAttemptedSubmit(false)
       await qc.invalidateQueries({ queryKey: ["vpn-status"] })
+      await qc.invalidateQueries({ queryKey: ["vpn-profiles"] })
     },
   })
 
@@ -59,6 +60,7 @@ export function VpnPane() {
     mutationFn: api.disconnectVpn,
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["vpn-status"] })
+      await qc.invalidateQueries({ queryKey: ["vpn-profiles"] })
     },
   })
 
@@ -130,6 +132,7 @@ export function VpnPane() {
               {profiles!.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name || p.id}
+                  {p.type ? ` (${p.type})` : ""}
                 </option>
               ))}
             </select>
@@ -213,8 +216,28 @@ export function VpnPane() {
         </p>
       )}
 
+      {(profiles?.length ?? 0) > 0 ? (
+        <section className="glass-card p-4 flex flex-col gap-2">
+          <h3 className="text-sm font-medium text-subtext1">Configured profiles</h3>
+          <ul className="flex flex-col gap-1.5">
+            {profiles!.map((p) => (
+              <li
+                key={p.id}
+                className={cn(
+                  "flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-xs",
+                  status?.profile_id === p.id ? "bg-teal/10 text-teal" : "text-subtext0"
+                )}
+              >
+                <span className="min-w-0 truncate font-medium">{p.name || p.id}</span>
+                <span className="shrink-0 font-mono text-[10px] uppercase">{p.type ?? "vpn"}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <p className="text-xs text-subtext1 max-w-prose">
-        Status refreshes automatically. Credentials may be prompted or read from the keyring by the sidecar for
+        Status refreshes every few seconds. Credentials may be prompted or read from the keyring by the sidecar for
         profiles that require them.
       </p>
     </motion.div>

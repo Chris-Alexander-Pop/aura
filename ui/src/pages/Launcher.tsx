@@ -1,39 +1,63 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import api, { type LauncherAppView } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
+function hideLauncher() {
+  void api.auraToggleWindow("launcher")
+}
+
+async function searchLauncher(query: string): Promise<LauncherAppView[]> {
+  const q = query.trim()
+  if (!q) {
+    const recent = await api.launcherRecent()
+    return recent.items
+  }
+  const [desktop, vicinae] = await Promise.all([
+    api.launcherQuery(q).catch(() => ({ results: [] as LauncherAppView[] })),
+    api.launcherVicinaeQuery(q).catch(() => ({ results: [] as LauncherAppView[] })),
+  ])
+  const seen = new Set<string>()
+  const merged: LauncherAppView[] = []
+  for (const app of [...vicinae.results, ...desktop.results]) {
+    if (seen.has(app.id)) continue
+    seen.add(app.id)
+    merged.push(app)
+  }
+  return merged
+}
+
 export default function Launcher() {
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState(0)
+  const [runError, setRunError] = useState<string | null>(null)
 
-  const { data: results, isFetching } = useQuery({
+  const { data: apps = [], isFetching } = useQuery({
     queryKey: ["launcher-query", query],
-    queryFn: async () => {
-      const q = query.trim()
-      if (!q) return api.launcherRecent()
-      try {
-        return await api.launcherVicinaeQuery(q)
-      } catch {
-        return api.launcherQuery(q)
-      }
-    },
-    enabled: true,
+    queryFn: () => searchLauncher(query),
     staleTime: 5_000,
   })
-
-  const apps = useMemo(() => (results ?? []) as LauncherAppView[], [results])
 
   useEffect(() => {
     setSelected(0)
   }, [query, apps.length])
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") hideLauncher()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
+
   const run = async (app: LauncherAppView) => {
-    await api.launcherRun(app.id)
+    setRunError(null)
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(window as any).close?.()
-    } catch { /* WebKit host */ }
+      await api.launcherRun(app.id)
+      hideLauncher()
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : "Failed to launch")
+    }
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -47,7 +71,8 @@ export default function Launcher() {
       e.preventDefault()
       void run(apps[selected])
     } else if (e.key === "Escape") {
-      window.close?.()
+      e.preventDefault()
+      hideLauncher()
     }
   }
 
@@ -61,6 +86,11 @@ export default function Launcher() {
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={onKeyDown}
       />
+      {runError ? (
+        <p className="mt-2 rounded-lg bg-red/15 px-3 py-2 text-sm text-red" role="alert">
+          {runError}
+        </p>
+      ) : null}
       <ul className="mt-3 flex flex-1 flex-col gap-1 overflow-y-auto">
         {isFetching && apps.length === 0 ? (
           <li className="px-3 py-2 text-sm text-subtext0">Searching…</li>
@@ -76,13 +106,18 @@ export default function Launcher() {
               onMouseEnter={() => setSelected(i)}
               onClick={() => void run(app)}
             >
-              <span className="icon text-xl text-mauve">apps</span>
+              <span className="icon text-xl text-mauve">{app.icon ?? "apps"}</span>
               <span className="min-w-0 flex-1 truncate font-medium">{app.name}</span>
+              {app.comment ? (
+                <span className="truncate text-xs text-subtext0">{app.comment}</span>
+              ) : null}
             </button>
           </li>
         ))}
         {!isFetching && apps.length === 0 ? (
-          <li className="px-3 py-6 text-center text-sm text-subtext0">No matches</li>
+          <li className="px-3 py-6 text-center text-sm text-subtext0">
+            {query.trim() ? "No matches" : "No recent apps"}
+          </li>
         ) : null}
       </ul>
     </div>

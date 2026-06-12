@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type DndPrefsView } from "@/lib/api"
-import { connectWs, useWsStore } from "@/lib/ws"
+import { notificationQueryKeys } from "@/lib/ws-invalidation"
 import { cn } from "@/lib/utils"
 import { getNavItem } from "../navigation"
 
@@ -77,8 +77,9 @@ function loadLocalDndFallback(): DndPrefsView {
     if (!raw) return { ...DEFAULT_DND }
     const parsed = JSON.parse(raw) as Record<string, unknown>
     return {
-      enabled: parsed.scheduleEnabled === true,
-      schedule_enabled: parsed.scheduleEnabled === true,
+      enabled: parsed.enabled === true || parsed.manualEnabled === true,
+      schedule_enabled:
+        parsed.schedule_enabled === true || parsed.scheduleEnabled === true,
       start_time:
         typeof parsed.startTime === "string" && parseHm(parsed.startTime)
           ? parsed.startTime
@@ -139,26 +140,18 @@ export function NotificationsPane() {
   const [dndLocal, setDndLocal] = useState<DndPrefsView | null>(null)
 
   useEffect(() => {
-    connectWs()
-    const off = useWsStore.getState().on("Notifications.Changed", () => {
-      void qc.invalidateQueries({ queryKey: ["notifications-list"] })
-    })
-    return off
-  }, [qc])
-
-  useEffect(() => {
     const id = window.setInterval(() => setTick((t) => t + 1), 60_000)
     return () => window.clearInterval(id)
   }, [])
 
   const listQuery = useQuery({
-    queryKey: ["notifications-list"],
+    queryKey: notificationQueryKeys.list,
     queryFn: () => api.listNotifications(80),
     refetchInterval: 15_000,
   })
 
   const dndQuery = useQuery({
-    queryKey: ["notifications-dnd"],
+    queryKey: notificationQueryKeys.dnd,
     queryFn: async () => {
       try {
         return await api.getNotificationDnd()
@@ -173,7 +166,7 @@ export function NotificationsPane() {
   const saveDnd = useMutation({
     mutationFn: (next: DndPrefsView) => api.setNotificationDnd(next),
     onSuccess: (_data, next) => {
-      qc.setQueryData(["notifications-dnd"], next)
+      qc.setQueryData(notificationQueryKeys.dnd, next)
       setDndLocal(null)
     },
     onError: () => {
@@ -181,6 +174,7 @@ export function NotificationsPane() {
         localStorage.setItem(
           STORAGE_KEY,
           JSON.stringify({
+            enabled: prefs.enabled,
             scheduleEnabled: prefs.schedule_enabled,
             startTime: prefs.start_time,
             endTime: prefs.end_time,
@@ -204,28 +198,28 @@ export function NotificationsPane() {
 
   const dismissMut = useMutation({
     mutationFn: (id: number) => api.dismissNotification(id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["notifications-list"] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: notificationQueryKeys.list }),
   })
 
   const clearMut = useMutation({
     mutationFn: () => api.clearAllNotifications(),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["notifications-list"] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: notificationQueryKeys.list }),
   })
 
   const rulesQuery = useQuery({
-    queryKey: ["notifications-rules"],
+    queryKey: notificationQueryKeys.rules,
     queryFn: api.getNotificationRules,
   })
 
   const rulesMut = useMutation({
     mutationFn: (muted_apps: string[]) => api.setNotificationRules({ muted_apps }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["notifications-rules"] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: notificationQueryKeys.rules }),
   })
 
   const actionMut = useMutation({
     mutationFn: ({ id, action_key }: { id: number; action_key: string }) =>
       api.invokeNotificationAction(id, action_key),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["notifications-list"] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: notificationQueryKeys.list }),
   })
 
   const mutedApps = rulesQuery.data?.muted_apps ?? []

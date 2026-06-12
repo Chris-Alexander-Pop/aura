@@ -28,12 +28,12 @@ export default function BluetoothFlyout() {
     return off
   }, [qc])
 
-  const { data: adapters, isPending: adPending } = useQuery({
+  const { data: adapters, isPending: adPending, isError: adError } = useQuery({
     queryKey: ["bt-ad"],
     queryFn: api.getBluetoothAdapters,
     refetchInterval: 6000,
   })
-  const { data: devices, isPending: devPending } = useQuery({
+  const { data: devices, isPending: devPending, isError: devError } = useQuery({
     queryKey: ["bt-dev"],
     queryFn: api.getBluetoothDevices,
     refetchInterval: 6000,
@@ -70,6 +70,14 @@ export default function BluetoothFlyout() {
     }
   }
 
+  const toggleAdapterPower = async () => {
+    if (!adapters?.length) return
+    const wantOn = !powered
+    await Promise.all(adapters.map((a) => api.setBluetoothAdapterPower(a.path, wantOn)))
+    await qc.invalidateQueries({ queryKey: ["bt-ad"] })
+    await qc.invalidateQueries({ queryKey: ["bt-dev"] })
+  }
+
   if (adPending) {
     return (
       <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
@@ -79,11 +87,46 @@ export default function BluetoothFlyout() {
     )
   }
 
+  if (adError || devError) {
+    return (
+      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
+        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Bluetooth</h2>
+        <FlyoutEmpty
+          icon="bluetooth_disabled"
+          title="Could not load Bluetooth"
+          detail="Check that BlueZ is running and try again from Control Center."
+        />
+      </div>
+    )
+  }
+
+  if (!adapters?.length) {
+    return (
+      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
+        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Bluetooth</h2>
+        <FlyoutEmpty
+          icon="settings_bluetooth"
+          title="No adapter found"
+          detail="This system did not report a Bluetooth controller."
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-      <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">
-        Bluetooth {adapterSummary(adapters)}
-      </h2>
+      <div className="flex items-start justify-between gap-2 pr-1">
+        <h2 className="min-w-0 text-sm font-semibold leading-tight text-subtext1">
+          Bluetooth {adapterSummary(adapters)}
+        </h2>
+        <button
+          type="button"
+          className="shrink-0 rounded-lg bg-surface0/90 px-2.5 py-1 text-[10px] font-semibold text-subtext1 transition-colors hover:bg-surface1 hover:text-text"
+          onClick={() => void toggleAdapterPower()}
+        >
+          {powered ? "Turn off" : "Turn on"}
+        </button>
+      </div>
 
       <div className="flex flex-wrap gap-2 px-0.5">
         <span

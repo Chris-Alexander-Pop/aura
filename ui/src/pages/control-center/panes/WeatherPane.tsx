@@ -2,6 +2,7 @@ import { motion } from "framer-motion"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { getNavItem } from "../navigation"
 
 const WEATHER_QUERY_KEY = ["weather"] as const
 
@@ -24,6 +25,7 @@ function materialWeatherIcon(sidecarIcon: string): string {
 const REFETCH_MS = 300_000
 
 export default function WeatherPane() {
+  const { icon: navIcon, label } = getNavItem("weather")
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: WEATHER_QUERY_KEY,
     queryFn: api.getWeather,
@@ -36,7 +38,7 @@ export default function WeatherPane() {
     error instanceof Error ? error.message : error != null ? String(error) : "Could not load weather."
 
   const headerIcon =
-    data != null ? materialWeatherIcon(data.icon) : WEATHER_MATERIAL_ICON.partly_cloudy
+    data != null ? materialWeatherIcon(data.icon) : navIcon
 
   return (
     <motion.div
@@ -51,7 +53,7 @@ export default function WeatherPane() {
             <span className={cn("icon text-mauve text-2xl", isFetching && data && "opacity-60")}>
               {headerIcon}
             </span>
-            <h2 className="text-xl font-semibold">Weather</h2>
+            <h2 className="text-xl font-semibold">{label}</h2>
           </div>
           <p className="text-xs text-subtext1 mt-1 max-w-prose">
             Ambient quick readout (sidecar wttr/in). Configure location via the Aura sidecar weather

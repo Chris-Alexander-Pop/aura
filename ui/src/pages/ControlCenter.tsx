@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
-import { connectWs } from "@/lib/ws"
+import {
+  consumeControlCenterPane,
+  subscribeControlCenterPane,
+} from "@/lib/control-center-pane"
 import { NAV_SECTIONS, type PaneId } from "./control-center/navigation"
 import NetworkPane from "./control-center/panes/NetworkPane"
 import WeatherPane from "./control-center/panes/WeatherPane"
@@ -75,7 +78,9 @@ export default function ControlCenter() {
   const [navExpanded, setNavExpanded] = useState(false)
 
   useEffect(() => {
-    connectWs()
+    const pending = consumeControlCenterPane()
+    if (pending) setActive(pending)
+    return subscribeControlCenterPane(setActive)
   }, [])
 
   return (

@@ -2,6 +2,7 @@
 //! gated behind `AURA_AUDIO_ADVANCED=1` (mutating RPCs also stay on the integration deny-list).
 
 use crate::notify;
+use crate::osd;
 use crate::services::ServiceRegistry;
 use crate::utils::{process, storage};
 use anyhow::{bail, Result};
@@ -162,6 +163,9 @@ pub fn register(registry: &mut ServiceRegistry) {
         .await?;
         refresh_devices().await?;
         schedule_audio_state_emit().await;
+        if let Some(sink) = default_sink().await {
+            osd::emit_volume_from_sink(&sink);
+        }
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -197,6 +201,9 @@ pub fn register(registry: &mut ServiceRegistry) {
         .await?;
         refresh_devices().await?;
         schedule_audio_state_emit().await;
+        if let Some(sink) = default_sink().await {
+            osd::emit_volume_from_sink(&sink);
+        }
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -217,6 +224,9 @@ pub fn register(registry: &mut ServiceRegistry) {
         .await?;
         refresh_devices().await?;
         schedule_audio_state_emit().await;
+        if let Some(source) = default_source().await {
+            osd::emit_mic_from_source(&source);
+        }
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -878,6 +888,26 @@ fn volume_from_params(params: &Option<serde_json::Value>) -> Result<f64> {
             .and_then(|p| p.get("volume").cloned())
             .ok_or_else(|| anyhow::anyhow!("Missing volume"))?,
     )?)
+}
+
+async fn default_sink() -> Option<AudioDevice> {
+    let state = PIPEWIRE_STATE.read().await;
+    state
+        .sinks
+        .iter()
+        .find(|s| s.is_default)
+        .cloned()
+        .or_else(|| state.sinks.first().cloned())
+}
+
+async fn default_source() -> Option<AudioDevice> {
+    let state = PIPEWIRE_STATE.read().await;
+    state
+        .sources
+        .iter()
+        .find(|s| s.is_default)
+        .cloned()
+        .or_else(|| state.sources.first().cloned())
 }
 
 async fn schedule_audio_state_emit() {

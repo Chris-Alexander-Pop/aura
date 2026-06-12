@@ -40,6 +40,12 @@ export default function AudioFlyout() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["audio-devices"] }),
   })
 
+  const sourceVolMut = useMutation({
+    mutationFn: ({ device_id, volume }: { device_id: number; volume: number }) =>
+      api.setSourceVolume(device_id, volume),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["audio-devices"] }),
+  })
+
   const sourceMuteMut = useMutation({
     mutationFn: ({ device_id, muted }: { device_id: number; muted: boolean }) =>
       api.setSourceMute(device_id, muted),
@@ -53,7 +59,11 @@ export default function AudioFlyout() {
   })
 
   const busy =
-    sinkVolMut.isPending || sinkMuteMut.isPending || sourceMuteMut.isPending || setDefaultMut.isPending
+    sinkVolMut.isPending ||
+    sinkMuteMut.isPending ||
+    sourceVolMut.isPending ||
+    sourceMuteMut.isPending ||
+    setDefaultMut.isPending
 
   if (isPending) {
     return (
@@ -103,6 +113,7 @@ export default function AudioFlyout() {
           step={1}
           value={sinkPct}
           disabled={busy}
+          aria-label="Output volume"
           onChange={(e) =>
             sinkVolMut.mutate({
               device_id: defaultSink.id,
@@ -137,24 +148,63 @@ export default function AudioFlyout() {
       ) : null}
 
       {defaultSource ? (
-        <div className="flex items-center justify-between gap-2 border-t border-surface0/50 pt-2">
-          <div className="min-w-0">
-            <p className="text-[10px] uppercase tracking-wide text-subtext1">Mic</p>
-            <p className="truncate text-xs text-subtext0">{defaultSource.name}</p>
+        <div className="space-y-2 border-t border-surface0/50 pt-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="min-w-0 truncate text-xs font-medium text-text">{defaultSource.name}</p>
+            <button
+              type="button"
+              disabled={busy}
+              title={defaultSource.muted ? "Unmute mic" : "Mute mic"}
+              className={cn(
+                "shrink-0 rounded-lg p-1 transition-colors",
+                defaultSource.muted ? "text-red" : "text-subtext1 hover:text-text"
+              )}
+              onClick={() =>
+                sourceMuteMut.mutate({ device_id: defaultSource.id, muted: !defaultSource.muted })
+              }
+            >
+              <span className="icon text-lg">{defaultSource.muted ? "mic_off" : "mic"}</span>
+            </button>
           </div>
-          <button
-            type="button"
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={Math.round(Math.min(1, Math.max(0, defaultSource.volume)) * 100)}
             disabled={busy}
-            className={cn(
-              "rounded-lg p-1",
-              defaultSource.muted ? "text-red" : "text-subtext1 hover:text-text"
-            )}
-            onClick={() =>
-              sourceMuteMut.mutate({ device_id: defaultSource.id, muted: !defaultSource.muted })
+            aria-label="Microphone volume"
+            onChange={(e) =>
+              sourceVolMut.mutate({
+                device_id: defaultSource.id,
+                volume: Number(e.target.value) / 100,
+              })
             }
-          >
-            <span className="icon text-lg">{defaultSource.muted ? "mic_off" : "mic"}</span>
-          </button>
+            className="h-2 w-full cursor-pointer appearance-none rounded-full border border-surface1/30 bg-base/90 accent-sapphire"
+          />
+          <p className="text-[10px] uppercase tracking-wide text-subtext1">Input</p>
+        </div>
+      ) : null}
+
+      {(data?.sources.length ?? 0) > 1 ? (
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase tracking-wide text-subtext1">Input device</p>
+          <div className="flex max-h-24 flex-col gap-0.5 overflow-y-auto">
+            {data!.sources.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                disabled={busy || s.is_default}
+                className={cn(
+                  "rounded-lg px-2 py-1.5 text-left text-[11px] transition-colors",
+                  s.is_default ? "bg-sapphire/20 text-text" : "text-subtext1 hover:bg-surface0/80"
+                )}
+                onClick={() => setDefaultMut.mutate({ device_id: s.id, type: "input" })}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>

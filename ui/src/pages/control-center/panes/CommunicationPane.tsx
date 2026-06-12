@@ -3,6 +3,7 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { getNavItem } from "../navigation"
 
 type UnreadMap = Awaited<ReturnType<typeof api.getUnreadMessages>>
 
@@ -57,6 +58,7 @@ function KpiTile({
 }
 
 export function CommunicationPane() {
+  const { icon, label } = getNavItem("communication")
   const { data, isLoading, isError, error, isFetching } = useQuery({
     queryKey: ["comm-unread"],
     queryFn: api.getUnreadMessages,
@@ -83,9 +85,9 @@ export function CommunicationPane() {
       className="flex h-full flex-col gap-4 overflow-y-auto p-6"
     >
       <div className="flex items-center gap-3">
-        <span className="icon text-2xl text-mauve">mark_email_unread</span>
+        <span className="icon text-2xl text-mauve">{icon}</span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-xl font-semibold text-text">Communication</h2>
+          <h2 className="text-xl font-semibold text-text">{label}</h2>
           <p className="mt-0.5 text-xs text-subtext1">
             {isLoading
               ? "Loading unread counts…"

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import { motion } from "framer-motion"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type SecurityStatusView } from "@/lib/api"
 import { getNavItem } from "../navigation"
 
@@ -101,7 +101,38 @@ export function SecurityPane() {
     refetchInterval: 60_000,
   })
 
+  const fingerprintsQuery = useQuery({
+    queryKey: ["control-center", "fingerprints"],
+    queryFn: api.listFingerprints,
+    refetchInterval: 120_000,
+  })
+
+  const clamMut = useMutation({
+    mutationFn: () => api.runClamScan(),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["control-center", "security-status"] }),
+  })
+
+  const firewallEnableMut = useMutation({
+    mutationFn: () => api.enableFirewall(),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["control-center", "security-status"] }),
+  })
+
+  const firewallDisableMut = useMutation({
+    mutationFn: () => api.disableFirewall(),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["control-center", "security-status"] }),
+  })
+
+  const lockMut = useMutation({
+    mutationFn: () => api.sessionLock(),
+  })
+
   const raw = pickRaw(data)
+  const actionBusy =
+    clamMut.isPending || firewallEnableMut.isPending || firewallDisableMut.isPending || lockMut.isPending
+  const actionError =
+    (clamMut.error ?? firewallEnableMut.error ?? firewallDisableMut.error ?? lockMut.error) instanceof Error
+      ? (clamMut.error ?? firewallEnableMut.error ?? firewallDisableMut.error ?? lockMut.error)?.message
+      : null
 
   const extraKeys =
     raw != null
@@ -124,7 +155,7 @@ export function SecurityPane() {
           <h2 className="text-xl font-semibold text-text">{label}</h2>
         </div>
         <p className="text-xs text-subtext1 max-w-prose leading-relaxed">
-          Live snapshot from <code className="text-subtext0">Security.GetStatus</code>. Sections group known signals; any extra keys render as separate cards with a structured fallback when the payload shape is unfamiliar.
+          Live snapshot from <code className="text-subtext0">Security.GetStatus</code>. Firewall, session lock, AV scan, and fingerprint enrollment status.
         </p>
       </div>
 
@@ -143,6 +174,29 @@ export function SecurityPane() {
             <Row label="Encryption (disk)" value={boolPhrase(data?.encryption_enabled)} />
           </SectionCard>
 
+          <SectionCard title="Fingerprints" icon="fingerprint" footer={<p className="text-[10px] text-subtext1">Security.ListFingerprints</p>}>
+            {fingerprintsQuery.isLoading ? (
+              <div className="skeleton h-10 rounded-lg" />
+            ) : fingerprintsQuery.isError ? (
+              <p className="text-xs text-red">
+                {fingerprintsQuery.error instanceof Error
+                  ? fingerprintsQuery.error.message
+                  : "Could not list fingerprints"}
+              </p>
+            ) : (fingerprintsQuery.data?.length ?? 0) === 0 ? (
+              <p className="text-xs text-subtext0">No enrolled fingerprints or fprintd unavailable</p>
+            ) : (
+              <ul className="flex flex-col gap-1 text-xs text-subtext1">
+                {fingerprintsQuery.data!.map((fp) => (
+                  <li key={fp.name}>
+                    {fp.name}
+                    {fp.finger ? ` · ${fp.finger}` : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SectionCard>
+
           {extraKeys.length === 0 ? (
             <p className="text-xs text-subtext0">No extra fields beyond the overview — sidecar aggregate may grow over time.</p>
           ) : (
@@ -156,20 +210,40 @@ export function SecurityPane() {
             <button
               type="button"
               className="btn-surface text-xs"
-              onClick={async () => {
-                await api.runClamScan()
-                await qc.invalidateQueries({ queryKey: ["control-center", "security-status"] })
-              }}
+              disabled={actionBusy}
+              onClick={() => lockMut.mutate()}
             >
-              Run ClamAV scan
+              {lockMut.isPending ? "Locking…" : "Lock session"}
             </button>
-            <button type="button" className="btn-surface text-xs" onClick={() => api.enableFirewall()}>
-              Enable firewall
+            <button
+              type="button"
+              className="btn-surface text-xs"
+              disabled={actionBusy}
+              onClick={() => clamMut.mutate()}
+            >
+              {clamMut.isPending ? "Scanning…" : "Run ClamAV scan"}
             </button>
-            <button type="button" className="btn-surface text-xs" onClick={() => api.disableFirewall()}>
-              Disable firewall
+            <button
+              type="button"
+              className="btn-surface text-xs"
+              disabled={actionBusy}
+              onClick={() => firewallEnableMut.mutate()}
+            >
+              {firewallEnableMut.isPending ? "Enabling…" : "Enable firewall"}
+            </button>
+            <button
+              type="button"
+              className="btn-surface text-xs"
+              disabled={actionBusy}
+              onClick={() => firewallDisableMut.mutate()}
+            >
+              {firewallDisableMut.isPending ? "Disabling…" : "Disable firewall"}
             </button>
           </div>
+          {actionError ? <p className="text-xs text-red">{actionError}</p> : null}
+          {lockMut.isSuccess && !lockMut.isPending ? (
+            <p className="text-xs text-green">Lock dispatched via Session.Lock</p>
+          ) : null}
         </div>
       )}
     </motion.div>

@@ -1,10 +1,28 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type PowerProfile } from "@/lib/api"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { FlyoutLoading, FlyoutEmpty } from "@/components/bar/flyouts/FlyoutStates"
 import { cn } from "@/lib/utils"
 
 export default function BatteryFlyout() {
   const qc = useQueryClient()
+
+  useEffect(() => {
+    connectWs()
+    const offBatt = useWsStore.getState().on("Power.BatteryState", () => {
+      void qc.invalidateQueries({ queryKey: ["batt"] })
+      void qc.invalidateQueries({ queryKey: ["sidebar-tile", "battery"] })
+    })
+    const offProf = useWsStore.getState().on("Power.Profile", () => {
+      void qc.invalidateQueries({ queryKey: ["pwr"] })
+    })
+    return () => {
+      offBatt()
+      offProf()
+    }
+  }, [qc])
+
   const { data: tile } = useQuery({
     queryKey: ["sidebar-tile", "battery"],
     queryFn: () => api.sidebarGetTileData("battery"),
@@ -21,13 +39,15 @@ export default function BatteryFlyout() {
     refetchInterval: 15_000,
   })
 
-  const cycle = async () => {
-    const order: PowerProfile[] = ["balanced", "performance", "saver"]
-    const cur = prof?.profile ?? "balanced"
-    const i = order.indexOf(cur)
-    await api.setPowerProfile(order[(i + 1) % order.length])
-    await qc.invalidateQueries({ queryKey: ["pwr"] })
-  }
+  const profileMut = useMutation({
+    mutationFn: async () => {
+      const order: PowerProfile[] = ["balanced", "performance", "saver"]
+      const cur = prof?.profile ?? "balanced"
+      const i = order.indexOf(cur)
+      await api.setPowerProfile(order[(i + 1) % order.length])
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["pwr"] }),
+  })
 
   const battFromTile = tile && typeof tile === "object" && "percent" in (tile as object)
     ? (tile as { percent?: number; charging?: boolean })
@@ -84,11 +104,11 @@ export default function BatteryFlyout() {
 
       <button
         type="button"
-        disabled={profPending}
+        disabled={profPending || profileMut.isPending}
         className="w-full rounded-xl bg-surface0/90 px-3 py-2.5 text-left text-[12px] font-medium text-subtext1 transition-colors hover:bg-surface1 disabled:opacity-60"
-        onClick={() => cycle()}
+        onClick={() => profileMut.mutate()}
       >
-        {profPending ? (
+        {profPending || profileMut.isPending ? (
           <span className="flex items-center gap-2 text-subtext0">
             <span className="icon animate-spin text-xl text-teal">progress_activity</span>
             Loading profile…

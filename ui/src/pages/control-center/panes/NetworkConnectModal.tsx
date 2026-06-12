@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { cn } from "@/lib/utils"
 
@@ -18,6 +18,7 @@ export function NetworkConnectModal({
   onConnect,
 }: NetworkConnectModalProps) {
   const titleId = useId()
+  const passwordRef = useRef<HTMLInputElement>(null)
   const [password, setPassword] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,6 +38,12 @@ export function NetworkConnectModal({
 
   useEffect(() => {
     if (!open) return
+    const t = window.setTimeout(() => passwordRef.current?.focus(), 50)
+    return () => window.clearTimeout(t)
+  }, [open, displaySsid])
+
+  useEffect(() => {
+    if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onClose()
     }
@@ -46,6 +53,10 @@ export function NetworkConnectModal({
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!password.trim()) {
+      setError("Enter the network password.")
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -98,6 +109,7 @@ export function NetworkConnectModal({
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] uppercase tracking-wide text-subtext1">Password</span>
                 <input
+                  ref={passwordRef}
                   type="password"
                   autoComplete="current-password"
                   className="w-full rounded-xl border border-surface0/80 bg-base/80 px-3 py-2.5 text-sm text-text placeholder:text-subtext0 focus:outline-none focus:ring-2 focus:ring-mauve/50"
@@ -126,7 +138,7 @@ export function NetworkConnectModal({
                 <button
                   type="submit"
                   className="flex-1 rounded-xl bg-mauve py-2.5 text-sm font-semibold text-base hover:brightness-110 disabled:opacity-50"
-                  disabled={busy}
+                  disabled={busy || !password.trim()}
                 >
                   {busy ? "Connecting…" : "Connect"}
                 </button>

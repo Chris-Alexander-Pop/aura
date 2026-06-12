@@ -1,7 +1,9 @@
 import { motion } from "framer-motion"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
 import api from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { getNavItem } from "../navigation"
 
 type FitnessGoal = {
   id: string
@@ -83,7 +85,18 @@ function goalProgress(g: FitnessGoal): number {
   return Math.min(100, (g.current / g.target) * 100)
 }
 
+const GOAL_TYPES = [
+  { id: "steps", label: "Steps" },
+  { id: "workout_minutes", label: "Workout minutes" },
+  { id: "active_calories", label: "Active calories" },
+] as const
+
 export function FitnessPane() {
+  const { icon, label } = getNavItem("fitness")
+  const qc = useQueryClient()
+  const [goalType, setGoalType] = useState<(typeof GOAL_TYPES)[number]["id"]>("steps")
+  const [goalTarget, setGoalTarget] = useState("10000")
+
   const { data: raw, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["fitness-stats"],
     queryFn: async () => {
@@ -91,6 +104,17 @@ export function FitnessPane() {
       return res as unknown
     },
     refetchInterval: 30_000,
+  })
+
+  const createGoalMut = useMutation({
+    mutationFn: () => {
+      const target = Number(goalTarget)
+      if (!Number.isFinite(target) || target <= 0) {
+        throw new Error("Target must be a positive number")
+      }
+      return api.fitnessSetGoal(goalType, target)
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["fitness-stats"] }),
   })
 
   const { goals, summary } = normalizeFitnessStats(raw)
@@ -107,11 +131,11 @@ export function FitnessPane() {
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="icon text-2xl text-mauve">fitness_center</span>
+          <span className="icon text-2xl text-mauve">{icon}</span>
           <div className="min-w-0">
-            <h2 className="text-xl font-semibold text-text">Fitness</h2>
+            <h2 className="text-xl font-semibold text-text">{label}</h2>
             <p className="mt-0.5 text-xs text-subtext1">
-              {isLoading ? "Loading goals…" : `${goals.length} goal${goals.length === 1 ? "" : "s"} · sidecar`}
+              {isLoading ? "Loading goals…" : `${goals.length} goal${goals.length === 1 ? "" : "s"} · sidecar SQLite`}
             </p>
           </div>
         </div>
@@ -141,11 +165,48 @@ export function FitnessPane() {
         </div>
       ) : null}
 
+      <div className="glass-card flex flex-col gap-3 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-subtext0">Add goal</p>
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="rounded-xl border border-surface0/80 bg-base/80 px-3 py-2 text-sm"
+            value={goalType}
+            onChange={(e) => setGoalType(e.target.value as (typeof GOAL_TYPES)[number]["id"])}
+          >
+            {GOAL_TYPES.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            min={1}
+            className="w-28 rounded-xl border border-surface0/80 bg-base/80 px-3 py-2 text-sm"
+            value={goalTarget}
+            onChange={(e) => setGoalTarget(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn-surface text-sm"
+            disabled={createGoalMut.isPending}
+            onClick={() => createGoalMut.mutate()}
+          >
+            Create
+          </button>
+        </div>
+        {createGoalMut.isError ? (
+          <p className="text-xs text-red">
+            {createGoalMut.error instanceof Error ? createGoalMut.error.message : "Create failed"}
+          </p>
+        ) : null}
+      </div>
+
       {!isError && !isLoading && showEmpty ? (
         <EmptyPanel
           icon="route"
           title="No fitness goals yet"
-          body="When the sidecar stores goals (via Fitness.SetGoal or a synced device), progress will appear here as a dashboard."
+          body="Create a goal above or sync a device when Fitness.SyncDevice integrations land."
         />
       ) : null}
 

@@ -20,7 +20,6 @@ import StatusCluster from "@/components/bar/StatusCluster"
 import NotificationToasts from "@/components/notifications/NotificationToasts"
 import { type StatusFlyoutId } from "@/components/bar/useFlyoutHover"
 import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
-import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 
 const HYPRLAND_REFETCH_MS = 60_000
@@ -33,28 +32,12 @@ function postFlyoutMessage(payload: { open: boolean; panel?: string; y?: number 
   } catch { /* non-WebKit context (dev server) */ }
 }
 
-function useHyprlandInvalidation() {
-  const qc = useQueryClient()
-  useEffect(() => {
-    connectWs()
-    const off = useWsStore.getState().on("Hyprland.StateChanged", () => {
-      void qc.invalidateQueries({ queryKey: ["hypr-ws"] })
-      void qc.invalidateQueries({ queryKey: ["hypr-active-ws"] })
-      void qc.invalidateQueries({ queryKey: ["clients"] })
-      void qc.invalidateQueries({ queryKey: ["hypr-active"] })
-    })
-    return off
-  }, [qc])
-}
-
 function clientWorkspaceId(client: HyprClient): number | null {
   const id = client.workspace?.id
   return typeof id === "number" && Number.isFinite(id) ? id : null
 }
 
 function WorkspacesBlock() {
-  useHyprlandInvalidation()
-
   const { data: wsRaw, isPending: wsPending } = useQuery({
     queryKey: ["hypr-ws"],
     queryFn: api.hyprlandGetWorkspaces,
@@ -92,7 +75,8 @@ function WorkspacesBlock() {
     return Array.from({ length: 5 }, (_, i) => offset + i + 1)
   }, [activeId])
 
-  const workspacesLoading = (wsPending || activePending) && list.length === 0
+  const workspacesLoading =
+    (wsPending || activePending || clientsPending) && list.length === 0 && clients.length === 0
 
   if (workspacesLoading) {
     return (
@@ -145,9 +129,43 @@ function WorkspacesBlock() {
   )
 }
 
-function RunningAppsBlock() {
-  useHyprlandInvalidation()
+/** Compact focused-window indicator (GTK ActiveWindow parity). */
+function ActiveWindowBlock() {
+  const { data: activeRaw, isPending } = useQuery({
+    queryKey: ["hypr-active"],
+    queryFn: api.hyprlandGetActiveWindow,
+    refetchInterval: HYPRLAND_REFETCH_MS,
+  })
 
+  const active = useMemo(() => parseHyprActiveWindow(activeRaw), [activeRaw])
+
+  if (isPending && !active) {
+    return (
+      <div className="px-0.5 py-0.5" aria-busy="true" aria-label="Loading active window">
+        <div className="h-9 w-full animate-pulse rounded-xl bg-surface1/35" />
+      </div>
+    )
+  }
+
+  if (!active) return null
+
+  const title = active.title || active.class || "Window"
+
+  return (
+    <div className="flex justify-center px-0.5 py-0.5">
+      <button
+        type="button"
+        title={title}
+        className="flex h-9 w-full items-center justify-center rounded-xl bg-surface1/60 text-text transition-colors hover:bg-surface1"
+        onClick={() => void api.hyprlandDispatch(`focuswindow address:${active.address}`)}
+      >
+        <span className="icon text-[21px]">{iconFromHyprClass(active.class)}</span>
+      </button>
+    </div>
+  )
+}
+
+function RunningAppsBlock() {
   const { data: clientsRaw, isPending: clientsPending } = useQuery({
     queryKey: ["clients"],
     queryFn: api.hyprlandGetClients,
@@ -165,10 +183,10 @@ function RunningAppsBlock() {
     const byClass = new Map<string, HyprClient>()
     for (const client of parseHyprClients(clientsRaw)) {
       const address = client.address
-      if (!address) continue
+      if (!address || address === activeAddr) continue
       const cls = client.class || "Window"
       const key = cls.toLowerCase()
-      if (!byClass.has(key) || address === activeAddr) byClass.set(key, client)
+      if (!byClass.has(key)) byClass.set(key, client)
     }
     return [...byClass.values()].slice(0, 7)
   }, [activeAddr, clientsRaw])
@@ -183,14 +201,7 @@ function RunningAppsBlock() {
     )
   }
 
-  if (apps.length === 0) {
-    return (
-      <div className="mx-0.5 flex flex-col items-center justify-center rounded-xl border border-surface1/45 bg-surface0/35 px-1 py-3 text-center">
-        <span className="icon text-lg leading-none text-overlay0">widgets</span>
-        <p className="mt-1.5 text-[9px] leading-tight text-subtext0">No running apps</p>
-      </div>
-    )
-  }
+  if (apps.length === 0) return null
 
   return (
     <div className="flex flex-col items-center gap-0.5 py-1">
@@ -198,17 +209,13 @@ function RunningAppsBlock() {
         const addr = client.address
         const cls = client.class
         const title = client.title || cls || "Window"
-        const active = addr === activeAddr
 
         return (
           <button
             key={addr || cls}
             type="button"
             title={title}
-            className={cn(
-              "flex h-9 w-full items-center justify-center rounded-xl transition-colors",
-              active ? "bg-surface1 text-text" : "text-subtext1 hover:bg-surface1/70 hover:text-text"
-            )}
+            className="flex h-9 w-full items-center justify-center rounded-xl text-subtext1 transition-colors hover:bg-surface1/70 hover:text-text"
             onClick={() => addr && void api.hyprlandDispatch(`focuswindow address:${addr}`)}
           >
             <span className="icon text-[21px]">{iconFromHyprClass(cls)}</span>
@@ -224,7 +231,7 @@ function MediaBlock() {
   const { data } = useQuery({
     queryKey: ["media"],
     queryFn: api.getMediaNowPlaying,
-    refetchInterval: 30_000,
+    refetchInterval: (query) => (query.state.data?.playing ? 5_000 : 30_000),
   })
 
   const hasPlayer = Boolean(data?.title || data?.artist || data?.playing || data?.paused)
@@ -269,16 +276,6 @@ function MediaBlock() {
 }
 
 function CalendarPreviewBlock() {
-  const qc = useQueryClient()
-  useEffect(() => {
-    connectWs()
-    const off = useWsStore.getState().on("Calendar.EventsChanged", () => {
-      void qc.invalidateQueries({ queryKey: ["cal"] })
-      void qc.invalidateQueries({ queryKey: ["calendar-upcoming"] })
-    })
-    return off
-  }, [qc])
-
   const { data: evs, isPending: calPending } = useQuery({
     queryKey: ["cal"],
     queryFn: () => api.fetchCalendarEvents(),
@@ -327,10 +324,13 @@ function LauncherBlock() {
 
 function TrayBlock() {
   return (
-    <div className="flex justify-center py-0.5" title="System tray — StatusNotifier integration pending">
-      <div className="flex h-8 w-full items-center justify-center rounded-lg text-subtext1/50">
-        <span className="icon text-lg">symptoms</span>
-      </div>
+    <div
+      className="mx-0.5 flex flex-col items-center gap-0.5 rounded-lg border border-dashed border-surface1/45 bg-surface0/30 px-1 py-1.5"
+      title="System tray — StatusNotifier D-Bus bridge planned (see docs/roadmap/react-bar-migration.md)"
+      aria-label="System tray placeholder"
+    >
+      <span className="icon text-base text-overlay0/75">symptoms</span>
+      <span className="text-[7px] font-medium uppercase tracking-wide text-overlay0/80">Tray</span>
     </div>
   )
 }
@@ -367,11 +367,16 @@ function ClockBlock() {
   const mm = String(now.getMinutes()).padStart(2, "0")
 
   return (
-    <div className="flex flex-col items-center py-1 font-mono text-[10px] text-subtext1">
+    <button
+      type="button"
+      title="Open calendar"
+      className="flex flex-col items-center py-1 font-mono text-[10px] text-subtext1 transition-colors hover:text-teal"
+      onClick={() => void api.auraToggleWindow("calendar")}
+    >
       <span className="icon mb-0.5 text-lg text-teal">calendar_month</span>
       <span>{hh}</span>
       <span>{mm}</span>
-    </div>
+    </button>
   )
 }
 
@@ -410,7 +415,12 @@ export default function BarStrip() {
       case "workspaces":
         return <WorkspacesBlock />
       case "runningApps":
-        return <RunningAppsBlock />
+        return (
+          <>
+            <ActiveWindowBlock />
+            <RunningAppsBlock />
+          </>
+        )
       case "media":
         return <MediaBlock />
       case "connectivity":

@@ -44,6 +44,17 @@ const CC_PANE_IDS: &[&str] = &[
     "weather",
 ];
 
+/// Dropdown / sidebar tile ids (`Sidebar.GetTileData` in `dashboard.rs`).
+const DROPDOWN_MODULE_IDS: &[&str] = &[
+    "network",
+    "audio",
+    "bluetooth",
+    "battery",
+    "calendar",
+    "notifications",
+    "productivity",
+];
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct AuraSettings {
@@ -77,11 +88,7 @@ pub fn validate_settings(settings: &AuraSettings) -> Result<()> {
     }
     validate_id_list(&settings.bar_section_order, BAR_SECTION_IDS, "bar_section_order")?;
     validate_id_list(&settings.cc_enabled_panes, CC_PANE_IDS, "cc_enabled_panes")?;
-    for id in &settings.dropdown_modules {
-        if !CC_PANE_IDS.contains(&id.as_str()) {
-            bail!("invalid dropdown_modules id: {id}");
-        }
-    }
+    validate_id_list(&settings.dropdown_modules, DROPDOWN_MODULE_IDS, "dropdown_modules")?;
     if settings.theme.len() > 64 {
         bail!("theme string too long");
     }
@@ -156,7 +163,7 @@ pub fn register(registry: &mut ServiceRegistry) {
                 "bar_section_order": { "type": "array", "items": BAR_SECTION_IDS },
                 "cc_enabled_panes": { "type": "array", "items": CC_PANE_IDS },
                 "theme": { "type": "string", "examples": ["dark", "light", "catppuccin-mocha"] },
-                "dropdown_modules": { "type": "array", "items": CC_PANE_IDS },
+                "dropdown_modules": { "type": "array", "items": DROPDOWN_MODULE_IDS },
             },
         }))
     });
@@ -195,6 +202,13 @@ mod tests {
     fn validate_rejects_bad_bar_id() {
         let mut s = default_settings();
         s.bar_section_order = vec!["not-a-section".into()];
+        assert!(validate_settings(&s).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_bad_dropdown_module() {
+        let mut s = default_settings();
+        s.dropdown_modules = vec!["vpn".into()];
         assert!(validate_settings(&s).is_err());
     }
 

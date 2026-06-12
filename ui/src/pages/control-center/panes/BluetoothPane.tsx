@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { motion } from "framer-motion"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
-import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 
 type Adapter = Awaited<ReturnType<typeof api.getBluetoothAdapters>>[number]
@@ -20,7 +19,7 @@ function emptyMessage(adapters: Adapter[] | undefined, powered: boolean): { titl
     return {
       icon: "bluetooth_disabled",
       title: "Bluetooth is off",
-      body: "Turn Bluetooth on in system settings, then return here to scan and manage devices.",
+      body: "Use Turn on above, then scan to discover and pair devices.",
     }
   }
   return null
@@ -51,15 +50,7 @@ export function BluetoothPane() {
   const qc = useQueryClient()
   const [busyAddr, setBusyAddr] = useState<string | null>(null)
   const [scanBusy, setScanBusy] = useState(false)
-
-  useEffect(() => {
-    connectWs()
-    const off = useWsStore.getState().on("Bluetooth.StateChanged", () => {
-      void qc.invalidateQueries({ queryKey: ["bt-ad"] })
-      void qc.invalidateQueries({ queryKey: ["bt-dev"] })
-    })
-    return off
-  }, [qc])
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const adaptersQuery = useQuery({
     queryKey: ["bt-ad"],
@@ -82,34 +73,61 @@ export function BluetoothPane() {
   const sortedDevices = sortDevices(devices ?? [])
   const connectedCount = sortedDevices.filter((d) => d.connected).length
 
+  const invalidateBt = async () => {
+    await qc.invalidateQueries({ queryKey: ["bt-ad"] })
+    await qc.invalidateQueries({ queryKey: ["bt-dev"] })
+  }
+
   const scan = async () => {
     setScanBusy(true)
+    setActionError(null)
     try {
       await api.scanBluetooth()
-      await qc.invalidateQueries({ queryKey: ["bt-ad"] })
-      await qc.invalidateQueries({ queryKey: ["bt-dev"] })
+      await invalidateBt()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Scan failed")
     } finally {
       setScanBusy(false)
     }
   }
 
-  const toggleConn = async (address: string, connectedNow: boolean) => {
+  const runDeviceAction = async (address: string, action: () => Promise<unknown>) => {
     setBusyAddr(address)
+    setActionError(null)
     try {
-      if (connectedNow) await api.disconnectDevice(address)
-      else await api.connectDevice(address)
-      await qc.invalidateQueries({ queryKey: ["bt-dev"] })
+      await action()
+      await invalidateBt()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Bluetooth action failed")
     } finally {
       setBusyAddr(null)
     }
   }
 
+  const toggleConn = (address: string, connectedNow: boolean) =>
+    runDeviceAction(address, () =>
+      connectedNow ? api.disconnectDevice(address) : api.connectDevice(address)
+    )
+
+  const pairDevice = (address: string) =>
+    runDeviceAction(address, async () => {
+      await api.pairDevice(address)
+      await api.connectDevice(address)
+    })
+
+  const removeDevice = (address: string) =>
+    runDeviceAction(address, () => api.removeDevice(address))
+
   const toggleAdapterPower = async () => {
     if (!adapters?.length) return
+    setActionError(null)
     const wantOn = !powered
-    await Promise.all(adapters.map((a) => api.setBluetoothAdapterPower(a.path, wantOn)))
-    await qc.invalidateQueries({ queryKey: ["bt-ad"] })
-    await qc.invalidateQueries({ queryKey: ["bt-dev"] })
+    try {
+      await Promise.all(adapters.map((a) => api.setBluetoothAdapterPower(a.path, wantOn)))
+      await invalidateBt()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Could not toggle adapter power")
+    }
   }
 
   const loading = adaptersQuery.isLoading || devicesQuery.isLoading
@@ -154,6 +172,12 @@ export function BluetoothPane() {
           title="Could not load Bluetooth"
           body={errObj instanceof Error ? errObj.message : "Sidecar request failed. Is ags-sidecar running?"}
         />
+      ) : null}
+
+      {actionError ? (
+        <p className="rounded-xl border border-red/30 bg-red/10 px-4 py-2.5 text-xs text-red" role="alert">
+          {actionError}
+        </p>
       ) : null}
 
       {!fetchErr && (
@@ -226,7 +250,7 @@ export function BluetoothPane() {
             <EmptyPanel
               icon="devices_other"
               title="No Bluetooth devices"
-              body="Run a scan to find keyboards, headsets, and other gear. Pair unfamiliar devices in system settings first if they do not appear."
+              body="Run a scan to find keyboards, headsets, and other gear. Unpaired devices can be paired from this list."
             />
           ) : (
             <div className="flex flex-col gap-2">
@@ -269,19 +293,47 @@ export function BluetoothPane() {
                         </p>
                       ) : null}
                     </div>
-                    <button
-                      type="button"
-                      disabled={loadingRow || !powered}
-                      className={cn(
-                        "min-w-[6.5rem] shrink-0 rounded-full px-3 py-2 text-[11px] font-semibold transition-colors disabled:opacity-40",
-                        d.connected
-                          ? "bg-surface2 text-subtext1 hover:bg-surface1"
-                          : "bg-teal/90 text-crust hover:bg-teal"
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      {d.connected ? (
+                        <button
+                          type="button"
+                          disabled={loadingRow || !powered}
+                          className="min-w-[6.5rem] shrink-0 rounded-full bg-surface2 px-3 py-2 text-[11px] font-semibold text-subtext1 transition-colors hover:bg-surface1 disabled:opacity-40"
+                          onClick={() => void toggleConn(d.address, true)}
+                        >
+                          {loadingRow ? "…" : "Disconnect"}
+                        </button>
+                      ) : d.paired ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={loadingRow || !powered}
+                            className="min-w-[6.5rem] shrink-0 rounded-full bg-teal/90 px-3 py-2 text-[11px] font-semibold text-crust transition-colors hover:bg-teal disabled:opacity-40"
+                            onClick={() => void toggleConn(d.address, false)}
+                          >
+                            {loadingRow ? "…" : "Connect"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={loadingRow || !powered}
+                            className="rounded-full border border-surface1 px-2.5 py-2 text-[11px] font-semibold text-subtext0 transition-colors hover:text-red hover:border-red/30 disabled:opacity-40"
+                            title="Remove device"
+                            onClick={() => void removeDevice(d.address)}
+                          >
+                            Remove
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={loadingRow || !powered}
+                          className="min-w-[6.5rem] shrink-0 rounded-full bg-blue/90 px-3 py-2 text-[11px] font-semibold text-crust transition-colors hover:bg-blue disabled:opacity-40"
+                          onClick={() => void pairDevice(d.address)}
+                        >
+                          {loadingRow ? "…" : "Pair"}
+                        </button>
                       )}
-                      onClick={() => void toggleConn(d.address, d.connected)}
-                    >
-                      {loadingRow ? "…" : d.connected ? "Disconnect" : "Connect"}
-                    </button>
+                    </div>
                   </div>
                 )
               })}
@@ -292,7 +344,7 @@ export function BluetoothPane() {
 
       {!fetchErr && powered && sortedDevices.length > 0 ? (
         <p className="text-xs leading-relaxed text-subtext1 max-w-prose">
-          Trust and pairing details may still require system Bluetooth settings for some devices.
+          Pair new devices from the list, then connect. Some devices may still need confirmation in a system dialog.
         </p>
       ) : null}
     </motion.div>

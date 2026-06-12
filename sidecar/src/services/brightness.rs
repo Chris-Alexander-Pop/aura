@@ -1,3 +1,5 @@
+use crate::notify;
+use crate::osd;
 use crate::services::ServiceRegistry;
 use crate::utils::process;
 use anyhow::{anyhow, Result};
@@ -95,6 +97,15 @@ pub fn register(registry: &mut ServiceRegistry) {
         if let Some(m) = monitors.get_mut(&monitor.name) {
             m.brightness = target_brightness;
         }
+
+        osd::emit_brightness(target_brightness);
+        notify::emit(
+            "Brightness.StateChanged",
+            json!({
+                "monitor": monitor.name,
+                "brightness": target_brightness,
+            }),
+        );
 
         Ok(json!({
             "success": true,

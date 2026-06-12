@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type PowerProfile } from "@/lib/api"
-import { connectWs } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import DropdownModuleTiles from "@/components/dropdown/DropdownModuleTiles"
+import { filterDropdownModules } from "@/lib/dropdown-tiles"
+import { notificationQueryKeys } from "@/lib/ws-invalidation"
 import type { DndPrefsView } from "@/lib/api-types"
 import { isWithinScheduledQuietHours } from "@/pages/control-center/panes/NotificationsPane"
 
@@ -13,6 +14,8 @@ const POWER_ABBR: Record<PowerProfile, string> = {
   balanced: "bal",
   saver: "save",
 }
+
+const WEATHER_REFETCH_MS = 300_000
 
 // ── Quick toggle button ───────────────────────────────────────────────────────
 function QuickToggle({
@@ -50,13 +53,62 @@ function QuickToggle({
   )
 }
 
+function DashboardHeader() {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  const { data: weather, isLoading, isError } = useQuery({
+    queryKey: ["weather"],
+    queryFn: api.getWeather,
+    staleTime: 120_000,
+    refetchInterval: WEATHER_REFETCH_MS,
+    retry: 1,
+  })
+
+  const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  const dateStr = now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })
+
+  const weatherLine = isLoading
+    ? "Weather…"
+    : isError || !weather
+      ? "Weather unavailable"
+      : `${weather.temp} · ${weather.description}`
+
+  return (
+    <div className="flex items-center justify-between gap-3 px-1">
+      <button
+        type="button"
+        className="flex flex-col text-left transition-opacity hover:opacity-80"
+        title="Open calendar"
+        onClick={() => void api.auraToggleWindow("calendar")}
+      >
+        <span className="text-lg font-semibold tabular-nums">{timeStr}</span>
+        <span className="text-[11px] text-subtext0">{dateStr}</span>
+      </button>
+      <p className="max-w-[55%] truncate text-right text-[11px] text-subtext0" title={weatherLine}>
+        {weatherLine}
+      </p>
+    </div>
+  )
+}
+
 // ── System stats mini bar ─────────────────────────────────────────────────────
 function MiniStats() {
-  const { data } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["system-stats"],
     queryFn: api.getSystemStats,
     refetchInterval: 4000,
   })
+
+  if (isLoading && !data) {
+    return <p className="text-[11px] text-subtext0">Loading resources…</p>
+  }
+  if (isError && !data) {
+    return <p className="text-[11px] text-red">Resources unavailable</p>
+  }
 
   const stats = [
     { label: "CPU", value: data?.cpu ?? 0, color: "from-blue to-sapphire" },
@@ -92,13 +144,17 @@ function MiniStats() {
 
 export default function Dropdown() {
   const qc = useQueryClient()
-  const { data: quick } = useQuery({
+  const {
+    data: quick,
+    isLoading: quickLoading,
+    isError: quickError,
+  } = useQuery({
     queryKey: ["dashboard-quick-status"],
     queryFn: api.dashboardGetQuickStatus,
     refetchInterval: 8000,
   })
   const { data: dndPrefs } = useQuery({
-    queryKey: ["notification-dnd"],
+    queryKey: [...notificationQueryKeys.dnd],
     queryFn: api.getNotificationDnd,
     refetchInterval: 60_000,
   })
@@ -133,6 +189,11 @@ export default function Dropdown() {
     await qc.invalidateQueries({ queryKey: ["bt-ad"] })
   }, [qc])
 
+  const toggleWifi = useCallback(async () => {
+    await api.toggleWifi(!quick?.network?.wifi_enabled)
+    await qc.invalidateQueries({ queryKey: ["dashboard-quick-status"] })
+  }, [qc, quick?.network?.wifi_enabled])
+
   const cyclePowerProfile = useCallback(async () => {
     const order: PowerProfile[] = ["balanced", "performance", "saver"]
     const cur = (quick?.power_profile ?? "balanced") as PowerProfile
@@ -141,9 +202,10 @@ export default function Dropdown() {
     await qc.invalidateQueries({ queryKey: ["dashboard-quick-status"] })
   }, [quick?.power_profile, qc])
 
-  useEffect(() => {
-    connectWs()
-  }, [])
+  const moduleIds = useMemo(
+    () => filterDropdownModules(quick?.dropdown_modules ?? []),
+    [quick?.dropdown_modules]
+  )
 
   const batt = quick?.battery
   const net = quick?.network
@@ -158,7 +220,8 @@ export default function Dropdown() {
           : "battery_2_bar"
 
   const profile = (quick?.power_profile ?? "balanced") as PowerProfile
-  const battLabel = batt ? `${batt.percent}% · ${POWER_ABBR[profile]}` : "Batt"
+  const battLabel =
+    quickLoading && !quick ? "…" : batt ? `${batt.percent}% · ${POWER_ABBR[profile]}` : "Batt"
 
   const dndChipLabel =
     dndSchedulePrefs.enabled
@@ -172,12 +235,16 @@ export default function Dropdown() {
   const toggleDnd = useCallback(async () => {
     const next = { ...dndSchedulePrefs, enabled: !dndSchedulePrefs.enabled }
     await api.setNotificationDnd(next)
-    await qc.invalidateQueries({ queryKey: ["notification-dnd"] })
+    await qc.invalidateQueries({ queryKey: [...notificationQueryKeys.dnd] })
+    await qc.invalidateQueries({ queryKey: ["dashboard-quick-status"] })
   }, [dndSchedulePrefs, qc])
 
   const takeScreenshot = useCallback(async () => {
     await api.captureScreenshot({ mode: "region", output: "clipboard" })
   }, [])
+
+  const netLabel =
+    quickLoading && !quick ? "…" : quickError ? "Wi‑Fi n/a" : (net?.active_connection ?? "Wi-Fi")
 
   return (
     <motion.div
@@ -186,13 +253,16 @@ export default function Dropdown() {
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
       className="flex flex-col gap-3 h-full bg-mantle/90 backdrop-blur-2xl border border-surface0/60 rounded-2xl shadow-2xl p-4 overflow-hidden"
     >
+      <DashboardHeader />
+
       {/* Top row: quick toggles */}
       <div className="flex gap-2">
         <QuickToggle
           icon="wifi"
-          label={net?.active_connection ?? "Wi-Fi"}
+          label={netLabel}
           active={net?.wifi_enabled}
-          onClick={() => api.toggleWifi(!net?.wifi_enabled)}
+          disabled={quickLoading && !quick}
+          onClick={() => void toggleWifi()}
         />
         <QuickToggle
           icon={
@@ -226,18 +296,24 @@ export default function Dropdown() {
           icon={battIcon}
           label={battLabel}
           title={`${profile}${lowBatt ? " · low battery" : ""} · tap to cycle power profile`}
+          disabled={quickLoading && !quick}
           onClick={() => void cyclePowerProfile()}
         />
         <QuickToggle icon="screenshot_monitor" label="Screen" onClick={() => void takeScreenshot()} />
       </div>
 
       {quick?.next_event?.title ? (
-        <p className="text-xs text-subtext0 px-1 truncate">
+        <button
+          type="button"
+          className="text-xs text-subtext0 px-1 truncate text-left hover:text-text"
+          title="Open calendar"
+          onClick={() => void api.auraToggleWindow("calendar")}
+        >
           Next: {quick.next_event.title}
-        </p>
+        </button>
       ) : null}
 
-      <DropdownModuleTiles moduleIds={quick?.dropdown_modules ?? []} />
+      <DropdownModuleTiles moduleIds={moduleIds} />
 
       {/* Stats bar */}
       <div className="glass-card px-4 py-3">

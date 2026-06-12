@@ -12,6 +12,6 @@ export default function DropdownWindow() {
             Astal.WindowAnchor.RIGHT,
         margin: 8,
         width: 1200,
-        height: 220,
+        height: 280,
     })
 }

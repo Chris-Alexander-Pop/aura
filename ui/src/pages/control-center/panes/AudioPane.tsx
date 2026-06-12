@@ -2,7 +2,6 @@ import { motion } from "framer-motion"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import api from "@/lib/api"
-import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import { getNavItem } from "../navigation"
 
@@ -15,12 +14,14 @@ function DeviceMeterCard({
   device,
   onMuteToggle,
   onVolumeCommit,
+  onSetDefault,
   busy,
 }: {
   kind: "output" | "input"
   device: AudioSink | AudioSource
   onMuteToggle?: (deviceId: number, muted: boolean) => void
   onVolumeCommit?: (deviceId: number, volume: number) => void
+  onSetDefault?: (deviceId: number) => void
   busy?: boolean
 }) {
   const pct = Math.round(Math.min(1, Math.max(0, device.volume)) * 100)
@@ -65,6 +66,16 @@ function DeviceMeterCard({
               Default
             </span>
           )}
+          {!device.is_default && onSetDefault ? (
+            <button
+              type="button"
+              disabled={busy}
+              className="text-[10px] font-semibold uppercase tracking-wider text-subtext0 hover:text-mauve px-2 py-0.5 rounded-full border border-surface1/50"
+              onClick={() => onSetDefault(device.id)}
+            >
+              Set default
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="space-y-1.5">
@@ -194,16 +205,6 @@ function StreamMixerCard({
 export function AudioPane() {
   const queryClient = useQueryClient()
   const { icon, label } = getNavItem("audio")
-  const [mutedStreams, setMutedStreams] = useState<Record<number, boolean>>({})
-
-  useEffect(() => {
-    connectWs()
-    const off = useWsStore.getState().on("Audio.StateChanged", () => {
-      void queryClient.invalidateQueries({ queryKey: ["audio-devices"] })
-      void queryClient.invalidateQueries({ queryKey: ["audio-streams"] })
-    })
-    return off
-  }, [queryClient])
 
   const devicesQuery = useQuery({
     queryKey: ["audio-devices"],
@@ -259,6 +260,33 @@ export function AudioPane() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["audio-devices"] }),
   })
 
+  const sourceVolumeMutation = useMutation({
+    mutationFn: ({ device_id, volume }: { device_id: number; volume: number }) =>
+      api.setSourceVolume(device_id, volume),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["audio-devices"] }),
+  })
+
+  const setDefaultMutation = useMutation({
+    mutationFn: ({ device_id, type }: { device_id: number; type: "output" | "input" }) =>
+      api.setDefaultAudioDevice(device_id, type),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["audio-devices"] }),
+  })
+
+  const refreshMutation = useMutation({
+    mutationFn: api.refreshAudio,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["audio-devices"] })
+      await queryClient.invalidateQueries({ queryKey: ["audio-streams"] })
+    },
+  })
+
+  const deviceBusy =
+    sinkMuteMutation.isPending ||
+    sourceMuteMutation.isPending ||
+    sinkVolumeMutation.isPending ||
+    sourceVolumeMutation.isPending ||
+    setDefaultMutation.isPending
+
   const sinks = devicesQuery.data?.sinks ?? []
   const sources = devicesQuery.data?.sources ?? []
   const streams = streamsQuery.data ?? []
@@ -271,23 +299,35 @@ export function AudioPane() {
       transition={{ duration: 0.18 }}
       className="flex flex-col gap-6 p-6 h-full overflow-y-auto"
     >
-      <header>
-        <div className="flex items-center gap-3 mb-1">
-          <span className="icon text-mauve text-2xl">{icon}</span>
-          <h2 className="text-xl font-semibold text-text">{label}</h2>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <span className="icon text-mauve text-2xl">{icon}</span>
+            <h2 className="text-xl font-semibold text-text">{label}</h2>
+          </div>
+          <p className="text-xs text-subtext1 max-w-prose leading-relaxed">
+            Outputs, inputs, and per-application streams. Default device mute and volume use PipeWire via the sidecar.
+          </p>
         </div>
-        <p className="text-xs text-subtext1 max-w-prose leading-relaxed">
-          Outputs, inputs, and per-application streams. Default device mute and volume use PipeWire via the sidecar.
-        </p>
+        <button
+          type="button"
+          disabled={refreshMutation.isPending}
+          className="btn-surface text-xs shrink-0 flex items-center gap-1.5"
+          onClick={() => refreshMutation.mutate()}
+        >
+          <span className={cn("icon text-base", refreshMutation.isPending && "animate-spin")}>refresh</span>
+          {refreshMutation.isPending ? "Refreshing…" : "Refresh"}
+        </button>
       </header>
 
       <section className="space-y-3">
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtext0">Devices</h3>
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtext0">Output devices</h3>
         {devicesQuery.isLoading ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="skeleton h-28 rounded-2xl" />
-            <div className="skeleton h-28 rounded-2xl" />
           </div>
+        ) : sinks.length === 0 ? (
+          <p className="text-sm text-subtext0">No playback devices reported.</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {sinks.map((d) => (
@@ -295,23 +335,45 @@ export function AudioPane() {
                 key={`sink-${d.id}`}
                 kind="output"
                 device={d}
-                busy={sinkMuteMutation.isPending || sinkVolumeMutation.isPending}
+                busy={deviceBusy}
                 onMuteToggle={(id, muted) => sinkMuteMutation.mutate({ device_id: id, muted })}
                 onVolumeCommit={(id, vol) => sinkVolumeMutation.mutate({ device_id: id, volume: vol })}
+                onSetDefault={
+                  d.is_default
+                    ? undefined
+                    : (id) => setDefaultMutation.mutate({ device_id: id, type: "output" })
+                }
               />
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-subtext0">Input devices</h3>
+        {devicesQuery.isLoading ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="skeleton h-28 rounded-2xl" />
+          </div>
+        ) : sources.length === 0 ? (
+          <p className="text-sm text-subtext0">No capture devices reported.</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
             {sources.map((d) => (
               <DeviceMeterCard
                 key={`src-${d.id}`}
                 kind="input"
                 device={d}
-                busy={sourceMuteMutation.isPending}
+                busy={deviceBusy}
                 onMuteToggle={(id, muted) => sourceMuteMutation.mutate({ device_id: id, muted })}
+                onVolumeCommit={(id, vol) => sourceVolumeMutation.mutate({ device_id: id, volume: vol })}
+                onSetDefault={
+                  d.is_default
+                    ? undefined
+                    : (id) => setDefaultMutation.mutate({ device_id: id, type: "input" })
+                }
               />
             ))}
-            {sinks.length === 0 && sources.length === 0 && (
-              <p className="text-sm text-subtext0 col-span-full">No audio devices reported.</p>
-            )}
           </div>
         )}
       </section>
@@ -342,7 +404,7 @@ export function AudioPane() {
                   volumeMutation.isPending && volumeMutation.variables?.stream_id === s.id
                 }
                 muteBusy={muteMutation.isPending && muteMutation.variables?.stream_id === s.id}
-                muted={s.muted ?? mutedStreams[s.id] ?? false}
+                muted={!!s.muted}
                 onVolumeCommit={(streamId, ratio) => volumeMutation.mutate({ stream_id: streamId, volume: ratio })}
                 onMuteToggle={(streamId, next) => muteMutation.mutate({ stream_id: streamId, muted: next })}
               />

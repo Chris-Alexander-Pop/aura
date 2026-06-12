@@ -3,6 +3,7 @@ import { motion } from "framer-motion"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type AuraSettingsView, type PowerProfile } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { DROPDOWN_TILE_IDS } from "@/lib/dropdown-tiles"
 import { ALL_NAV_ITEMS, getNavItem } from "../navigation"
 const THEME_OPTIONS = ["dark", "light", "catppuccin-mocha", "catppuccin-frappe"] as const
 
@@ -130,9 +131,13 @@ export function SettingsPane() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["aura-settings"] }),
   })
 
+  const powerMut = useMutation({
+    mutationFn: (profile: PowerProfile) => api.setPowerProfile(profile),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["settings", "power-profile"] }),
+  })
+
   async function applyPowerProfile(profile: PowerProfile) {
-    await api.setPowerProfile(profile)
-    await qc.invalidateQueries({ queryKey: ["settings", "power-profile"] })
+    await powerMut.mutateAsync(profile)
   }
 
   const defaultSink = audio.data?.sinks.find((s) => s.is_default)
@@ -172,6 +177,12 @@ export function SettingsPane() {
       >
         {auraSettings.isLoading ? (
           <div className="skeleton h-24 rounded-lg" />
+        ) : auraSettings.isError ? (
+          <p className="text-xs text-red">
+            {auraSettings.error instanceof Error
+              ? auraSettings.error.message
+              : "Could not load Aura settings from sidecar"}
+          </p>
         ) : auraSettings.data ? (
           <div className="flex flex-col gap-3">
             <div>
@@ -261,17 +272,7 @@ export function SettingsPane() {
             <div>
               <p className="text-xs text-subtext0 mb-2">Dropdown modules</p>
               <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    "network",
-                    "audio",
-                    "bluetooth",
-                    "battery",
-                    "calendar",
-                    "notifications",
-                    "productivity",
-                  ] as const
-                ).map((mod) => {
+                {DROPDOWN_TILE_IDS.map((mod) => {
                   const enabled = auraSettings.data.settings.dropdown_modules.includes(mod)
                   return (
                     <button
@@ -302,6 +303,15 @@ export function SettingsPane() {
             >
               Reset Aura settings
             </button>
+            {(saveAura.isError || resetAura.isError) && (
+              <p className="text-xs text-red">
+                {saveAura.error instanceof Error
+                  ? saveAura.error.message
+                  : resetAura.error instanceof Error
+                    ? resetAura.error.message
+                    : "Save failed"}
+              </p>
+            )}
           </div>
         ) : (
           <p className="text-xs text-subtext0">Could not load Aura settings from sidecar</p>
@@ -312,12 +322,17 @@ export function SettingsPane() {
         <SettingsCard title="Power profile" icon="bolt" footer={<p className="text-[10px] text-subtext1">Writes via Power.SetProfile</p>}>
           {powerProfile.isLoading ? (
             <div className="skeleton h-10 rounded-lg" />
+          ) : powerProfile.isError ? (
+            <p className="text-xs text-red">
+              {powerProfile.error instanceof Error ? powerProfile.error.message : "Could not load profile"}
+            </p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {(Object.keys(POWER_LABELS) as PowerProfile[]).map((p) => (
                 <button
                   key={p}
                   type="button"
+                  disabled={powerMut.isPending}
                   onClick={() => void applyPowerProfile(p)}
                   className={cn(
                     "toggle-chip text-xs capitalize",
@@ -328,6 +343,11 @@ export function SettingsPane() {
                 </button>
               ))}
             </div>
+          )}
+          {powerMut.isError && (
+            <p className="text-xs text-red">
+              {powerMut.error instanceof Error ? powerMut.error.message : "Could not set profile"}
+            </p>
           )}
           {battery.isLoading ? (
             <div className="skeleton h-8 rounded-lg" />

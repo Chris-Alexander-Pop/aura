@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import api from "@/lib/api"
 import { connectWs, useWsStore } from "@/lib/ws"
+import { cn } from "@/lib/utils"
 import { getNavItem } from "../navigation"
 
 function labelizeKey(key: string): string {
@@ -53,6 +54,15 @@ export function ProductivityPane() {
 
   const deleteTaskMut = useMutation({
     mutationFn: (id: string) => api.deleteProductivityTask(id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["productivity-tasks"] })
+      void qc.invalidateQueries({ queryKey: ["productivity-stats"] })
+    },
+  })
+
+  const updateTaskMut = useMutation({
+    mutationFn: (opts: { id: string; completed: boolean }) =>
+      api.updateProductivityTask(opts.id, { completed: opts.completed }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["productivity-tasks"] })
       void qc.invalidateQueries({ queryKey: ["productivity-stats"] })
@@ -133,11 +143,21 @@ export function ProductivityPane() {
         </div>
         <ul className="flex flex-col gap-2">
           {tasks.map((t) => (
-            <li key={t.id} className="flex items-center justify-between gap-2 text-sm border border-surface0/50 rounded-lg px-3 py-2">
-              <span className={t.completed ? "line-through text-subtext1" : "text-text"}>{t.title}</span>
+            <li key={t.id} className="flex items-center gap-2 text-sm border border-surface0/50 rounded-lg px-3 py-2">
               <button
                 type="button"
-                className="text-xs text-red"
+                className="icon text-base text-subtext0 hover:text-green shrink-0"
+                title={t.completed ? "Mark incomplete" : "Complete"}
+                onClick={() => updateTaskMut.mutate({ id: t.id, completed: !t.completed })}
+              >
+                {t.completed ? "check_circle" : "radio_button_unchecked"}
+              </button>
+              <span className={cn("flex-1 min-w-0 truncate", t.completed && "line-through text-subtext1")}>
+                {t.title}
+              </span>
+              <button
+                type="button"
+                className="text-xs text-red shrink-0"
                 onClick={() => deleteTaskMut.mutate(t.id)}
               >
                 Delete
