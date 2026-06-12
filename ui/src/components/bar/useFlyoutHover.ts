@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
-export type StatusFlyoutId = "network" | "bluetooth" | "battery" | "windows" | "power"
+export type StatusFlyoutId =
+  | "network"
+  | "bluetooth"
+  | "battery"
+  | "audio"
+  | "brightness"
+  | "windows"
+  | "power"
 
 const CLOSE_MS = 220
 

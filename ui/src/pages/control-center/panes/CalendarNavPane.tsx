@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import api, { type CalendarEvent } from "@/lib/api"
 import { connectWs, useWsStore } from "@/lib/ws"
 import { getNavItem } from "../navigation"
+import { cn } from "@/lib/utils"
 
 /** Sidecar may use seconds or milliseconds for unix timestamps. */
 function toMillis(ts: number): number {
@@ -31,11 +32,17 @@ export function CalendarNavPane() {
 
   useEffect(() => {
     connectWs()
-    const off = useWsStore.getState().on("Calendar.EventsChanged", () => {
+    const offCal = useWsStore.getState().on("Calendar.EventsChanged", () => {
       void qc.invalidateQueries({ queryKey: ["calendar-upcoming"] })
       void qc.invalidateQueries({ queryKey: ["cal"] })
     })
-    return off
+    const offTodos = useWsStore.getState().on("Todos.Changed", () => {
+      void qc.invalidateQueries({ queryKey: ["todos"] })
+    })
+    return () => {
+      offCal()
+      offTodos()
+    }
   }, [qc])
 
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
@@ -85,6 +92,17 @@ export function CalendarNavPane() {
       setTodoTitle("")
       void qc.invalidateQueries({ queryKey: ["todos"] })
     },
+  })
+
+  const updateTodoMut = useMutation({
+    mutationFn: (opts: { id: string; completed?: boolean; title?: string }) =>
+      api.todosUpdate(opts),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["todos"] }),
+  })
+
+  const deleteTodoMut = useMutation({
+    mutationFn: (id: string) => api.todosDelete(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["todos"] }),
   })
 
   const events = data ?? []
@@ -215,8 +233,27 @@ export function CalendarNavPane() {
         ) : (
           <ul className="flex flex-col gap-1">
             {(todos ?? []).slice(0, 8).map((t) => (
-              <li key={t.id} className="text-sm text-text truncate">
-                {t.title}
+              <li key={t.id} className="flex items-center gap-2 text-sm">
+                <button
+                  type="button"
+                  className="icon text-base text-subtext0 hover:text-green"
+                  title={t.completed ? "Mark incomplete" : "Complete"}
+                  onClick={() =>
+                    updateTodoMut.mutate({ id: t.id, completed: !t.completed })
+                  }
+                >
+                  {t.completed ? "check_circle" : "radio_button_unchecked"}
+                </button>
+                <span className={cn("flex-1 truncate", t.completed && "line-through text-subtext0")}>
+                  {t.title}
+                </span>
+                <button
+                  type="button"
+                  className="text-xs text-red"
+                  onClick={() => deleteTodoMut.mutate(t.id)}
+                >
+                  Delete
+                </button>
               </li>
             ))}
           </ul>

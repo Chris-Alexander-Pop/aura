@@ -258,6 +258,42 @@ export function SettingsPane() {
                 })}
               </div>
             </div>
+            <div>
+              <p className="text-xs text-subtext0 mb-2">Dropdown modules</p>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    "network",
+                    "audio",
+                    "bluetooth",
+                    "battery",
+                    "calendar",
+                    "notifications",
+                    "productivity",
+                  ] as const
+                ).map((mod) => {
+                  const enabled = auraSettings.data.settings.dropdown_modules.includes(mod)
+                  return (
+                    <button
+                      key={mod}
+                      type="button"
+                      disabled={saveAura.isPending}
+                      onClick={() => {
+                        const set = new Set(auraSettings.data!.settings.dropdown_modules)
+                        if (enabled) set.delete(mod)
+                        else set.add(mod)
+                        void saveAura.mutateAsync({
+                          dropdown_modules: Array.from(set),
+                        })
+                      }}
+                      className={cn("toggle-chip text-[10px]", enabled && "active")}
+                    >
+                      {mod}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
             <button
               type="button"
               className="toggle-chip text-xs self-start"

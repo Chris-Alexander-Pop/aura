@@ -104,6 +104,14 @@ export function BluetoothPane() {
     }
   }
 
+  const toggleAdapterPower = async () => {
+    if (!adapters?.length) return
+    const wantOn = !powered
+    await Promise.all(adapters.map((a) => api.setBluetoothAdapterPower(a.path, wantOn)))
+    await qc.invalidateQueries({ queryKey: ["bt-ad"] })
+    await qc.invalidateQueries({ queryKey: ["bt-dev"] })
+  }
+
   const loading = adaptersQuery.isLoading || devicesQuery.isLoading
   const fetchErr = adaptersQuery.isError || devicesQuery.isError
   const errObj = adaptersQuery.error ?? devicesQuery.error
@@ -132,6 +140,11 @@ export function BluetoothPane() {
             <h2 className="text-xl font-semibold text-text">Bluetooth</h2>
             {subtitle ? <p className="mt-0.5 text-xs text-subtext1">{subtitle}</p> : null}
           </div>
+          {adapters?.length ? (
+            <button type="button" className="btn-surface text-xs shrink-0" onClick={() => void toggleAdapterPower()}>
+              {powered ? "Turn off" : "Turn on"}
+            </button>
+          ) : null}
         </div>
       </div>
 

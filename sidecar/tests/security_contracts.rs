@@ -147,8 +147,8 @@ fn contract_certificate_filenames_fixture() {
 
 #[test]
 fn contract_keyring_status_json() {
-    assert_eq!(keyring_status_json(true)["available"], true);
-    assert_eq!(keyring_status_json(false)["available"], false);
+    assert_eq!(keyring_status_json(true, true, None)["available"], true);
+    assert_eq!(keyring_status_json(false, false, Some("x"))["available"], false);
 }
 
 #[test]

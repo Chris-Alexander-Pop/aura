@@ -21,6 +21,7 @@ class SidecarService extends GObject.Object {
             Signals: {
                 'battery-state': { param_types: [GObject.TYPE_JSOBJECT] },
                 'power-profile': { param_types: [GObject.TYPE_STRING] },
+                'audio-state': { param_types: [GObject.TYPE_JSOBJECT] },
                 'notification': { param_types: [GObject.TYPE_STRING, GObject.TYPE_JSOBJECT] },
             }
         }, this)
@@ -168,6 +169,9 @@ class SidecarService extends GObject.Object {
             case 'Power.Profile':
                 this.emit('power-profile', msg.params.profile)
                 break
+            case 'Audio.StateChanged':
+                this.emit('audio-state', msg.params)
+                break
         }
     }
 
@@ -217,6 +221,9 @@ class SidecarService extends GObject.Object {
     public async setStreamVolume(stream_id: number, volume: number) { return this.send('Audio.SetStreamVolume', { stream_id, volume }) }
     public async setStreamMute(stream_id: number, muted: boolean) { return this.send('Audio.SetStreamMute', { stream_id, muted }) }
     public async setDefaultDevice(device_id: number, type: 'output' | 'input' = 'output') { return this.send('Audio.SetDefaultDevice', { device_id, type }) }
+    public async setSinkMute(device_id: number, muted: boolean) { return this.send('Audio.SetSinkMute', { device_id, muted }) }
+    public async setSourceMute(device_id: number, muted: boolean) { return this.send('Audio.SetSourceMute', { device_id, muted }) }
+    public async setSinkVolume(device_id: number, volume: number) { return this.send('Audio.SetSinkVolume', { device_id, volume }) }
     // Weather
     public async getWeather() { return this.send('Weather.Get') }
     // VPN

@@ -118,7 +118,14 @@ pub fn register(registry: &mut ServiceRegistry) {
         let password = match password {
             Some(p) => {
                 if !p.is_empty() {
-                    let _ = keyring::store_wifi_password(&ssid, &p).await;
+                    if let Err(e) = keyring::store_wifi_password(&ssid, &p).await {
+                        return Ok(serde_json::json!({
+                            "success": false,
+                            "error": format!(
+                                "Could not save Wi‑Fi password to keyring: {e}. Unlock your login keyring and try again."
+                            ),
+                        }));
+                    }
                 }
                 Some(p)
             }

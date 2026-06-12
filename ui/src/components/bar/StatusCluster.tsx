@@ -14,6 +14,8 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
   const qc = useQueryClient()
   const netRef = useRef<HTMLButtonElement>(null)
   const btRef = useRef<HTMLButtonElement>(null)
+  const audioRef = useRef<HTMLButtonElement>(null)
+  const brightRef = useRef<HTMLButtonElement>(null)
   const battRef = useRef<HTMLButtonElement>(null)
   const winRef = useRef<HTMLButtonElement>(null)
 
@@ -25,19 +27,27 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
     const offNet = useWsStore.getState().on("Network.StateChanged", () => {
       void qc.invalidateQueries({ queryKey: ["net"] })
     })
+    const offAudio = useWsStore.getState().on("Audio.StateChanged", () => {
+      void qc.invalidateQueries({ queryKey: ["audio-devices"] })
+    })
     return () => {
       offBatt()
       offNet()
+      offAudio()
     }
   }, [qc])
 
   const { data: net } = useQuery({ queryKey: ["net"], queryFn: api.getNetworkStatus, refetchInterval: 5000 })
+  const { data: audio } = useQuery({ queryKey: ["audio-devices"], queryFn: api.getAudioDevices, refetchInterval: 5000 })
   const { data: batt } = useQuery({ queryKey: ["batt"], queryFn: api.getBatteryState, refetchInterval: 8000 })
   const { data: adapters } = useQuery({ queryKey: ["bt-ad"], queryFn: api.getBluetoothAdapters, refetchInterval: 8000 })
   const { data: devices } = useQuery({ queryKey: ["bt-dev"], queryFn: api.getBluetoothDevices, refetchInterval: 8000 })
 
   const btOn = adapters?.some((a) => a.powered)
   const btConn = devices?.some((d) => d.connected)
+  const defaultSink = audio?.sinks.find((s) => s.is_default) ?? audio?.sinks[0]
+  const sinkMuted = !!defaultSink?.muted
+  const sinkLow = defaultSink && !sinkMuted && defaultSink.volume <= 0.05
 
   // Y is viewport-relative — matches the flyout window's coordinate space
   // (same marginTop as the strip, so viewport Y transfers directly).
@@ -88,6 +98,18 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
         btOn ? (btConn ? "bluetooth_connected" : "bluetooth") : "bluetooth_disabled",
         !!btConn
       )}
+      {segment(
+        "audio",
+        audioRef,
+        defaultSink
+          ? sinkMuted
+            ? "Muted"
+            : `${Math.round(defaultSink.volume * 100)}% volume`
+          : "Audio",
+        sinkMuted ? "volume_off" : sinkLow ? "volume_mute" : "volume_up",
+        !sinkMuted && !sinkLow
+      )}
+      {segment("brightness", brightRef, "Brightness", "brightness_6", false)}
       {segment(
         "battery",
         battRef,

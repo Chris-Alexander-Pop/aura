@@ -8,7 +8,7 @@ use std::collections::HashMap;
 pub(crate) fn aura_window_allowed(name: &str) -> bool {
     matches!(
         name,
-        "control-center" | "sidebar" | "calendar" | "dropdown"
+        "control-center" | "sidebar" | "calendar" | "dropdown" | "launcher"
     )
 }
 
@@ -252,7 +252,7 @@ mod tests {
         for allowed in ["control-center", "sidebar", "calendar", "dropdown"] {
             assert!(aura_window_allowed(allowed), "{allowed}");
         }
-        assert!(!aura_window_allowed("launcher"));
+        assert!(aura_window_allowed("launcher"));
         assert!(!aura_window_allowed(""));
         assert!(!aura_window_allowed("control_center"));
     }

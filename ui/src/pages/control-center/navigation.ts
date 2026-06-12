@@ -33,6 +33,7 @@ export const NAV_SECTIONS = [
       { id: "productivity", icon: "task_alt", label: "Productivity" },
       { id: "automations", icon: "smart_toy", label: "Automations" },
       { id: "calendar", icon: "calendar_month", label: "Calendar" },
+      { id: "vault", icon: "folder_special", label: "Vault" },
       { id: "logs", icon: "receipt_long", label: "Logs" },
     ],
   },

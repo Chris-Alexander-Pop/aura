@@ -98,6 +98,7 @@ export interface AudioDevice {
     name: string
     info: string
     volume: number
+    muted?: boolean
     is_default: boolean
 }
 

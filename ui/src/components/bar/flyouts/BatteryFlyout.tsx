@@ -5,6 +5,11 @@ import { cn } from "@/lib/utils"
 
 export default function BatteryFlyout() {
   const qc = useQueryClient()
+  const { data: tile } = useQuery({
+    queryKey: ["sidebar-tile", "battery"],
+    queryFn: () => api.sidebarGetTileData("battery"),
+    staleTime: 10_000,
+  })
   const {
     data: batt,
     isPending: battPending,
@@ -24,16 +29,23 @@ export default function BatteryFlyout() {
     await qc.invalidateQueries({ queryKey: ["pwr"] })
   }
 
-  const low = batt && !batt.charging && batt.percent <= 20
-  const hasBattery = batt != null && batt.percent >= 0
+  const battFromTile = tile && typeof tile === "object" && "percent" in (tile as object)
+    ? (tile as { percent?: number; charging?: boolean })
+    : null
+  const displayBatt = battFromTile?.percent != null && batt
+    ? { ...batt, percent: battFromTile.percent ?? batt.percent, charging: battFromTile.charging ?? batt.charging }
+    : batt
+
+  const low = displayBatt && !displayBatt.charging && displayBatt.percent <= 20
+  const hasBattery = displayBatt != null && displayBatt.percent >= 0
 
   const timeLine = (() => {
-    if (!batt) return "Battery status unavailable"
-    const tr = batt.time_remaining?.trim()
+    if (!displayBatt) return "Battery status unavailable"
+    const tr = displayBatt.time_remaining?.trim()
     if (!tr || tr === "Unknown") {
-      return batt.charging ? "Time until charged: calculating…" : "Time remaining: calculating…"
+      return displayBatt.charging ? "Time until charged: calculating…" : "Time remaining: calculating…"
     }
-    return batt.charging ? `Time until charged: ${tr}` : `Time remaining: ${tr}`
+    return displayBatt.charging ? `Time until charged: ${tr}` : `Time remaining: ${tr}`
   })()
 
   const profileLine = `Power profile: ${prof?.profile ?? "balanced"}`
@@ -63,7 +75,7 @@ export default function BatteryFlyout() {
   return (
     <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
       <h2 className={cn("pr-2 text-sm font-semibold leading-tight", low ? "text-red" : "text-subtext1")}>
-        {hasBattery ? `Remaining: ${batt.percent}%` : "No battery detected"}
+        {hasBattery ? `Remaining: ${displayBatt!.percent}%` : "No battery detected"}
       </h2>
 
       <p className="text-[12px] leading-relaxed text-subtext0">{timeLine}</p>
@@ -96,13 +108,13 @@ export default function BatteryFlyout() {
           className={cn(
             "icon text-5xl leading-none",
             low ? "text-red" : "text-subtext1",
-            batt?.charging ? "text-teal" : ""
+            displayBatt?.charging ? "text-teal" : ""
           )}
         >
-          {batt
-            ? batt.charging
+          {displayBatt
+            ? displayBatt.charging
               ? "battery_charging_full"
-              : batt.percent > 50
+              : displayBatt.percent > 50
                 ? "battery_5_bar"
                 : "battery_2_bar"
             : "battery_unknown"}

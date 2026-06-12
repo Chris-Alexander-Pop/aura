@@ -162,7 +162,69 @@ pub async fn lookup_caldav_password(username: &str) -> Result<Option<String>> {
     }
 }
 
-/// Store an Aura Vault entry (opaque secret; never log values).
+/// Probe whether secret-tool exists and the login keyring is unlocked.
+pub async fn probe_keyring() -> KeyringProbe {
+    let available = Command::new("which")
+        .arg("secret-tool")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if !available {
+        return KeyringProbe {
+            available: false,
+            unlocked: false,
+            message: Some("secret-tool not installed — install libsecret for stored WiFi/VPN passwords".into()),
+        };
+    }
+
+    let output = Command::new("secret-tool")
+        .args(["search", "application", "aura"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await;
+
+    match output {
+        Ok(out) if out.status.success() => KeyringProbe {
+            available: true,
+            unlocked: true,
+            message: None,
+        },
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr).to_lowercase();
+            let locked = stderr.contains("unlock")
+                || stderr.contains("locked")
+                || stderr.contains("no such secret")
+                    && stderr.contains("collection");
+            KeyringProbe {
+                available: true,
+                unlocked: !locked,
+                message: if locked {
+                    Some("Login keyring is locked — unlock it to use saved WiFi/VPN passwords".into())
+                } else {
+                    None
+                },
+            }
+        }
+        Err(e) => KeyringProbe {
+            available: true,
+            unlocked: false,
+            message: Some(format!("Could not reach Secret Service: {e}")),
+        },
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyringProbe {
+    pub available: bool,
+    pub unlocked: bool,
+    pub message: Option<String>,
+}
+
 pub async fn store_vault_entry(key: &str, value: &str) -> Result<()> {
     let mut cmd = Command::new("secret-tool");
     cmd.arg("store")

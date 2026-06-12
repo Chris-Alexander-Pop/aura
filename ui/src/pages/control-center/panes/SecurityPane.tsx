@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import { motion } from "framer-motion"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type SecurityStatusView } from "@/lib/api"
 import { getNavItem } from "../navigation"
 
@@ -93,6 +93,7 @@ function renderExtraSection(key: string, value: unknown): ReactNode {
 
 export function SecurityPane() {
   const { icon, label } = getNavItem("security")
+  const qc = useQueryClient()
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["control-center", "security-status"],
@@ -151,6 +152,24 @@ export function SecurityPane() {
               </SectionCard>
             ))
           )}
+          <div className="flex flex-wrap gap-2 pt-2">
+            <button
+              type="button"
+              className="btn-surface text-xs"
+              onClick={async () => {
+                await api.runClamScan()
+                await qc.invalidateQueries({ queryKey: ["control-center", "security-status"] })
+              }}
+            >
+              Run ClamAV scan
+            </button>
+            <button type="button" className="btn-surface text-xs" onClick={() => api.enableFirewall()}>
+              Enable firewall
+            </button>
+            <button type="button" className="btn-surface text-xs" onClick={() => api.disableFirewall()}>
+              Disable firewall
+            </button>
+          </div>
         </div>
       )}
     </motion.div>

@@ -247,6 +247,46 @@ pub(crate) fn notification_blocked_by_rules(rules: &AppNotificationRules, app_na
         .any(|a| a.eq_ignore_ascii_case(app_name))
 }
 
+/// True when manual DND or scheduled quiet hours block new notifications.
+pub fn dnd_blocks_now(prefs: &DndPrefs) -> bool {
+    use chrono::{Datelike, Timelike};
+    if prefs.enabled {
+        return true;
+    }
+    if !prefs.schedule_enabled {
+        return false;
+    }
+    let now = chrono::Local::now();
+    if prefs.weekdays_only {
+        let wd = now.weekday().num_days_from_monday();
+        if wd >= 5 {
+            return false;
+        }
+    }
+    let parse_hm = |s: &str| -> Option<(u32, u32)> {
+        let parts: Vec<_> = s.split(':').collect();
+        if parts.len() != 2 {
+            return None;
+        }
+        let h: u32 = parts[0].parse().ok()?;
+        let m: u32 = parts[1].parse().ok()?;
+        if h > 23 || m > 59 {
+            return None;
+        }
+        Some((h, m))
+    };
+    let (sh, sm) = parse_hm(&prefs.start_time).unwrap_or((22, 0));
+    let (eh, em) = parse_hm(&prefs.end_time).unwrap_or((7, 0));
+    let now_mins = now.hour() * 60 + now.minute();
+    let start_mins = sh * 60 + sm;
+    let end_mins = eh * 60 + em;
+    if start_mins <= end_mins {
+        now_mins >= start_mins && now_mins < end_mins
+    } else {
+        now_mins >= start_mins || now_mins < end_mins
+    }
+}
+
 async fn mark_closed(internal_id: u64) {
     let sid_to_remove = {
         let mut store = STORE.write().await;
@@ -278,10 +318,14 @@ pub async fn record_notification(
     icon: Option<String>,
     urgency: u8,
     actions: Vec<NotificationAction>,
-) {
+) -> Option<u64> {
     let rules = load_rules().await.unwrap_or_default();
     if notification_blocked_by_rules(&rules, &app_name) {
-        return;
+        return None;
+    }
+    let dnd = load_dnd().await.unwrap_or_default();
+    if dnd_blocks_now(&dnd) {
+        return None;
     }
 
     let mut store = STORE.write().await;
@@ -306,7 +350,7 @@ pub async fn record_notification(
                     SERVER_ID_MAP.write().await.insert(sid, internal);
                 }
                 schedule_emit("replaced").await;
-                return;
+                return Some(internal);
             }
         }
     }
@@ -341,6 +385,7 @@ pub async fn record_notification(
         SERVER_ID_MAP.write().await.remove(&sid);
     }
     schedule_emit("new").await;
+    Some(id)
 }
 
 async fn schedule_emit(reason: &str) {
@@ -411,10 +456,29 @@ struct PendingNotify {
 struct DbusMonitorParser {
     pending_notify: Option<PendingNotify>,
     pending_closed: bool,
+    pending_internal_id: Option<u64>,
+    awaiting_return_id: bool,
 }
 
 impl DbusMonitorParser {
     async fn feed_line(&mut self, trimmed: &str) {
+        if trimmed.starts_with("method return") && trimmed.contains("org.freedesktop.Notifications") {
+            self.awaiting_return_id = self.pending_internal_id.is_some();
+            return;
+        }
+        if self.awaiting_return_id {
+            if let Some(sid) = parse_dbus_monitor_uint32(trimmed) {
+                if let Some(internal_id) = self.pending_internal_id.take() {
+                    let mut store = STORE.write().await;
+                    if let Some(n) = store.iter_mut().find(|n| n.id == internal_id) {
+                        n.server_id = Some(sid);
+                        SERVER_ID_MAP.write().await.insert(sid, internal_id);
+                    }
+                }
+                self.awaiting_return_id = false;
+            }
+            return;
+        }
         if trimmed.starts_with("method call") && trimmed.contains("member=Notify") {
             self.pending_notify = Some(PendingNotify::default());
             self.pending_closed = false;
@@ -450,7 +514,7 @@ impl DbusMonitorParser {
                 }
             }
             if p.app_name.is_some() && p.summary.is_some() && p.body.is_some() {
-                record_notification(
+                let internal_id = record_notification(
                     None,
                     p.app_name.clone().unwrap_or_else(|| "unknown".into()),
                     p.replaces_id,
@@ -461,6 +525,7 @@ impl DbusMonitorParser {
                     Vec::new(),
                 )
                 .await;
+                self.pending_internal_id = internal_id;
                 self.pending_notify = None;
             }
         }
@@ -575,8 +640,18 @@ async fn close_on_daemon(server_id: u32) -> Result<()> {
     Ok(())
 }
 
-async fn invoke_action_on_daemon(_server_id: u32, _action_key: &str) -> Result<()> {
-    // Not all daemons expose InvokeAction on the bus; best-effort no-op.
+async fn invoke_action_on_daemon(server_id: u32, action_key: &str) -> Result<()> {
+    use zbus::{Connection, Proxy};
+    let conn = Connection::session().await?;
+    let proxy = Proxy::new(
+        &conn,
+        "org.freedesktop.Notifications",
+        "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications",
+    )
+    .await?;
+    // Non-standard extension used by some daemons; ignore if unsupported.
+    let _: Result<(), _> = proxy.call("InvokeAction", &(server_id, action_key)).await;
     Ok(())
 }
 

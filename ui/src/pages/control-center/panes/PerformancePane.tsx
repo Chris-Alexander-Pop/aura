@@ -246,6 +246,12 @@ export function PerformancePane() {
     retry: 1,
   })
 
+  const processesQuery = useQuery({
+    queryKey: ["process-top"],
+    queryFn: () => api.processListTop(12),
+    refetchInterval: 4000,
+  })
+
   const parsedStats = useMemo(() => parseSystemStats(statsQuery.data ?? null), [statsQuery.data])
 
   const perfRec = useMemo(
@@ -485,6 +491,34 @@ export function PerformancePane() {
           </ul>
         </section>
       )}
+
+      <section className="glass-card p-4 flex flex-col gap-3">
+        <h3 className="text-sm font-medium text-text">Top processes</h3>
+        {processesQuery.isLoading ? (
+          <p className="text-xs text-subtext0">Loading…</p>
+        ) : (processesQuery.data?.length ?? 0) === 0 ? (
+          <p className="text-xs text-subtext0">No process data</p>
+        ) : (
+          <ul className="flex flex-col gap-1 text-xs">
+            {processesQuery.data!.map((p) => (
+              <li key={p.pid} className="flex items-center justify-between gap-2">
+                <span className="truncate text-text">{p.name}</span>
+                <span className="shrink-0 tabular-nums text-subtext1">
+                  {p.cpu.toFixed(1)}% · {p.pid}
+                </span>
+                <button
+                  type="button"
+                  className="toggle-chip text-[10px] text-red"
+                  title="Kill process"
+                  onClick={() => void api.processKill(p.pid).then(() => processesQuery.refetch())}
+                >
+                  kill
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </motion.div>
   )
 }

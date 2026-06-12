@@ -4,54 +4,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type PowerProfile } from "@/lib/api"
 import { connectWs } from "@/lib/ws"
 import { cn } from "@/lib/utils"
-import { isWithinScheduledQuietHours, type DndSchedulePrefs } from "@/pages/control-center/panes/NotificationsPane"
-
-/** Same key as NotificationsPane — local scheduled quiet-hours only (not OS DND). */
-const DND_SCHEDULE_STORAGE = "aura.control-center.notifications.dndSchedule.v1"
-
-function parseHm(value: string): { h: number; m: number } | null {
-  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim())
-  if (!match) return null
-  const h = Number(match[1])
-  const m = Number(match[2])
-  if (h > 23 || m > 59 || Number.isNaN(h) || Number.isNaN(m)) return null
-  return { h, m }
-}
-
-function loadDndSchedulePrefs(): DndSchedulePrefs {
-  const defaults: DndSchedulePrefs = {
-    scheduleEnabled: false,
-    startTime: "22:00",
-    endTime: "07:00",
-    weekdaysOnly: true,
-  }
-  try {
-    const raw = localStorage.getItem(DND_SCHEDULE_STORAGE)
-    if (!raw) return defaults
-    const parsed = JSON.parse(raw) as Partial<DndSchedulePrefs>
-    return {
-      scheduleEnabled:
-        typeof parsed.scheduleEnabled === "boolean" ? parsed.scheduleEnabled : defaults.scheduleEnabled,
-      startTime:
-        typeof parsed.startTime === "string" && parseHm(parsed.startTime) ? parsed.startTime : defaults.startTime,
-      endTime:
-        typeof parsed.endTime === "string" && parseHm(parsed.endTime) ? parsed.endTime : defaults.endTime,
-      weekdaysOnly: typeof parsed.weekdaysOnly === "boolean" ? parsed.weekdaysOnly : defaults.weekdaysOnly,
-    }
-  } catch {
-    return defaults
-  }
-}
-
-async function bluetoothSetAdapterPower(adapter_path: string, powered: boolean) {
-  const res = await fetch("/api/Bluetooth.SetAdapterPower", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ adapter_path, powered }),
-  })
-  const json: { ok?: boolean; error?: string } = await res.json()
-  if (!json.ok) throw new Error(json.error ?? "Bluetooth.SetAdapterPower failed")
-}
+import DropdownModuleTiles from "@/components/dropdown/DropdownModuleTiles"
+import type { DndPrefsView } from "@/lib/api-types"
+import { isWithinScheduledQuietHours } from "@/pages/control-center/panes/NotificationsPane"
 
 const POWER_ABBR: Record<PowerProfile, string> = {
   performance: "perf",
@@ -142,52 +97,41 @@ export default function Dropdown() {
     queryFn: api.dashboardGetQuickStatus,
     refetchInterval: 8000,
   })
-  const { data: adapters } = useQuery({ queryKey: ["bt-ad"], queryFn: api.getBluetoothAdapters, refetchInterval: 8000 })
-  const { data: devices } = useQuery({ queryKey: ["bt-dev"], queryFn: api.getBluetoothDevices, refetchInterval: 8000 })
+  const { data: dndPrefs } = useQuery({
+    queryKey: ["notification-dnd"],
+    queryFn: api.getNotificationDnd,
+    refetchInterval: 60_000,
+  })
 
   const [prefsTick, setPrefsTick] = useState(0)
   useEffect(() => {
     const id = window.setInterval(() => setPrefsTick((n) => n + 1), 60_000)
     return () => window.clearInterval(id)
   }, [])
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === DND_SCHEDULE_STORAGE) setPrefsTick((n) => n + 1)
-    }
-    window.addEventListener("storage", onStorage)
-    return () => window.removeEventListener("storage", onStorage)
-  }, [])
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === "visible") setPrefsTick((n) => n + 1)
-    }
-    document.addEventListener("visibilitychange", onVis)
-    return () => document.removeEventListener("visibilitychange", onVis)
-  }, [])
-  const dndSchedulePrefs = useMemo(() => loadDndSchedulePrefs(), [prefsTick])
-  const inScheduledQuietHours = isWithinScheduledQuietHours(dndSchedulePrefs)
+  const dndSchedulePrefs = (dndPrefs ?? { enabled: false, schedule_enabled: false, start_time: "22:00", end_time: "07:00", weekdays_only: true }) as DndPrefsView
+  const inScheduledQuietHours = isWithinScheduledQuietHours(dndSchedulePrefs, new Date())
 
-  const btPowered = adapters?.some((a) => a.powered)
-  const connectedDevices = devices?.filter((d) => d.connected) ?? []
+  const btFromQuick = quick?.bluetooth
+  const btPowered = btFromQuick?.powered ?? false
+  const btConnCount = btFromQuick?.connected_count ?? 0
   const btLabel = useMemo(() => {
-    const n = connectedDevices.length
-    if (!adapters?.length) return "BT — none"
+    if (!btFromQuick || (btFromQuick as { adapter_count?: number }).adapter_count === 0) {
+      return "BT — none"
+    }
     if (!btPowered) return "BT off"
-    if (n === 1) return connectedDevices[0].name.trim() || connectedDevices[0].address
-    if (n > 1) return `${n} linked`
+    if (btConnCount === 1) return "BT linked"
+    if (btConnCount > 1) return `${btConnCount} linked`
     return "BT on"
-  }, [adapters?.length, btPowered, connectedDevices])
+  }, [btFromQuick, btPowered, btConnCount])
 
   const toggleBluetooth = useCallback(async () => {
-    if (!adapters?.length) return
+    const adapters = await api.getBluetoothAdapters()
+    if (!adapters.length) return
     const wantOn = !adapters.some((a) => a.powered)
-    try {
-      await Promise.all(adapters.map((a) => bluetoothSetAdapterPower(a.path, wantOn)))
-    } finally {
-      await qc.invalidateQueries({ queryKey: ["bt-ad"] })
-      await qc.invalidateQueries({ queryKey: ["bt-dev"] })
-    }
-  }, [adapters, qc])
+    await Promise.all(adapters.map((a) => api.setBluetoothAdapterPower(a.path, wantOn)))
+    await qc.invalidateQueries({ queryKey: ["dashboard-quick-status"] })
+    await qc.invalidateQueries({ queryKey: ["bt-ad"] })
+  }, [qc])
 
   const cyclePowerProfile = useCallback(async () => {
     const order: PowerProfile[] = ["balanced", "performance", "saver"]
@@ -217,7 +161,23 @@ export default function Dropdown() {
   const battLabel = batt ? `${batt.percent}% · ${POWER_ABBR[profile]}` : "Batt"
 
   const dndChipLabel =
-    !dndSchedulePrefs.scheduleEnabled ? "DnD · sched off" : inScheduledQuietHours ? "Quiet hrs" : "DnD idle"
+    dndSchedulePrefs.enabled
+      ? "DnD on"
+      : !dndSchedulePrefs.schedule_enabled
+        ? "DnD off"
+        : inScheduledQuietHours
+          ? "Quiet hrs"
+          : "DnD idle"
+
+  const toggleDnd = useCallback(async () => {
+    const next = { ...dndSchedulePrefs, enabled: !dndSchedulePrefs.enabled }
+    await api.setNotificationDnd(next)
+    await qc.invalidateQueries({ queryKey: ["notification-dnd"] })
+  }, [dndSchedulePrefs, qc])
+
+  const takeScreenshot = useCallback(async () => {
+    await api.captureScreenshot({ mode: "region", output: "clipboard" })
+  }, [])
 
   return (
     <motion.div
@@ -236,30 +196,24 @@ export default function Dropdown() {
         />
         <QuickToggle
           icon={
-            adapters?.length
-              ? btPowered
-                ? connectedDevices.length > 0
-                  ? "bluetooth_connected"
-                  : "bluetooth"
-                : "bluetooth_disabled"
+            btPowered
+              ? btConnCount > 0
+                ? "bluetooth_connected"
+                : "bluetooth"
               : "bluetooth_disabled"
           }
           label={btLabel}
           active={btPowered}
-          disabled={!adapters?.length}
-          title={
-            adapters?.length
-              ? "Bluetooth adapter power · devices from Bluetooth.GetDevices"
-              : "No adapter reported · pair in Control Center Bluetooth"
-          }
+          disabled={(btFromQuick as { adapter_count?: number } | undefined)?.adapter_count === 0}
+          title="Bluetooth adapter power"
           onClick={() => void toggleBluetooth()}
         />
         <QuickToggle
           icon="do_not_disturb_on"
           label={dndChipLabel}
-          active={inScheduledQuietHours}
-          disabled
-          title="Shows Control Center scheduled quiet-hours only — not wired to your notification daemon/OS DND. Edit under Notifications pane."
+          active={dndSchedulePrefs.enabled || inScheduledQuietHours}
+          title="Toggle sidecar DND prefs"
+          onClick={() => void toggleDnd()}
         />
         <QuickToggle
           icon="bedtime"
@@ -274,8 +228,16 @@ export default function Dropdown() {
           title={`${profile}${lowBatt ? " · low battery" : ""} · tap to cycle power profile`}
           onClick={() => void cyclePowerProfile()}
         />
-        <QuickToggle icon="screenshot_monitor" label="Screen" />
+        <QuickToggle icon="screenshot_monitor" label="Screen" onClick={() => void takeScreenshot()} />
       </div>
+
+      {quick?.next_event?.title ? (
+        <p className="text-xs text-subtext0 px-1 truncate">
+          Next: {quick.next_event.title}
+        </p>
+      ) : null}
+
+      <DropdownModuleTiles moduleIds={quick?.dropdown_modules ?? []} />
 
       {/* Stats bar */}
       <div className="glass-card px-4 py-3">

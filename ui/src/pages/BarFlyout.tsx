@@ -9,6 +9,8 @@
  * the close timer with the same grace period as the strip-hover logic.
  */
 import { useEffect, useState } from "react"
+import AudioFlyout from "@/components/bar/flyouts/AudioFlyout"
+import BrightnessFlyout from "@/components/bar/flyouts/BrightnessFlyout"
 import NetworkFlyout from "@/components/bar/flyouts/NetworkFlyout"
 import BluetoothFlyout from "@/components/bar/flyouts/BluetoothFlyout"
 import BatteryFlyout from "@/components/bar/flyouts/BatteryFlyout"
@@ -46,6 +48,8 @@ export default function BarFlyout() {
     switch (state?.panel) {
       case "network":   return <NetworkFlyout />
       case "bluetooth": return <BluetoothFlyout />
+      case "audio":     return <AudioFlyout />
+      case "brightness": return <BrightnessFlyout />
       case "battery":   return <BatteryFlyout />
       case "windows":   return <WindowsFlyout />
       case "power":     return <PowerFlyout />

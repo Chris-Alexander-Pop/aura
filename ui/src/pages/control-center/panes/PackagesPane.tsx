@@ -1,5 +1,6 @@
 import { motion } from "framer-motion"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
 import api from "@/lib/api"
 import { getNavItem } from "../navigation"
 
@@ -30,11 +31,31 @@ function parsePackageUpdates(raw: unknown): PackageUpdateRow[] {
 
 export function PackagesPane() {
   const { icon, label } = getNavItem("packages")
+  const qc = useQueryClient()
+  const [searchQ, setSearchQ] = useState("")
+
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["packages-updates"],
     queryFn: api.getPackageUpdates,
     refetchInterval: 120_000,
     select: parsePackageUpdates,
+  })
+
+  const { data: searchHits } = useQuery({
+    queryKey: ["packages-search", searchQ],
+    queryFn: () => api.searchPackages(searchQ.trim()),
+    enabled: searchQ.trim().length >= 2,
+  })
+
+  const upgradeMut = useMutation({
+    mutationFn: () => api.upgradePackages(),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["packages-updates"] }),
+  })
+
+  const { data: txHistory } = useQuery({
+    queryKey: ["packages-tx-history"],
+    queryFn: () => api.getPackageTransactionHistory(15),
+    refetchInterval: 300_000,
   })
 
   const updates = data ?? []
@@ -57,16 +78,42 @@ export function PackagesPane() {
             Pending upgrades reported by the sidecar. Refresh to re-sync with your package manager.
           </p>
         </div>
-        <button
-          type="button"
-          className="btn-surface text-xs shrink-0"
-          onClick={() => refetch()}
-          disabled={isFetching}
-        >
-          <span className="icon text-base">{isFetching ? "hourglass_empty" : "refresh"}</span>
-          Refresh
-        </button>
+        <div className="flex gap-2 shrink-0">
+          <button
+            type="button"
+            className="btn-surface text-xs"
+            disabled={upgradeMut.isPending}
+            onClick={() => upgradeMut.mutate()}
+          >
+            Upgrade all
+          </button>
+          <button
+            type="button"
+            className="btn-surface text-xs"
+            onClick={() => refetch()}
+            disabled={isFetching}
+          >
+            <span className="icon text-base">{isFetching ? "hourglass_empty" : "refresh"}</span>
+            Refresh
+          </button>
+        </div>
       </div>
+
+      <input
+        className="input text-sm"
+        placeholder="Search packages…"
+        value={searchQ}
+        onChange={(e) => setSearchQ(e.target.value)}
+      />
+      {(searchHits?.length ?? 0) > 0 ? (
+        <ul className="flex flex-col gap-1 text-xs text-subtext1">
+          {searchHits!.slice(0, 8).map((p) => (
+            <li key={p.name} className="truncate">
+              {p.name} — {p.version}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {isLoading ? (
         <div className="flex flex-col gap-2">
@@ -110,6 +157,20 @@ export function PackagesPane() {
           </ul>
         </div>
       )}
+
+      {(txHistory?.length ?? 0) > 0 ? (
+        <section className="glass-card p-4 flex flex-col gap-2">
+          <h3 className="text-sm font-semibold text-text">Recent transactions</h3>
+          <ul className="flex flex-col gap-1 text-xs text-subtext1 max-h-40 overflow-y-auto">
+            {txHistory!.map((tx, i) => (
+              <li key={`${tx.ts}-${i}`} className="truncate">
+                <span className="text-subtext0">{tx.ts}</span> · {tx.action}:{" "}
+                {(tx.packages ?? []).join(", ") || "—"}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </motion.div>
   )
 }

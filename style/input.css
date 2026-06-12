@@ -209,3 +209,22 @@
 .osd-window {
   background-color: transparent;
 }
+
+.osd-scale trough {
+  background-color: #313244;
+  border-radius: 1000px;
+  min-height: 6px;
+}
+
+.osd-scale highlight {
+  background-color: #cba6f7;
+  border-radius: 1000px;
+  min-height: 6px;
+}
+
+.osd-scale slider {
+  background-color: #cdd6f4;
+  border-radius: 1000px;
+  min-width: 14px;
+  min-height: 14px;
+}

@@ -2,8 +2,9 @@ import app from "ags/gtk4/app"
 import GLib from "gi://GLib"
 import Bar from "./src/widget/bar/Bar"
 import sidecar from "./src/lib/sidecar"
-import OSD from "./src/widget/osd/OSD"
-import Launcher from "./src/widget/launcher/Launcher"
+import OSD, { refreshOsdFromSidecar } from "./src/widget/osd/OSD"
+import LauncherWindow from "./src/widget/webview/LauncherWindow"
+import SidebarWindow from "./src/widget/webview/SidebarWindow"
 
 // WebView overlay windows (React UI served from sidecar at localhost:9080)
 import ControlCenterWindow from "./src/widget/webview/ControlCenterWindow"
@@ -41,7 +42,8 @@ app.start({
 
         // Singleton windows
         try {
-            Launcher()
+            LauncherWindow()
+            SidebarWindow()
 
             // WebKit overlay panels
             ControlCenterWindow()
@@ -88,6 +90,18 @@ app.start({
                 const win = app.get_window(parts[1])
                 if (win) { win.visible = false; res("ok") }
                 else res("not found")
+                break
+            }
+            case "osd": {
+                const target = (parts[1] ?? "all") as "volume" | "brightness" | "mic" | "all"
+                const allowed = new Set(["volume", "brightness", "mic", "all"])
+                if (!allowed.has(target)) {
+                    res("usage: osd [volume|brightness|mic|all]")
+                    break
+                }
+                refreshOsdFromSidecar(target).then(() => res(`osd ${target}`)).catch((e) => {
+                    res(`osd error: ${e}`)
+                })
                 break
             }
             default:

@@ -66,6 +66,19 @@ Hardware/firmware often expose **Fn-lock** or awkward media-key defaults. Docume
 - [sidebar.md](./sidebar.md) and [top-dropdown.md](./top-dropdown.md) (where multitasking and quick actions surface).
 - Hyprland config, pipewire, greeter, and optional `keyd` for FN behavior.
 
+## Login and keyring (post-boot WiFi / VPN)
+
+Stored WiFi passwords use **GNome Keyring** via `secret-tool` (`application=aura`, `type=wifi_password`). If the keyring is **locked at login**, `Network.Connect` cannot retrieve saved passwords until you unlock it (usually automatic on graphical login with `gnome-keyring-daemon`).
+
+**Checklist for reliable post-login networking:**
+
+1. **Greeter session** — SDDM/greetd must start a session that launches `gnome-keyring-daemon` (or `seahorse` unlock on first secret access).
+2. **Polkit agent** — one of the polkit `exec-once` lines in [`hyprland_aura.conf`](../../hyprland_aura.conf) must be active in your live Hyprland config.
+3. **Aura Hyprland opt-in** — source `hyprland_aura.conf` or merge its `exec-once` / media-key sections (see file header).
+4. **Symptoms when broken** — secured WiFi shows “Password required” after reboot; VPN profiles missing credentials; `Security.GetKeyringStatus` reports keyring unavailable or locked.
+
+Aura surfaces keyring status in Network (control center) and Settings when the sidecar detects a locked or missing keyring.
+
 ## Open questions
 
 **Resolved (2026-05-28):** see [../ARCHITECTURE_DECISIONS.md](../ARCHITECTURE_DECISIONS.md).

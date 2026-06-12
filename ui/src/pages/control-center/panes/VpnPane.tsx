@@ -26,6 +26,12 @@ function readableState(state: VpnUiState) {
 
 export function VpnPane() {
   const qc = useQueryClient()
+  const { data: profiles } = useQuery({
+    queryKey: ["vpn-profiles"],
+    queryFn: api.getVpnProfiles,
+    staleTime: 60_000,
+  })
+
   const { data: status, isLoading } = useQuery({
     queryKey: ["vpn-status"],
     queryFn: api.getVpnStatus,
@@ -107,33 +113,51 @@ export function VpnPane() {
       <div className="glass-card p-4 flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <label htmlFor="vpn-profile-id" className="text-sm font-medium text-text">
-            Profile ID
+            Profile
           </label>
+          {(profiles?.length ?? 0) > 0 ? (
+            <select
+              id="vpn-profile-id"
+              className="input"
+              value={profileDraft}
+              disabled={busy || status?.state === "connected" || status?.state === "connecting"}
+              onChange={(e) => {
+                setProfileDraft(e.target.value)
+                setAttemptedSubmit(false)
+              }}
+            >
+              <option value="">Select profile…</option>
+              {profiles!.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name || p.id}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id="vpn-profile-id"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="profile id"
+              value={profileDraft}
+              disabled={busy || status?.state === "connected" || status?.state === "connecting"}
+              onChange={(e) => {
+                setProfileDraft(e.target.value)
+                setAttemptedSubmit(false)
+              }}
+              className={cn(
+                "input",
+                highlightEmptyProfile && "border-peach/50 ring-1 ring-peach/25"
+              )}
+              aria-invalid={attemptedSubmit && trimmedProfile.length === 0 ? true : undefined}
+              aria-describedby="vpn-profile-desc"
+            />
+          )}
           <p className="text-xs text-subtext0 leading-relaxed">
-            Required to connect. Use the VPN profile identifier configured on the sidecar (for example{" "}
-            <code className="text-subtext1">education</code>, <code className="text-subtext1">personal</code>, or{" "}
-            <code className="text-subtext1">home</code>).
+            Pick a configured profile or enter an ID manually.
           </p>
         </div>
-        <input
-          id="vpn-profile-id"
-          type="text"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder="profile id"
-          value={profileDraft}
-          disabled={busy || status?.state === "connected" || status?.state === "connecting"}
-          onChange={(e) => {
-            setProfileDraft(e.target.value)
-            setAttemptedSubmit(false)
-          }}
-          className={cn(
-            "input",
-            highlightEmptyProfile && "border-peach/50 ring-1 ring-peach/25"
-          )}
-          aria-invalid={attemptedSubmit && trimmedProfile.length === 0 ? true : undefined}
-          aria-describedby="vpn-profile-desc"
-        />
         <div id="vpn-profile-desc" className="min-h-[1rem]">
           {attemptedSubmit && trimmedProfile.length === 0 ? (
             <p className="text-xs text-peach" role="status">

@@ -135,9 +135,23 @@ export const api = {
       "Network.ScanNetworks"
     ),
   toggleWifi: (enabled: boolean) => call("Network.ToggleWifi", { enabled }),
-  connectNetwork: (ssid: string, password?: string) =>
-    call("Network.Connect", { ssid, password }),
+  connectNetwork: async (ssid: string, password?: string) => {
+    const data = (await callData("Network.Connect", {
+      ssid,
+      ...(password != null && password !== "" ? { password } : {}),
+    })) as { success?: boolean; error?: string }
+    if (data?.success === false) {
+      throw new Error(data.error ?? "Connection failed")
+    }
+    return data
+  },
   disconnectNetwork: () => call("Network.Disconnect"),
+  listSavedNetworks: () =>
+    call<Array<{ name: string; uuid: string; autoconnect: boolean }>>("Network.ListSaved"),
+  forgetNetwork: (opts: { uuid?: string; name?: string }) => call("Network.Forget", opts),
+
+  getKeyringStatus: () =>
+    call<{ available: boolean; unlocked: boolean; message?: string }>("Security.GetKeyringStatus"),
 
   // Bluetooth
   getBluetoothAdapters: () =>
@@ -151,20 +165,34 @@ export const api = {
   scanBluetooth: () => call("Bluetooth.Scan"),
   connectDevice: (device_address: string) => call("Bluetooth.Connect", { device_address }),
   disconnectDevice: (device_address: string) => call("Bluetooth.Disconnect", { device_address }),
+  pairDevice: (device_address: string) => call("Bluetooth.Pair", { device_address }),
+  removeDevice: (device_address: string) => call("Bluetooth.Remove", { device_address }),
+  setBluetoothAdapterPower: (adapter_path: string, powered: boolean) =>
+    call("Bluetooth.SetAdapterPower", { adapter_path, powered }),
 
   // Audio
   getAudioDevices: () =>
-    call<{ sinks: Array<{ id: number; name: string; volume: number; is_default: boolean }>; sources: Array<{ id: number; name: string; volume: number; is_default: boolean }> }>(
-      "Audio.GetDevices"
-    ),
+    call<{
+      sinks: Array<{ id: number; name: string; volume: number; muted?: boolean; is_default: boolean }>
+      sources: Array<{ id: number; name: string; volume: number; muted?: boolean; is_default: boolean }>
+    }>("Audio.GetDevices"),
   getAudioStreams: () =>
-    call<Array<{ id: number; name: string; app: string; volume: number; sink_id: number }>>(
+    call<Array<{ id: number; name: string; app: string; volume: number; sink_id: number; muted?: boolean }>>(
       "Audio.GetStreams"
     ),
   setStreamVolume: (stream_id: number, volume: number) =>
     call("Audio.SetStreamVolume", { stream_id, volume }),
   setStreamMute: (stream_id: number, muted: boolean) =>
     call("Audio.SetStreamMute", { stream_id, muted }),
+  setSinkMute: (device_id: number, muted: boolean) =>
+    call("Audio.SetSinkMute", { device_id, muted }),
+  setSourceMute: (device_id: number, muted: boolean) =>
+    call("Audio.SetSourceMute", { device_id, muted }),
+  setSinkVolume: (device_id: number, volume: number) =>
+    call("Audio.SetSinkVolume", { device_id, volume }),
+  setDefaultAudioDevice: (device_id: number, type: "output" | "input" = "output") =>
+    call("Audio.SetDefaultDevice", { device_id, type }),
+  refreshAudio: () => call("Audio.Refresh"),
 
   // System
   getSystemStats: () =>
@@ -181,6 +209,8 @@ export const api = {
   // VPN
   getVpnStatus: () =>
     call<{ state: string; message: string; profile_id?: string }>("Vpn.GetStatus"),
+  getVpnProfiles: () =>
+    call<Array<{ id: string; name: string; type?: string }>>("Vpn.GetProfiles"),
   connectVpn: (profileId: string) => call("Vpn.Connect", { profileId }),
   disconnectVpn: () => call("Vpn.Disconnect"),
 
@@ -203,6 +233,16 @@ export const api = {
 
   // Packages
   getPackageUpdates: () => callData("Packages.GetUpgradable").then(adaptPackageUpdates),
+  searchPackages: (query: string) =>
+    call<Array<{ name: string; version: string; description: string }>>("Packages.Search", { query }),
+  upgradePackages: () => call<{ success?: boolean; error?: string }>("Packages.Upgrade"),
+  getPackageDependencies: (name: string) =>
+    call<{ dependencies: string[] }>("Packages.GetPackageDependencies", { name }),
+  getPackageTransactionHistory: (limit = 50) =>
+    call<Array<{ ts: string; action: string; packages: string[] }>>(
+      "Packages.GetTransactionHistory",
+      { limit }
+    ),
 
   // Notifications
   listNotifications: (limit = 50) =>
@@ -211,6 +251,17 @@ export const api = {
   clearAllNotifications: () => call("Notifications.ClearAll"),
   getNotificationDnd: () => callData("Notifications.GetDnd").then(adaptDndPrefs),
   setNotificationDnd: (dnd: DndPrefsView) => call("Notifications.SetDnd", { dnd }),
+  getNotificationRules: () =>
+    call<{ muted_apps: string[] }>("Notifications.GetRules"),
+  setNotificationRules: (rules: { muted_apps: string[]}) =>
+    call("Notifications.SetRules", { rules }),
+  invokeNotificationAction: (id: number, action_key: string) =>
+    call("Notifications.InvokeAction", { id, action_key }),
+
+  listBrightnessMonitors: () =>
+    call<{ monitors: Array<{ monitor: string; brightness: number }> }>("Brightness.Get", {
+      monitor: "all",
+    }),
 
   // Keybinds
   listKeybinds: (category?: string) =>
@@ -223,6 +274,14 @@ export const api = {
 
   // Security
   getSecurityStatus: () => callData("Security.GetStatus").then(adaptSecurityStatus),
+  listFingerprints: () =>
+    call<Array<{ name: string; finger?: string }>>("Security.ListFingerprints"),
+  runClamScan: (path?: string) =>
+    call<{ success?: boolean; output?: string; error?: string }>("Security.RunClamScan", {
+      ...(path ? { path } : {}),
+    }),
+  enableFirewall: () => call("Security.EnableFirewall"),
+  disableFirewall: () => call("Security.DisableFirewall"),
 
   // Performance / Devops / Productivity / Automation / Communication / Fitness
   getPerformanceMetrics: () => callData("Performance.GetMetrics").then(adaptPerformanceMetrics),
@@ -296,7 +355,7 @@ export const api = {
   sessionSuspend: () => call<{ ok: boolean }>("Session.Suspend"),
   sessionReboot: () => call<{ ok: boolean }>("Session.Reboot"),
   sessionPowerOff: () => call<{ ok: boolean }>("Session.PowerOff"),
-  auraToggleWindow: (name: "control-center" | "calendar" | "dropdown") =>
+  auraToggleWindow: (name: "control-center" | "calendar" | "dropdown" | "sidebar" | "launcher") =>
     call<{ ok: boolean }>("Aura.ToggleWindow", { name }),
   appsLaunch: (id: string) => call<{ ok: boolean }>("Apps.Launch", { id }),
 
@@ -346,6 +405,8 @@ export const api = {
   launcherRecent: () => callData("Launcher.Recent").then(adaptLauncherRecent),
   launcherPin: (id: string, pinned: boolean) =>
     call<{ ok: boolean; id: string; pinned: boolean }>("Launcher.Pin", { id, pinned }),
+  launcherVicinaeQuery: (query: string) =>
+    callData("Launcher.VicinaeQuery", { query }).then(adaptLauncherQuery),
 
   // Todos
   todosList: (opts?: { project_id?: string; include_completed?: boolean }) =>
@@ -371,10 +432,14 @@ export const api = {
   todosListProjects: () => callData("Todos.ListProjects").then(adaptTodoProjects),
   todosParseDueDate: (text: string) =>
     callData("Todos.ParseDueDate", { text }).then(adaptTodoParseDueDate),
+  todosCreateProject: (name: string) => call<TodoProjectView>("Todos.CreateProject", { name }),
 
-  // Vault (read-only)
+  // Vault
   vaultList: () => callData("Vault.List").then(adaptVaultList),
   vaultBackupStatus: () => callData("Vault.Backup.Status").then(adaptVaultBackupStatus),
+  vaultGetEntry: (key: string) => call<{ key: string; value?: string }>("Vault.GetEntry", { key }),
+  vaultSetEntry: (key: string, value: string) =>
+    call<{ ok: boolean }>("Vault.SetEntry", { key, value }),
 
   // Dashboard / Sidebar
   dashboardGetQuickStatus: () =>

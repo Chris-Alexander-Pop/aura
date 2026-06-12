@@ -267,8 +267,8 @@ pub mod contract_parsers {
         crate::services::security::firewall_status_none()
     }
 
-    pub fn keyring_status_json(available: bool) -> serde_json::Value {
-        crate::services::security::keyring_status_json(available)
+    pub fn keyring_status_json(available: bool, unlocked: bool, message: Option<&str>) -> serde_json::Value {
+        crate::services::security::keyring_status_json(available, unlocked, message)
     }
 
     pub fn filter_certificate_filenames(

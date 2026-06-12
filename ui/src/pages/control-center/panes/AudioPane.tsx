@@ -6,18 +6,25 @@ import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import { getNavItem } from "../navigation"
 
-type AudioSink = { id: number; name: string; volume: number; is_default: boolean }
+type AudioSink = { id: number; name: string; volume: number; muted?: boolean; is_default: boolean }
 type AudioSource = AudioSink
-type AudioStream = { id: number; name: string; app: string; volume: number; sink_id: number }
+type AudioStream = { id: number; name: string; app: string; volume: number; sink_id: number; muted?: boolean }
 
 function DeviceMeterCard({
   kind,
   device,
+  onMuteToggle,
+  onVolumeCommit,
+  busy,
 }: {
   kind: "output" | "input"
   device: AudioSink | AudioSource
+  onMuteToggle?: (deviceId: number, muted: boolean) => void
+  onVolumeCommit?: (deviceId: number, volume: number) => void
+  busy?: boolean
 }) {
   const pct = Math.round(Math.min(1, Math.max(0, device.volume)) * 100)
+  const muted = !!device.muted
 
   return (
     <div
@@ -38,28 +45,57 @@ function DeviceMeterCard({
             </p>
           </div>
         </div>
-        {device.is_default && (
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-mauve bg-mauve/15 px-2 py-0.5 rounded-full shrink-0">
-            Default
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onMuteToggle ? (
+            <button
+              type="button"
+              disabled={busy}
+              title={muted ? "Unmute" : "Mute"}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
+                muted ? "bg-red/20 text-red" : "bg-surface0/80 text-subtext1 hover:text-text"
+              )}
+              onClick={() => onMuteToggle(device.id, !muted)}
+            >
+              <span className="icon text-lg">{muted ? "volume_off" : "volume_up"}</span>
+            </button>
+          ) : null}
+          {device.is_default && (
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-mauve bg-mauve/15 px-2 py-0.5 rounded-full">
+              Default
+            </span>
+          )}
+        </div>
       </div>
       <div className="space-y-1.5">
         <div className="flex justify-between text-[11px] text-subtext1">
           <span>Level</span>
-          <span className="tabular-nums text-subtext0">{pct}%</span>
+          <span className="tabular-nums text-subtext0">{muted ? "Muted" : `${pct}%`}</span>
         </div>
-        <div className="h-2 rounded-full bg-base/80 overflow-hidden border border-surface1/30">
-          <div
-            className={cn(
-              "h-full rounded-full transition-[width] duration-300 ease-out",
-              kind === "output"
-                ? "bg-gradient-to-r from-teal/70 via-teal to-sky/90"
-                : "bg-gradient-to-r from-sapphire/70 via-blue to-lavender/90"
-            )}
-            style={{ width: `${pct}%` }}
+        {onVolumeCommit ? (
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={pct}
+            disabled={busy}
+            onChange={(e) => onVolumeCommit(device.id, Number(e.target.value) / 100)}
+            className="w-full h-2 rounded-full appearance-none cursor-pointer accent-teal bg-base/90 border border-surface1/30"
           />
-        </div>
+        ) : (
+          <div className="h-2 rounded-full bg-base/80 overflow-hidden border border-surface1/30">
+            <div
+              className={cn(
+                "h-full rounded-full transition-[width] duration-300 ease-out",
+                kind === "output"
+                  ? "bg-gradient-to-r from-teal/70 via-teal to-sky/90"
+                  : "bg-gradient-to-r from-sapphire/70 via-blue to-lavender/90"
+              )}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -200,10 +236,27 @@ export function AudioPane() {
   const muteMutation = useMutation({
     mutationFn: ({ stream_id, muted }: { stream_id: number; muted: boolean }) =>
       api.setStreamMute(stream_id, muted),
-    onSuccess: (_, vars) => {
-      setMutedStreams((prev) => ({ ...prev, [vars.stream_id]: vars.muted }))
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["audio-streams"] })
     },
+  })
+
+  const sinkMuteMutation = useMutation({
+    mutationFn: ({ device_id, muted }: { device_id: number; muted: boolean }) =>
+      api.setSinkMute(device_id, muted),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["audio-devices"] }),
+  })
+
+  const sourceMuteMutation = useMutation({
+    mutationFn: ({ device_id, muted }: { device_id: number; muted: boolean }) =>
+      api.setSourceMute(device_id, muted),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["audio-devices"] }),
+  })
+
+  const sinkVolumeMutation = useMutation({
+    mutationFn: ({ device_id, volume }: { device_id: number; volume: number }) =>
+      api.setSinkVolume(device_id, volume),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["audio-devices"] }),
   })
 
   const sinks = devicesQuery.data?.sinks ?? []
@@ -224,7 +277,7 @@ export function AudioPane() {
           <h2 className="text-xl font-semibold text-text">{label}</h2>
         </div>
         <p className="text-xs text-subtext1 max-w-prose leading-relaxed">
-          Outputs, inputs, and per-application streams. Drag a stream slider and release to apply — mute follows until you change it (stream mute state is not returned by the API yet).
+          Outputs, inputs, and per-application streams. Default device mute and volume use PipeWire via the sidecar.
         </p>
       </header>
 
@@ -238,10 +291,23 @@ export function AudioPane() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {sinks.map((d) => (
-              <DeviceMeterCard key={`sink-${d.id}`} kind="output" device={d} />
+              <DeviceMeterCard
+                key={`sink-${d.id}`}
+                kind="output"
+                device={d}
+                busy={sinkMuteMutation.isPending || sinkVolumeMutation.isPending}
+                onMuteToggle={(id, muted) => sinkMuteMutation.mutate({ device_id: id, muted })}
+                onVolumeCommit={(id, vol) => sinkVolumeMutation.mutate({ device_id: id, volume: vol })}
+              />
             ))}
             {sources.map((d) => (
-              <DeviceMeterCard key={`src-${d.id}`} kind="input" device={d} />
+              <DeviceMeterCard
+                key={`src-${d.id}`}
+                kind="input"
+                device={d}
+                busy={sourceMuteMutation.isPending}
+                onMuteToggle={(id, muted) => sourceMuteMutation.mutate({ device_id: id, muted })}
+              />
             ))}
             {sinks.length === 0 && sources.length === 0 && (
               <p className="text-sm text-subtext0 col-span-full">No audio devices reported.</p>
@@ -276,7 +342,7 @@ export function AudioPane() {
                   volumeMutation.isPending && volumeMutation.variables?.stream_id === s.id
                 }
                 muteBusy={muteMutation.isPending && muteMutation.variables?.stream_id === s.id}
-                muted={mutedStreams[s.id] ?? false}
+                muted={s.muted ?? mutedStreams[s.id] ?? false}
                 onVolumeCommit={(streamId, ratio) => volumeMutation.mutate({ stream_id: streamId, volume: ratio })}
                 onMuteToggle={(streamId, next) => muteMutation.mutate({ stream_id: streamId, muted: next })}
               />

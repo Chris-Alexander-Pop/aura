@@ -20,6 +20,7 @@ function isSecured(security: string): boolean {
 export function NetworkPane() {
   const qc = useQueryClient()
   const [connectingToSsid, setConnectingToSsid] = useState<string | null>(null)
+  const [connectError, setConnectError] = useState<string | null>(null)
   const [passwordTarget, setPasswordTarget] = useState<{
     ssid: string
     security: string
@@ -45,6 +46,18 @@ export function NetworkPane() {
     staleTime: 12_000,
   })
 
+  const { data: saved } = useQuery({
+    queryKey: ["network-saved"],
+    queryFn: api.listSavedNetworks,
+    staleTime: 30_000,
+  })
+
+  const { data: keyring } = useQuery({
+    queryKey: ["keyring-status"],
+    queryFn: api.getKeyringStatus,
+    staleTime: 60_000,
+  })
+
   const sorted = useMemo(() => {
     const list = scan ?? []
     return [...list].sort((a, b) => {
@@ -56,6 +69,7 @@ export function NetworkPane() {
   const invalidateNetwork = async () => {
     await qc.invalidateQueries({ queryKey: ["network-status"] })
     await qc.invalidateQueries({ queryKey: ["wifi-scan"] })
+    await qc.invalidateQueries({ queryKey: ["network-saved"] })
   }
 
   const setWifi = async (enabled: boolean) => {
@@ -70,9 +84,13 @@ export function NetworkPane() {
 
   const runConnect = async (ssid: string, password?: string) => {
     setConnectingToSsid(ssid)
+    setConnectError(null)
     try {
       await api.connectNetwork(ssid, password)
       await invalidateNetwork()
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : "Connection failed")
+      throw err
     } finally {
       setConnectingToSsid(null)
     }
@@ -116,6 +134,22 @@ export function NetworkPane() {
             </p>
           </div>
         </header>
+
+        {keyring && keyring.available && !keyring.unlocked ? (
+          <div
+            className="rounded-xl border border-yellow/30 bg-yellow/10 px-4 py-3 text-xs text-yellow"
+            role="status"
+          >
+            {keyring.message ??
+              "Login keyring is locked — unlock it to use saved WiFi passwords after reboot."}
+          </div>
+        ) : null}
+
+        {connectError ? (
+          <p className="text-xs text-red px-1" role="alert">
+            {connectError}
+          </p>
+        ) : null}
 
         <section
           className={cn(
@@ -308,6 +342,46 @@ export function NetworkPane() {
           <p className="text-xs text-subtext1 text-center py-6">
             No networks yet — run a scan or wait for results.
           </p>
+        ) : null}
+
+        {(saved?.length ?? 0) > 0 ? (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-sm font-semibold text-subtext1 px-1">Saved networks</h3>
+            <ul className="flex flex-col gap-2">
+              {saved!.map((conn) => (
+                <li
+                  key={conn.uuid}
+                  className="glass-card rounded-xl p-3 flex items-center justify-between gap-2 border border-surface0/45"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate text-text">{conn.name}</p>
+                    <p className="text-[11px] text-subtext0">
+                      {conn.autoconnect ? "Auto-connect" : "Manual"}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5">
+                    <button
+                      type="button"
+                      className="btn-surface text-xs px-3 py-1.5"
+                      onClick={() => void runConnect(conn.name)}
+                    >
+                      Connect
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-surface text-xs px-3 py-1.5 text-red border-red/25"
+                      onClick={async () => {
+                        await api.forgetNetwork({ uuid: conn.uuid, name: conn.name })
+                        await invalidateNetwork()
+                      }}
+                    >
+                      Forget
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
         ) : null}
       </motion.div>
 

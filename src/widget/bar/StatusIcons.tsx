@@ -57,8 +57,9 @@ export default function StatusIcons() {
             sidecar.getAudioState().then((s: any) => {
                 const def = (s.sinks || []).find((d: any) => d.is_default)
                 if (def) {
-                    setVolIcon(volumeIcon(def.volume, def.volume === 0))
-                    setVolTip(`Volume: ${Math.round(def.volume * 100)}%`)
+                    const muted = !!def.muted
+                    setVolIcon(volumeIcon(def.volume, muted))
+                    setVolTip(`Volume: ${muted ? "Muted" : `${Math.round(def.volume * 100)}%`}`)
                 }
             }).catch(() => { })
 
@@ -87,8 +88,13 @@ export default function StatusIcons() {
         }
 
         update()
+        const audioHandler = () => update()
+        sidecar.connect("audio-state", audioHandler)
         const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => { update(); return true })
-        onCleanup(() => GLib.source_remove(id))
+        onCleanup(() => {
+            GLib.source_remove(id)
+            sidecar.disconnect(audioHandler)
+        })
     })
 
     const ic = colors.m3secondary

@@ -9,6 +9,8 @@ import Dropdown from "./pages/Dropdown"
 import Calendar from "./pages/Calendar"
 import BarStrip from "./pages/BarStrip"
 import BarFlyout from "./pages/BarFlyout"
+import Launcher from "./pages/Launcher"
+import Sidebar from "./pages/Sidebar"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +32,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/bar" element={<BarStrip />} />
           <Route path="/bar-flyout" element={<BarFlyout />} />
+          <Route path="/launcher" element={<Launcher />} />
+          <Route path="/sidebar" element={<Sidebar />} />
           {/* Dev landing page */}
           <Route
             path="/"

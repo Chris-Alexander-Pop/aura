@@ -4,16 +4,14 @@
  * - **Events**: Loaded from `api.getCalendarEvents()` (sidecar `Calendar.GetEvents`). Shown as
  *   indicators on the month grid and as a scrollable agenda beside/below the grid. Query key `["cal"]`
  *   matches `BarStrip` so the shell preview and this panel share React Query cache.
- * - **Tasks**: Persisted in **localStorage** under `aura.calendar.tasks` (JSON array). We chose
- *   client persistence over stub data so lists survive reloads without sidecar task APIs; calendar
- *   rows remain driven by the API.
+ * - **Tasks**: Loaded from sidecar `Todos.*` (shared with Control Center calendar pane).
  */
 
 import { useState, useEffect, useMemo, useCallback, type ReactNode } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import api, { type CalendarEvent } from "@/lib/api"
-import { connectWs } from "@/lib/ws"
+import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -32,7 +30,7 @@ const MONTHS = [
   "December",
 ]
 
-const TASKS_STORAGE_KEY = "aura.calendar.tasks"
+const TASKS_STORAGE_KEY = "aura.calendar.tasks" // legacy — no longer used
 
 interface CalendarTask {
   id: string
@@ -95,32 +93,11 @@ function formatEventRange(ev: CalendarEvent): string {
 }
 
 function loadTasks(): CalendarTask[] {
-  try {
-    const raw = localStorage.getItem(TASKS_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .map((row): CalendarTask | null => {
-        if (!row || typeof row !== "object") return null
-        const o = row as Record<string, unknown>
-        const id = String(o.id ?? "").trim()
-        const text = String(o.text ?? "").trim()
-        if (!id || !text) return null
-        return { id, text, done: Boolean(o.done) }
-      })
-      .filter((t): t is CalendarTask => t != null)
-  } catch {
-    return []
-  }
+  return []
 }
 
-function saveTasks(tasks: CalendarTask[]) {
-  try {
-    localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks))
-  } catch {
-    /* quota / private mode */
-  }
+function saveTasks(_tasks: CalendarTask[]) {
+  /* legacy no-op */
 }
 
 function EmptyBlock({
@@ -232,6 +209,7 @@ function CalendarGrid({
 }
 
 export default function Calendar() {
+  const qc = useQueryClient()
   const today = useMemo(() => new Date(), [])
   const [year, setYear] = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth())
@@ -240,18 +218,47 @@ export default function Calendar() {
       ? today.getDate()
       : null
   )
-  const [tasks, setTasks] = useState<CalendarTask[]>(() =>
-    typeof window !== "undefined" ? loadTasks() : []
-  )
   const [newTaskText, setNewTaskText] = useState("")
 
   useEffect(() => {
     connectWs()
-  }, [])
+    const off = useWsStore.getState().on("Todos.Changed", () => {
+      void qc.invalidateQueries({ queryKey: ["todos"] })
+    })
+    return off
+  }, [qc])
 
-  useEffect(() => {
-    saveTasks(tasks)
-  }, [tasks])
+  const { data: todoItems } = useQuery({
+    queryKey: ["todos", "calendar"],
+    queryFn: () => api.todosList({ include_completed: true }),
+    refetchInterval: 120_000,
+  })
+
+  const tasks: CalendarTask[] = useMemo(
+    () =>
+      (todoItems ?? []).map((t) => ({
+        id: t.id,
+        text: t.title,
+        done: t.completed,
+      })),
+    [todoItems]
+  )
+
+  const createTodoMut = useMutation({
+    mutationFn: (title: string) => api.todosCreate({ title }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["todos"] }),
+  })
+
+  const updateTodoMut = useMutation({
+    mutationFn: (opts: { id: string; completed: boolean }) =>
+      api.todosUpdate({ id: opts.id, completed: opts.completed }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["todos"] }),
+  })
+
+  const deleteTodoMut = useMutation({
+    mutationFn: (id: string) => api.todosDelete(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["todos"] }),
+  })
 
   const {
     data: events,
@@ -323,9 +330,9 @@ export default function Calendar() {
   const addTask = useCallback(() => {
     const text = newTaskText.trim()
     if (!text) return
-    setTasks((ts) => [...ts, { id: `task_${Date.now()}`, text, done: false }])
+    createTodoMut.mutate(text)
     setNewTaskText("")
-  }, [newTaskText])
+  }, [newTaskText, createTodoMut])
 
   return (
     <div className="flex flex-col h-full bg-base/80 backdrop-blur-2xl rounded-2xl border border-surface0/60 shadow-2xl overflow-hidden text-text">
@@ -450,7 +457,7 @@ export default function Calendar() {
           <div className="overflow-y-auto px-5 py-4 flex flex-col gap-2 max-h-[42%] lg:max-h-none lg:flex-initial">
             <p className="text-xs text-subtext0 font-medium uppercase tracking-wider mb-1">Tasks</p>
             <p className="text-[10px] text-subtext1 -mt-1 mb-1 leading-snug">
-              Stored locally in this browser ({TASKS_STORAGE_KEY}).
+              Synced via sidecar Todos service.
             </p>
             {tasks.length === 0 ? (
               <EmptyBlock
@@ -469,7 +476,7 @@ export default function Calendar() {
                     exit={{ opacity: 0, x: 12 }}
                     className="flex items-center gap-3 glass-card px-3 py-2.5 cursor-pointer border border-surface0/35"
                     onClick={() =>
-                      setTasks((ts) => ts.map((t) => (t.id === todo.id ? { ...t, done: !t.done } : t)))
+                      updateTodoMut.mutate({ id: todo.id, completed: !todo.done })
                     }
                   >
                     <motion.span
@@ -487,7 +494,7 @@ export default function Calendar() {
                       aria-label="Remove task"
                       onClick={(e) => {
                         e.stopPropagation()
-                        setTasks((ts) => ts.filter((t) => t.id !== todo.id))
+                        deleteTodoMut.mutate(todo.id)
                       }}
                     >
                       <span className="icon text-base">close</span>

@@ -4,6 +4,7 @@ import api from "@/lib/api"
 import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
+import { NetworkConnectModal } from "@/pages/control-center/panes/NetworkConnectModal"
 
 function strengthIcon(strength: number): string {
   if (strength >= 75) return "wifi"
@@ -12,9 +13,18 @@ function strengthIcon(strength: number): string {
   return "wifi_1_bar"
 }
 
+function isSecured(security: string): boolean {
+  const s = security.trim().toLowerCase()
+  return s.length > 0 && s !== "none" && s !== "open"
+}
+
 export default function NetworkFlyout() {
   const qc = useQueryClient()
   const [connectingToSsid, setConnectingToSsid] = useState<string | null>(null)
+  const [connectError, setConnectError] = useState<string | null>(null)
+  const [passwordTarget, setPasswordTarget] = useState<{ ssid: string; security: string } | null>(
+    null
+  )
 
   useEffect(() => {
     connectWs()
@@ -35,6 +45,11 @@ export default function NetworkFlyout() {
     queryFn: api.scanNetworks,
     staleTime: 15_000,
   })
+  const { data: keyring } = useQuery({
+    queryKey: ["keyring-status"],
+    queryFn: api.getKeyringStatus,
+    staleTime: 60_000,
+  })
 
   const sorted = useMemo(() => {
     const list = scan ?? []
@@ -52,15 +67,32 @@ export default function NetworkFlyout() {
     await qc.invalidateQueries({ queryKey: ["wifi-scan"] })
   }
 
-  const connect = async (ssid: string) => {
+  const runConnect = async (ssid: string, password?: string) => {
     setConnectingToSsid(ssid)
+    setConnectError(null)
     try {
-      await api.connectNetwork(ssid)
+      await api.connectNetwork(ssid, password)
       await qc.invalidateQueries({ queryKey: ["net"] })
       await qc.invalidateQueries({ queryKey: ["wifi-scan"] })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Connection failed"
+      setConnectError(msg)
+      throw err
     } finally {
       setConnectingToSsid(null)
     }
+  }
+
+  const onConnectClick = (ap: { ssid: string; security: string; active: boolean }, active: boolean) => {
+    if (active) {
+      void disconnect()
+      return
+    }
+    if (isSecured(ap.security)) {
+      setPasswordTarget({ ssid: ap.ssid, security: ap.security })
+      return
+    }
+    void runConnect(ap.ssid)
   }
 
   const disconnect = async () => {
@@ -96,113 +128,138 @@ export default function NetworkFlyout() {
   const listBusy = wifiOn && sorted.length === 0 && (scanning || scanPending)
 
   return (
-    <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-      <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">
-        Wi‑Fi {wifiOn ? "enabled" : "disabled"}
-      </h2>
+    <>
+      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
+        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">
+          Wi‑Fi {wifiOn ? "enabled" : "disabled"}
+        </h2>
 
-      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-surface0/90 px-3 py-2.5">
-        <span className="text-[12px] font-medium text-text">Enabled</span>
-        <input
-          type="checkbox"
-          className="h-4 w-4 accent-teal"
-          checked={wifiOn}
-          onChange={(e) => toggleWifi(e.target.checked)}
-        />
-      </label>
+        {keyring && keyring.available && !keyring.unlocked ? (
+          <p className="rounded-lg bg-yellow/15 px-2.5 py-2 text-[11px] leading-snug text-yellow">
+            {keyring.message ?? "Login keyring is locked — saved passwords unavailable."}
+          </p>
+        ) : null}
 
-      <p className="px-0.5 text-[11px] leading-snug text-subtext0">
-        {wifiOn
-          ? `${availableCount} network${availableCount === 1 ? "" : "s"} available`
-          : "Turn on Wi‑Fi to scan and connect."}
-      </p>
+        {connectError ? (
+          <p className="rounded-lg bg-red/15 px-2.5 py-2 text-[11px] leading-snug text-red" role="alert">
+            {connectError}
+          </p>
+        ) : null}
 
-      {listBusy ? <FlyoutLoading label="Scanning for networks…" /> : null}
-      {!wifiOn ? (
-        <FlyoutEmpty icon="wifi_off" title="Wi‑Fi is off" detail="Enable Wi‑Fi above to see nearby networks." />
-      ) : null}
-      {wifiOn && !listBusy && sorted.length === 0 ? (
-        <FlyoutEmpty
-          icon="wifi_find"
-          title="No networks found"
-          detail="Move closer to your router or rescan. Hidden SSIDs may not appear here."
-        />
-      ) : null}
+        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-surface0/90 px-3 py-2.5">
+          <span className="text-[12px] font-medium text-text">Enabled</span>
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-teal"
+            checked={wifiOn}
+            onChange={(e) => toggleWifi(e.target.checked)}
+          />
+        </label>
 
-      {wifiOn ? (
-        <ul className="flex max-h-56 flex-col gap-1.5 overflow-y-auto pr-0.5">
-          {sorted.map((ap) => {
-          const isConnecting = connectingToSsid === ap.ssid
-          const isSecure = ap.security && ap.security !== "none"
+        <p className="px-0.5 text-[11px] leading-snug text-subtext0">
+          {wifiOn
+            ? `${availableCount} network${availableCount === 1 ? "" : "s"} available`
+            : "Turn on Wi‑Fi to scan and connect."}
+        </p>
 
-          return (
-            <li
-              key={ap.ssid}
-              className="flex items-center gap-2 rounded-xl bg-surface0/90 px-2 py-2"
-            >
-              <span
-                className={cn(
-                  "icon shrink-0 text-[22px] leading-none",
-                  ap.active ? "text-teal" : "text-subtext0"
-                )}
-              >
-                {strengthIcon(ap.strength)}
-              </span>
-              {isSecure ? (
-                <span className="icon shrink-0 text-[14px] text-subtext0" title="Secured network">
-                  lock
-                </span>
-              ) : null}
-              <span
-                className={cn(
-                  "min-w-0 flex-1 truncate text-[13px] leading-tight",
-                  ap.active ? "font-semibold text-teal" : "text-subtext1"
-                )}
-              >
-                {ap.ssid}
-              </span>
+        {listBusy ? <FlyoutLoading label="Scanning for networks…" /> : null}
+        {!wifiOn ? (
+          <FlyoutEmpty icon="wifi_off" title="Wi‑Fi is off" detail="Enable Wi‑Fi above to see nearby networks." />
+        ) : null}
+        {wifiOn && !listBusy && sorted.length === 0 ? (
+          <FlyoutEmpty
+            icon="wifi_find"
+            title="No networks found"
+            detail="Move close to your router or rescan. Hidden SSIDs may not appear here."
+          />
+        ) : null}
 
-              <button
-                type="button"
-                disabled={isConnecting || !wifiOn}
-                title={ap.active ? "Disconnect" : "Connect"}
-                className={cn(
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40",
-                  ap.active
-                    ? "bg-teal text-crust"
-                    : "bg-teal/90 text-crust hover:bg-teal"
-                )}
-                onClick={() => (ap.active ? disconnect() : connect(ap.ssid))}
-              >
-                {isConnecting ? (
-                  <span className="icon animate-spin text-[20px] text-crust">progress_activity</span>
-                ) : (
-                  <span className="icon text-[22px]">{ap.active ? "link_off" : "link"}</span>
-                )}
-              </button>
-            </li>
-          )
-        })}
-        </ul>
-      ) : null}
+        {wifiOn ? (
+          <ul className="flex max-h-56 flex-col gap-1.5 overflow-y-auto pr-0.5">
+            {sorted.map((ap) => {
+              const isConnecting = connectingToSsid === ap.ssid
+              const secure = isSecured(ap.security)
 
-      <button
-        type="button"
-        disabled={scanning || !wifiOn}
-        className="flex w-full items-center justify-center gap-2 rounded-full bg-blue/30 py-3 text-[12px] font-semibold text-blue hover:bg-blue/40 disabled:opacity-40"
-        onClick={() => rescan()}
-      >
-        <span className={cn("icon text-lg", scanning && "animate-spin")}>wifi_find</span>
-        {scanning ? "Scanning…" : "Rescan networks"}
-      </button>
+              return (
+                <li
+                  key={ap.ssid}
+                  className="flex items-center gap-2 rounded-xl bg-surface0/90 px-2 py-2"
+                >
+                  <span
+                    className={cn(
+                      "icon shrink-0 text-[22px] leading-none",
+                      ap.active ? "text-teal" : "text-subtext0"
+                    )}
+                  >
+                    {strengthIcon(ap.strength)}
+                  </span>
+                  {secure ? (
+                    <span className="icon shrink-0 text-[14px] text-subtext0" title="Secured network">
+                      lock
+                    </span>
+                  ) : null}
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-[13px] leading-tight",
+                      ap.active ? "font-semibold text-teal" : "text-subtext1"
+                    )}
+                  >
+                    {ap.ssid}
+                  </span>
 
-      <button
-        type="button"
-        className="rounded-lg py-2 text-center text-[11px] text-subtext0 underline-offset-2 hover:text-subtext1 hover:underline"
-        onClick={() => api.auraToggleWindow("control-center")}
-      >
-        Wi‑Fi settings
-      </button>
-    </div>
+                  <button
+                    type="button"
+                    disabled={isConnecting || !wifiOn}
+                    title={ap.active ? "Disconnect" : secure ? "Enter password" : "Connect"}
+                    className={cn(
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40",
+                      ap.active
+                        ? "bg-teal text-crust"
+                        : "bg-teal/90 text-crust hover:bg-teal"
+                    )}
+                    onClick={() => onConnectClick(ap, ap.active)}
+                  >
+                    {isConnecting ? (
+                      <span className="icon animate-spin text-[20px] text-crust">progress_activity</span>
+                    ) : (
+                      <span className="icon text-[22px]">{ap.active ? "link_off" : "link"}</span>
+                    )}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        ) : null}
+
+        <button
+          type="button"
+          disabled={scanning || !wifiOn}
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-blue/30 py-3 text-[12px] font-semibold text-blue hover:bg-blue/40 disabled:opacity-40"
+          onClick={() => rescan()}
+        >
+          <span className={cn("icon text-lg", scanning && "animate-spin")}>wifi_find</span>
+          {scanning ? "Scanning…" : "Rescan networks"}
+        </button>
+
+        <button
+          type="button"
+          className="rounded-lg py-2 text-center text-[11px] text-subtext0 underline-offset-2 hover:text-subtext1 hover:underline"
+          onClick={() => api.auraToggleWindow("control-center")}
+        >
+          Wi‑Fi settings
+        </button>
+      </div>
+
+      <NetworkConnectModal
+        open={passwordTarget != null}
+        ssid={passwordTarget?.ssid ?? ""}
+        securityLabel={passwordTarget?.security ?? ""}
+        onClose={() => setPasswordTarget(null)}
+        onConnect={async (password) => {
+          if (!passwordTarget) return
+          await runConnect(passwordTarget.ssid, password)
+        }}
+      />
+    </>
   )
 }

@@ -212,6 +212,24 @@ export function NotificationsPane() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["notifications-list"] }),
   })
 
+  const rulesQuery = useQuery({
+    queryKey: ["notifications-rules"],
+    queryFn: api.getNotificationRules,
+  })
+
+  const rulesMut = useMutation({
+    mutationFn: (muted_apps: string[]) => api.setNotificationRules({ muted_apps }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["notifications-rules"] }),
+  })
+
+  const actionMut = useMutation({
+    mutationFn: ({ id, action_key }: { id: number; action_key: string }) =>
+      api.invokeNotificationAction(id, action_key),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["notifications-list"] }),
+  })
+
+  const mutedApps = rulesQuery.data?.muted_apps ?? []
+
   const inQuietHours = useMemo(() => isWithinScheduledQuietHours(prefs), [prefs, tick])
 
   const overnight =
@@ -269,6 +287,21 @@ export function NotificationsPane() {
                 <p className="text-xs text-mauve font-medium truncate">{n.app_name}</p>
                 <p className="text-sm text-text font-medium truncate">{n.summary || "(no title)"}</p>
                 {n.body ? <p className="text-xs text-subtext0 line-clamp-2 mt-0.5">{n.body}</p> : null}
+                {n.actions.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {n.actions.map((a) => (
+                      <button
+                        key={a.key}
+                        type="button"
+                        className="toggle-chip text-[10px]"
+                        disabled={actionMut.isPending}
+                        onClick={() => actionMut.mutate({ id: n.id, action_key: a.key })}
+                      >
+                        {a.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 <p className="text-[10px] text-subtext1 mt-1">{formatTime(n.timestamp)}</p>
               </div>
               <button
@@ -282,6 +315,51 @@ export function NotificationsPane() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="glass-card p-5 flex flex-col gap-3">
+        <h3 className="text-sm font-semibold text-text">App rules</h3>
+        <p className="text-xs text-subtext0">Muted apps are suppressed in the inbox UI.</p>
+        {rulesQuery.isLoading ? (
+          <p className="text-xs text-subtext0">Loading rules…</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-1">
+              {mutedApps.length === 0 ? (
+                <span className="text-xs text-subtext0">No muted apps</span>
+              ) : (
+                mutedApps.map((app) => (
+                  <button
+                    key={app}
+                    type="button"
+                    className="toggle-chip text-[10px] active"
+                    onClick={() =>
+                      rulesMut.mutate(mutedApps.filter((a) => a !== app))
+                    }
+                  >
+                    {app} ×
+                  </button>
+                ))
+              )}
+            </div>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const fd = new FormData(e.currentTarget)
+                const app = String(fd.get("app") ?? "").trim()
+                if (!app || mutedApps.includes(app)) return
+                rulesMut.mutate([...mutedApps, app])
+                e.currentTarget.reset()
+              }}
+            >
+              <input name="app" className="input flex-1 text-sm" placeholder="App name to mute" />
+              <button type="submit" className="btn-surface text-xs" disabled={rulesMut.isPending}>
+                Mute app
+              </button>
+            </form>
+          </>
+        )}
       </section>
 
       <section className="glass-card p-5 flex flex-col gap-5">

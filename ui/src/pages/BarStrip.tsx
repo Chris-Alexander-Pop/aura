@@ -17,6 +17,7 @@ import {
   type BarSectionId,
 } from "@/components/bar/useBarLayoutStore"
 import StatusCluster from "@/components/bar/StatusCluster"
+import NotificationToasts from "@/components/notifications/NotificationToasts"
 import { type StatusFlyoutId } from "@/components/bar/useFlyoutHover"
 import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
 import { connectWs, useWsStore } from "@/lib/ws"
@@ -309,6 +310,31 @@ function CalendarPreviewBlock() {
   )
 }
 
+function LauncherBlock() {
+  return (
+    <div className="flex justify-center py-1">
+      <button
+        type="button"
+        title="Launcher (Super+Space)"
+        className="flex h-9 w-full items-center justify-center rounded-xl text-mauve transition-colors hover:bg-surface1/70"
+        onClick={() => void api.auraToggleWindow("launcher")}
+      >
+        <span className="icon text-[22px]">search</span>
+      </button>
+    </div>
+  )
+}
+
+function TrayBlock() {
+  return (
+    <div className="flex justify-center py-0.5" title="System tray — StatusNotifier integration pending">
+      <div className="flex h-8 w-full items-center justify-center rounded-lg text-subtext1/50">
+        <span className="icon text-lg">symptoms</span>
+      </div>
+    </div>
+  )
+}
+
 function PowerBlock() {
   const buttonRef = useRef<HTMLButtonElement>(null)
 
@@ -377,6 +403,10 @@ export default function BarStrip() {
 
   const renderSection = (id: BarSectionId) => {
     switch (id) {
+      case "launcher":
+        return <LauncherBlock />
+      case "tray":
+        return <TrayBlock />
       case "workspaces":
         return <WorkspacesBlock />
       case "runningApps":
@@ -398,6 +428,7 @@ export default function BarStrip() {
 
   return (
     <div className="aura-bar-root relative flex h-full min-h-0 w-full flex-row text-text pointer-events-none">
+      <NotificationToasts />
       <div className="relative z-10 flex min-h-0 w-14 shrink-0 flex-col overflow-hidden border-r border-surface0/80 bg-mantle pointer-events-auto">
         <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-1 py-2">
           {ordered.map((id) => (

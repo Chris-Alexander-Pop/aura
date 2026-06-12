@@ -20,6 +20,7 @@ import { AutomationsPane } from "./control-center/panes/AutomationsPane"
 import { CalendarNavPane } from "./control-center/panes/CalendarNavPane"
 import { LogsPane } from "./control-center/panes/LogsPane"
 import { DevopsPane } from "./control-center/panes/DevopsPane"
+import { VaultPane } from "./control-center/panes/VaultPane"
 import { CommunicationPane } from "./control-center/panes/CommunicationPane"
 
 function renderPane(active: PaneId) {
@@ -54,6 +55,8 @@ function renderPane(active: PaneId) {
       return <LogsPane />
     case "devops":
       return <DevopsPane />
+    case "vault":
+      return <VaultPane />
     case "communication":
       return <CommunicationPane />
     case "fitness":

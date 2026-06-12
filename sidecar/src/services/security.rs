@@ -1,4 +1,5 @@
 use crate::services::ServiceRegistry;
+use crate::utils::keyring;
 use crate::utils::process;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -76,9 +77,11 @@ pub fn firewall_status_none() -> serde_json::Value {
     })
 }
 
-pub fn keyring_status_json(available: bool) -> serde_json::Value {
+pub fn keyring_status_json(available: bool, unlocked: bool, message: Option<&str>) -> serde_json::Value {
     serde_json::json!({
-        "available": available
+        "available": available,
+        "unlocked": unlocked,
+        "message": message
     })
 }
 
@@ -538,11 +541,12 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Security.GetKeyringStatus", |_params| async move {
-        let available = process::exec_command(&["which", "secret-tool"])
-            .await
-            .map(|output| parse_command_found(&output))
-            .unwrap_or(false);
-        Ok(keyring_status_json(available))
+        let probe = keyring::probe_keyring().await;
+        Ok(keyring_status_json(
+            probe.available,
+            probe.unlocked,
+            probe.message.as_deref(),
+        ))
     });
 
     registry.register("Security.GetCertificates", |_params| async move {
@@ -842,8 +846,10 @@ mod parser_tests {
 
     #[test]
     fn keyring_status_json_branches() {
-        assert_eq!(keyring_status_json(true)["available"], true);
-        assert_eq!(keyring_status_json(false)["available"], false);
+        assert_eq!(keyring_status_json(true, true, None)["available"], true);
+        assert_eq!(keyring_status_json(true, true, None)["unlocked"], true);
+        assert_eq!(keyring_status_json(false, false, Some("x"))["available"], false);
+        assert_eq!(keyring_status_json(true, false, Some("locked"))["unlocked"], false);
         assert!(!parse_command_found(&fixture("which_not_found.txt")));
         assert!(parse_command_found(&fixture("which_secret_tool.txt")));
     }
