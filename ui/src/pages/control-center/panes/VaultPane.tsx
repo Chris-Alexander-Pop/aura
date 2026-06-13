@@ -60,7 +60,9 @@ function BackupSection({ backup }: { backup: VaultBackupStatusView | undefined }
         <p className="text-xs text-red border border-red/25 rounded-lg px-3 py-2">{backup.last_error}</p>
       ) : backup.state === "idle" && backup.engine == null ? (
         <p className="text-xs text-subtext0">
-          Backup engine is not wired yet — sidecar reports idle until rclone/restic integration lands.
+          Set <code className="text-subtext1">AURA_VAULT_RESTIC_REPO</code> to a restic repository path
+          (local dir or <code className="text-subtext1">rclone:remote:path</code>) and install restic to
+          probe snapshot status.
         </p>
       ) : null}
     </div>

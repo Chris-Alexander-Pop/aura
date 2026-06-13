@@ -304,6 +304,25 @@ export const api = {
     call<
       Array<{ id: string; name: string; image: string; status: string; ports?: string }>
     >("DevOps.GetDockerContainers"),
+  startDevopsContainer: (name: string) =>
+    call<{ success: boolean }>("DevOps.StartContainer", { name }),
+  stopDevopsContainer: (name: string) =>
+    call<{ success: boolean }>("DevOps.StopContainer", { name }),
+  restartDevopsContainer: (name: string) =>
+    call<{ success: boolean }>("DevOps.RestartContainer", { name }),
+  getDevopsContainerLogs: (name: string, lines?: number) =>
+    call<{ logs: string }>("DevOps.GetContainerLogs", { name, ...(lines != null ? { lines } : {}) }),
+  getDevopsGitRepos: (path?: string) =>
+    call<Array<{ path: string; name: string; branch: string; status: string }>>(
+      "DevOps.GetGitRepos",
+      path ? { path } : {}
+    ),
+  getDevopsSystemdTimers: () =>
+    call<Array<{ name: string; next_run: string; last_run: string; active: boolean }>>(
+      "DevOps.GetSystemdTimers"
+    ),
+  getDevopsKubernetesPods: () =>
+    call<{ pods: string }>("DevOps.GetKubernetesPods"),
   getProductivityStats: () => call<Record<string, unknown>>("Productivity.GetStats"),
   getProductivityTasks: () =>
     call<
@@ -354,12 +373,36 @@ export const api = {
       limit,
     }),
   getUnreadMessages:     () => call<Record<string, number>>("Communication.GetUnread"),
+  getCommunicationApps: () => call<string[]>("Communication.GetCommunicationApps"),
+  launchCommunicationApp: (app: string) =>
+    call<{ success: boolean }>("Communication.LaunchApp", { app_name: app }),
+  importCommunicationUnread: (counts: Record<string, number>) =>
+    call<{ ok: boolean }>("Communication.ImportUnread", { counts }),
   getFitnessStats:       () => call<Record<string, unknown>>("Fitness.GetGoals"),
   fitnessSetGoal: (type: string, target: number) =>
     call<{ id: string; goal_type: string; target: number; current: number }>("Fitness.SetGoal", {
       type,
       target,
     }),
+  fitnessStartWorkout: (type: string) =>
+    call<{ id: string; workout_type: string; start_time: number }>("Fitness.StartWorkout", { type }),
+  fitnessStopWorkout: (id?: string) =>
+    call<{ id?: string; success?: boolean; message?: string }>(
+      "Fitness.StopWorkout",
+      id ? { id } : {}
+    ),
+  getFitnessWorkoutHistory: () =>
+    call<
+      Array<{
+        id: string
+        workout_type: string
+        start_time: number
+        end_time?: number | null
+        duration_seconds?: number | null
+      }>
+    >("Fitness.GetWorkoutHistory"),
+  getFitnessActivity: () =>
+    call<{ date: string; workout_minutes?: number; steps: number }>("Fitness.GetActivity"),
 
   // Brightness
   getBrightness: (monitor: string) => call<{ brightness: number }>("Brightness.Get", { monitor }),
@@ -423,6 +466,27 @@ export const api = {
   getAuraSettingsSchema: () => call<Record<string, unknown>>("Settings.GetSchema"),
   resetAuraSettings: () => call<{ ok: boolean }>("Settings.Reset"),
 
+  // Appearance (theme + night light)
+  getNightLight: () =>
+    call<{ enabled: boolean; temperature: number }>("Appearance.GetNightLight"),
+  setNightLight: (partial: { enabled?: boolean; temperature?: number }) =>
+    call<{ ok: boolean; state: { enabled: boolean; temperature: number } }>(
+      "Appearance.SetNightLight",
+      partial
+    ),
+  getAppearanceTheme: () => call<{ theme: string }>("Appearance.GetTheme"),
+  setAppearanceTheme: (theme: string) =>
+    call<{ ok: boolean; theme: string }>("Appearance.SetTheme", { theme }),
+
+  // System tray
+  trayList: () =>
+    call<{ items: Array<{ id: string; title: string; icon_name?: string; status: string; category: string }> }>(
+      "Tray.List"
+    ),
+  trayActivate: (id: string) => call<{ ok: boolean }>("Tray.Activate", { id }),
+  traySecondaryActivate: (id: string) =>
+    call<{ ok: boolean }>("Tray.SecondaryActivate", { id }),
+
   // Processes (task manager)
   processListTop: (limit?: number) =>
     call<Array<{ pid: number; cpu: number; name: string }>>("Process.ListTop", {
@@ -433,7 +497,10 @@ export const api = {
   // Launcher
   launcherQuery: (query: string) =>
     callData("Launcher.Query", { query }).then(adaptLauncherQuery),
-  launcherRun: (id: string) => call<{ ok: boolean }>("Launcher.Run", { id }),
+  launcherRun: (id: string, source?: "vicinae" | "desktop") =>
+    call<{ ok: boolean }>("Launcher.Run", { id, ...(source ? { source } : {}) }),
+  vicinaeExec: (id: string, source: "vicinae" | "desktop" = "vicinae") =>
+    call<{ ok: boolean }>("Vicinae.Exec", { id, source }),
   launcherRecent: () => callData("Launcher.Recent").then(adaptLauncherRecent),
   launcherPin: (id: string, pinned: boolean) =>
     call<{ ok: boolean; id: string; pinned: boolean }>("Launcher.Pin", { id, pinned }),

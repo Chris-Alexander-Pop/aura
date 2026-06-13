@@ -59,6 +59,8 @@ struct LauncherResult {
     pinned: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     score: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
 }
 
 fn desktop_dirs_fingerprint(dirs: &[PathBuf]) -> String {
@@ -329,6 +331,7 @@ fn entry_to_result(entry: &DesktopEntry, pinned: bool, score: Option<i32>) -> La
         categories: entry.categories.clone(),
         pinned,
         score,
+        source: None,
     }
 }
 
@@ -401,6 +404,73 @@ async fn vicinae_query(socket_path: &str, query: &str, limit: usize) -> Result<V
     Ok(serde_json::from_value(results_value)?)
 }
 
+async fn vicinae_exec_socket(socket_path: &str, id: &str) -> Result<()> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::UnixStream;
+
+    for payload in [
+        json!({ "exec": id }).to_string() + "\n",
+        json!({ "launch_app": { "app_id": id } }).to_string() + "\n",
+        json!({ "launchApp": { "id": id } }).to_string() + "\n",
+    ] {
+        let mut stream = match UnixStream::connect(socket_path).await {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        if stream.write_all(payload.as_bytes()).await.is_err() {
+            continue;
+        }
+        let _ = stream.shutdown().await;
+        let mut buf = Vec::new();
+        if stream.read_to_end(&mut buf).await.is_ok() {
+            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&buf) {
+                if v.get("ok").and_then(|x| x.as_bool()) == Some(false) {
+                    continue;
+                }
+                if v.get("error").is_some() {
+                    continue;
+                }
+            }
+            return Ok(());
+        }
+    }
+    bail!("vicinae socket exec failed")
+}
+
+async fn vicinae_exec(id: &str) -> Result<()> {
+    validate_app_id(id)?;
+    if let Ok(socket_path) = std::env::var("VICINAE_SOCKET") {
+        if vicinae_exec_socket(&socket_path, id).await.is_ok() {
+            return Ok(());
+        }
+    }
+    let uri = format!("vicinae://launch/{id}");
+    if process::run_allowlisted_detached(&["vicinae", uri.as_str()])
+        .await
+        .is_ok()
+    {
+        return Ok(());
+    }
+    if process::run_allowlisted_detached(&["vicinae", "launch", id])
+        .await
+        .is_ok()
+    {
+        return Ok(());
+    }
+    bail!("could not exec vicinae item: {id}")
+}
+
+async fn run_desktop_app(id: &str) -> Result<()> {
+    validate_app_id(id)?;
+    let index = load_index();
+    if !index.iter().any(|e| e.id == id) {
+        bail!("unknown app id: {id}");
+    }
+    process::run_allowlisted_detached(&["gtk-launch", id]).await?;
+    let _ = touch_recent(id).await;
+    Ok(())
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Launcher.VicinaeQuery", |params| async move {
         let query = params
@@ -417,7 +487,10 @@ pub fn register(registry: &mut ServiceRegistry) {
             .clamp(1, MAX_QUERY_LIMIT);
 
         if let Ok(socket_path) = std::env::var("VICINAE_SOCKET") {
-            if let Ok(results) = vicinae_query(&socket_path, query, limit).await {
+            if let Ok(mut results) = vicinae_query(&socket_path, query, limit).await {
+                for r in &mut results {
+                    r.source = Some("vicinae".into());
+                }
                 return Ok(json!({ "results": results, "source": "vicinae" }));
             }
         }
@@ -443,21 +516,40 @@ pub fn register(registry: &mut ServiceRegistry) {
         Ok(json!({ "results": results }))
     });
 
+    registry.register("Vicinae.Exec", |params| async move {
+        let id = params
+            .as_ref()
+            .and_then(|p| p.get("id"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("missing id"))?;
+        let source = params
+            .as_ref()
+            .and_then(|p| p.get("source"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("vicinae");
+        if source == "desktop" {
+            run_desktop_app(id).await?;
+        } else {
+            vicinae_exec(id).await?;
+        }
+        Ok(json!({ "ok": true }))
+    });
+
     registry.register("Launcher.Run", |params| async move {
         let id = params
             .as_ref()
             .and_then(|p| p.get("id"))
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("missing id"))?;
-        validate_app_id(id)?;
-
-        let index = load_index();
-        if !index.iter().any(|e| e.id == id) {
-            bail!("unknown app id: {id}");
+        let source = params
+            .as_ref()
+            .and_then(|p| p.get("source"))
+            .and_then(|v| v.as_str());
+        if source == Some("vicinae") {
+            vicinae_exec(id).await?;
+        } else {
+            run_desktop_app(id).await?;
         }
-
-        process::run_allowlisted_detached(&["gtk-launch", id]).await?;
-        let _ = touch_recent(id).await;
         Ok(json!({ "ok": true }))
     });
 

@@ -34,6 +34,8 @@ pub mod dashboard;
 pub mod capture;
 pub mod launcher;
 pub mod vault;
+pub mod appearance;
+pub mod tray;
 pub mod caldav;
 #[cfg(feature = "offensive-security")]
 pub mod offensive_policy;

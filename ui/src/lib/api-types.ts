@@ -418,6 +418,7 @@ export interface LauncherAppView {
   comment?: string
   exec?: string
   icon?: string
+  source?: "vicinae" | "desktop"
 }
 
 export interface LauncherQueryView {
@@ -441,6 +442,10 @@ export function parseLauncherApp(raw: unknown): LauncherAppView | null {
     comment: optionalString(raw.comment),
     exec: optionalString(raw.exec),
     icon: optionalString(raw.icon),
+    source:
+      raw.source === "vicinae" || raw.source === "desktop"
+        ? raw.source
+        : undefined,
   }
 }
 

@@ -1,6 +1,6 @@
 use crate::services::ServiceRegistry;
 use crate::utils::process;
-use anyhow::Result;
+use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::path::PathBuf;
@@ -67,7 +67,7 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
         )?;
 
-        process::exec_command(&["docker", "start", &name]).await?;
+        container_exec(&["start", &name]).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -79,7 +79,7 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
         )?;
 
-        process::exec_command(&["docker", "stop", &name]).await?;
+        container_exec(&["stop", &name]).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -91,7 +91,7 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .ok_or_else(|| anyhow::anyhow!("Missing name"))?,
         )?;
 
-        process::exec_command(&["docker", "restart", &name]).await?;
+        container_exec(&["restart", &name]).await?;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -109,7 +109,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|v| serde_json::from_value(v).ok())
             .unwrap_or(100);
 
-        let output = process::exec_command(&["docker", "logs", "--tail", &lines.to_string(), &name]).await?;
+        let output = container_exec(&["logs", "--tail", &lines.to_string(), &name]).await?;
         Ok(serde_json::json!({ "logs": output }))
     });
 
@@ -293,6 +293,19 @@ pub async fn resolve_container_runtime() -> ContainerRuntime {
         return ContainerRuntime::Docker;
     }
     ContainerRuntime::None
+}
+
+async fn container_exec(args: &[&str]) -> Result<String> {
+    let runtime = resolve_container_runtime().await;
+    let bin = match runtime {
+        ContainerRuntime::Podman => "podman",
+        ContainerRuntime::Docker => "docker",
+        ContainerRuntime::None => bail!("no container runtime (install podman or set AURA_ALLOW_DOCKER=1)"),
+    };
+    let mut owned = vec![bin.to_string()];
+    owned.extend(args.iter().map(|s| (*s).to_string()));
+    let refs: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
+    process::exec_command(&refs).await
 }
 
 pub async fn list_containers_preferred() -> Result<Vec<DockerContainer>> {

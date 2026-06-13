@@ -23,13 +23,32 @@ pub struct Goal {
 
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Fitness.GetActivity", |_params| async move {
-        // Get today's activity
+        storage::init().await?;
+        let items = storage::scan_namespace("fitness_workouts").await?;
+        let workouts = workouts_from_storage_values(items);
         let today = chrono::Utc::now().date_naive();
+        let mut workout_minutes = 0u64;
+        for w in workouts {
+            if w.end_time.is_none() {
+                continue;
+            }
+            let start_ms = w.start_time;
+            let start_date = chrono::DateTime::from_timestamp_millis(start_ms)
+                .map(|dt| dt.date_naive())
+                .unwrap_or(today);
+            if start_date != today {
+                continue;
+            }
+            if let Some(secs) = w.duration_seconds {
+                workout_minutes += secs / 60;
+            }
+        }
         Ok(serde_json::json!({
             "date": today.to_string(),
             "steps": 0,
             "calories": 0,
-            "distance_km": 0.0
+            "distance_km": 0.0,
+            "workout_minutes": workout_minutes
         }))
     });
 
@@ -68,9 +87,37 @@ pub fn register(registry: &mut ServiceRegistry) {
         Ok(serde_json::to_value(&workout)?)
     });
 
-    registry.register("Fitness.StopWorkout", |_params| async move {
-        // Would find active workout and stop it
-        Ok(serde_json::json!({ "success": true }))
+    registry.register("Fitness.StopWorkout", |params| async move {
+        let workout_id: Option<String> = params
+            .as_ref()
+            .and_then(|p| p.get("id").cloned())
+            .and_then(|v| serde_json::from_value(v).ok());
+
+        storage::init().await?;
+        let items = storage::scan_namespace("fitness_workouts").await?;
+        let workouts = workouts_from_storage_values(items);
+
+        let target_idx = if let Some(ref id) = workout_id {
+            workouts.iter().position(|w| w.id == *id && w.end_time.is_none())
+        } else {
+            workouts.iter().position(|w| w.end_time.is_none())
+        };
+
+        let Some(idx) = target_idx else {
+            return Ok(serde_json::json!({ "success": false, "message": "no active workout" }));
+        };
+
+        let end = chrono::Utc::now().timestamp_millis();
+        let mut finished = workouts[idx].clone();
+        finished.end_time = Some(end);
+        finished.duration_seconds = Some(((end - finished.start_time).max(0) / 1000) as u64);
+        storage::set_kv(
+            "fitness_workouts",
+            &finished.id,
+            &serde_json::to_value(&finished)?,
+        )
+        .await?;
+        Ok(serde_json::to_value(&finished)?)
     });
 
     registry.register("Fitness.GetWorkoutHistory", |_params| async move {

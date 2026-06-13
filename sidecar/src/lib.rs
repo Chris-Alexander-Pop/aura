@@ -47,6 +47,8 @@ pub fn build_registry() -> ServiceRegistry {
     services::capture::register(&mut registry);
     services::launcher::register(&mut registry);
     services::vault::register(&mut registry);
+    services::appearance::register(&mut registry);
+    services::tray::register(&mut registry);
     registry
 }
 

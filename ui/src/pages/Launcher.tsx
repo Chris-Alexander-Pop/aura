@@ -19,7 +19,10 @@ async function searchLauncher(query: string): Promise<LauncherAppView[]> {
   ])
   const seen = new Set<string>()
   const merged: LauncherAppView[] = []
-  for (const app of [...vicinae.results, ...desktop.results]) {
+  for (const app of [
+    ...vicinae.results.map((a) => ({ ...a, source: "vicinae" as const })),
+    ...desktop.results.map((a) => ({ ...a, source: "desktop" as const })),
+  ]) {
     if (seen.has(app.id)) continue
     seen.add(app.id)
     merged.push(app)
@@ -53,7 +56,12 @@ export default function Launcher() {
   const run = async (app: LauncherAppView) => {
     setRunError(null)
     try {
-      await api.launcherRun(app.id)
+      const source = app.source ?? "desktop"
+      if (source === "vicinae") {
+        await api.vicinaeExec(app.id, "vicinae")
+      } else {
+        await api.launcherRun(app.id, "desktop")
+      }
       hideLauncher()
     } catch (err) {
       setRunError(err instanceof Error ? err.message : "Failed to launch")
@@ -108,6 +116,11 @@ export default function Launcher() {
             >
               <span className="icon text-xl text-mauve">{app.icon ?? "apps"}</span>
               <span className="min-w-0 flex-1 truncate font-medium">{app.name}</span>
+              {app.source === "vicinae" ? (
+                <span className="shrink-0 rounded-md bg-mauve/20 px-1.5 py-0.5 text-[10px] text-mauve">
+                  vicinae
+                </span>
+              ) : null}
               {app.comment ? (
                 <span className="truncate text-xs text-subtext0">{app.comment}</span>
               ) : null}

@@ -91,6 +91,15 @@ export function registerSidecarInvalidations(qc: QueryClient): () => void {
       invalidate(qc, ["brightness"])
       invalidate(qc, ["brightness-monitors"])
     }),
+    useWsStore.getState().on("Appearance.NightLightChanged", () => {
+      invalidate(qc, ["night-light"])
+    }),
+    useWsStore.getState().on("Settings.Changed", () => {
+      invalidate(qc, ["aura-settings"])
+    }),
+    useWsStore.getState().on("Tray.Changed", () => {
+      invalidate(qc, ["tray-items"])
+    }),
   ]
   return () => offs.forEach((off) => off())
 }

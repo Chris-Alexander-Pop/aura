@@ -106,6 +106,34 @@ export function FitnessPane() {
     refetchInterval: 30_000,
   })
 
+  const activityQuery = useQuery({
+    queryKey: ["fitness-activity"],
+    queryFn: api.getFitnessActivity,
+    refetchInterval: 30_000,
+  })
+  const historyQuery = useQuery({
+    queryKey: ["fitness-workouts"],
+    queryFn: api.getFitnessWorkoutHistory,
+    refetchInterval: 30_000,
+  })
+
+  const startWorkoutMut = useMutation({
+    mutationFn: (type: string) => api.fitnessStartWorkout(type),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["fitness-workouts"] })
+      void qc.invalidateQueries({ queryKey: ["fitness-activity"] })
+    },
+  })
+  const stopWorkoutMut = useMutation({
+    mutationFn: () => api.fitnessStopWorkout(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["fitness-workouts"] })
+      void qc.invalidateQueries({ queryKey: ["fitness-activity"] })
+    },
+  })
+
+  const activeWorkout = (historyQuery.data ?? []).find((w) => w.end_time == null)
+
   const createGoalMut = useMutation({
     mutationFn: () => {
       const target = Number(goalTarget)
@@ -164,6 +192,56 @@ export function FitnessPane() {
           <div className="skeleton h-28 rounded-xl" />
         </div>
       ) : null}
+
+      <div className="glass-card flex flex-col gap-3 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-subtext0">Workout</p>
+        {activeWorkout ? (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-text">
+              Active: {formatLabel(activeWorkout.workout_type)} ({activeWorkout.id})
+            </span>
+            <button
+              type="button"
+              className="btn-surface text-sm"
+              disabled={stopWorkoutMut.isPending}
+              onClick={() => stopWorkoutMut.mutate()}
+            >
+              Stop
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {(["run", "walk", "strength"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                className="toggle-chip text-xs capitalize"
+                disabled={startWorkoutMut.isPending}
+                onClick={() => startWorkoutMut.mutate(t)}
+              >
+                Start {t}
+              </button>
+            ))}
+          </div>
+        )}
+        {activityQuery.data?.workout_minutes != null ? (
+          <p className="text-xs text-subtext0">
+            Today: {activityQuery.data.workout_minutes} workout min (local SQLite)
+          </p>
+        ) : null}
+        {(historyQuery.data ?? []).length > 0 ? (
+          <ul className="max-h-24 overflow-y-auto text-xs text-subtext1 font-mono">
+            {(historyQuery.data ?? []).slice(0, 5).map((w) => (
+              <li key={w.id}>
+                {w.workout_type} · {w.duration_seconds ?? "…"}s
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <p className="text-[10px] text-subtext0">
+          Device sync (Garmin/Strava) remains a future integration — use manual workouts locally.
+        </p>
+      </div>
 
       <div className="glass-card flex flex-col gap-3 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-subtext0">Add goal</p>

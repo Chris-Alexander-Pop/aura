@@ -13,10 +13,36 @@ pub struct Message {
     pub read: bool,
 }
 
+lazy_static::lazy_static! {
+    static ref UNREAD_CACHE: tokio::sync::RwLock<serde_json::Value> = tokio::sync::RwLock::new(serde_json::json!({}));
+}
+
+const UNREAD_CACHE_KEY: &str = "unread_cache";
+
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Communication.GetUnread", |_params| async move {
-        // Comms hub deferred — empty map until bridge integrations land.
-        Ok(serde_json::json!({}))
+        storage::init().await?;
+        if let Some(v) = storage::get_kv("communication", UNREAD_CACHE_KEY).await? {
+            if unread_counts_schema_valid(&v) {
+                *UNREAD_CACHE.write().await = v.clone();
+                return Ok(v);
+            }
+        }
+        Ok(UNREAD_CACHE.read().await.clone())
+    });
+
+    registry.register("Communication.ImportUnread", |params| async move {
+        let counts = params
+            .as_ref()
+            .and_then(|p| p.get("counts").cloned())
+            .ok_or_else(|| anyhow::anyhow!("missing counts object"))?;
+        if !unread_counts_schema_valid(&counts) {
+            anyhow::bail!("invalid unread counts schema");
+        }
+        storage::init().await?;
+        storage::set_kv("communication", UNREAD_CACHE_KEY, &counts).await?;
+        *UNREAD_CACHE.write().await = counts.clone();
+        Ok(serde_json::json!({ "ok": true }))
     });
 
     registry.register("Communication.GetMessages", |_params| async move {

@@ -71,6 +71,21 @@ static ALLOWLIST: &[AllowlistEntry] = &[
         max_output_bytes: None,
     },
     AllowlistEntry {
+        binary: "wlsunset",
+        timeout: None,
+        max_output_bytes: None,
+    },
+    AllowlistEntry {
+        binary: "gammastep",
+        timeout: None,
+        max_output_bytes: None,
+    },
+    AllowlistEntry {
+        binary: "vicinae",
+        timeout: None,
+        max_output_bytes: None,
+    },
+    AllowlistEntry {
         binary: "pactl",
         timeout: None,
         max_output_bytes: None,

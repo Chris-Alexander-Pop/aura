@@ -13,6 +13,8 @@ const MAX_SETTINGS_BYTES: usize = 65_536;
 
 /// Bar section ids (must match `ui/src/components/bar/useBarLayoutStore.ts`).
 const BAR_SECTION_IDS: &[&str] = &[
+    "launcher",
+    "tray",
     "workspaces",
     "runningApps",
     "media",
@@ -133,6 +135,13 @@ async fn save_settings(settings: &AuraSettings) -> Result<()> {
     Ok(())
 }
 
+pub(crate) async fn apply_settings_partial(partial: Map<String, Value>) -> Result<AuraSettings> {
+    let current = load_settings().await?;
+    let merged = merge_partial(&current, &partial)?;
+    save_settings(&merged).await?;
+    Ok(merged)
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Settings.Get", |_params| async move {
         let settings = load_settings().await?;
@@ -153,6 +162,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         let current = load_settings().await?;
         let merged = merge_partial(&current, &partial)?;
         save_settings(&merged).await?;
+        crate::notify::emit("Settings.Changed", json!({ "field": "settings" }));
         Ok(json!({ "settings": merged }))
     });
 

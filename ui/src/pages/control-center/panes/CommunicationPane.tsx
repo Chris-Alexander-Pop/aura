@@ -1,6 +1,6 @@
 import { motion } from "framer-motion"
 import { useMemo } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { getNavItem } from "../navigation"
@@ -21,40 +21,12 @@ function formatChannelLabel(key: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-function EmptyPanel({ icon, title, body }: { icon: string; title: string; body: string }) {
-  return (
-    <div className="glass-card flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-      <span className="icon text-5xl text-subtext1/90">{icon}</span>
-      <div className="max-w-sm space-y-1.5">
-        <p className="text-sm font-semibold text-text">{title}</p>
-        <p className="text-xs leading-relaxed text-subtext0">{body}</p>
-      </div>
-    </div>
-  )
-}
-
-function KpiTile({
-  label,
-  value,
-  detail,
-  className,
-}: {
-  label: string
-  value: string | number
-  detail?: string
-  className?: string
-}) {
-  return (
-    <div className={cn("glass-card flex min-w-0 flex-col gap-1 p-3", className)}>
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-subtext0">{label}</p>
-      <p className="text-2xl font-semibold tabular-nums text-text">{value}</p>
-      {detail ? (
-        <p className="truncate text-[11px] text-subtext1" title={detail}>
-          {detail}
-        </p>
-      ) : null}
-    </div>
-  )
+const APP_ICONS: Record<string, string> = {
+  telegram: "send",
+  discord: "forum",
+  signal: "lock",
+  whatsapp: "chat",
+  slack: "tag",
 }
 
 export function CommunicationPane() {
@@ -64,6 +36,15 @@ export function CommunicationPane() {
     queryFn: api.getUnreadMessages,
     refetchInterval: 20_000,
   })
+  const appsQuery = useQuery({
+    queryKey: ["comm-apps"],
+    queryFn: api.getCommunicationApps,
+    refetchInterval: 120_000,
+  })
+
+  const launchMut = useMutation({
+    mutationFn: (app: string) => api.launchCommunicationApp(app),
+  })
 
   const rows = useMemo(() => {
     const parsed = parseCounts(data).filter((r) => r.count > 0)
@@ -71,10 +52,7 @@ export function CommunicationPane() {
   }, [data])
 
   const totalUnread = useMemo(() => rows.reduce((s, r) => s + r.count, 0), [rows])
-  const sourceCount = rows.length
-  const top = rows[0]
-
-  const topLabel = top ? formatChannelLabel(top.channel) : null
+  const apps = appsQuery.data ?? []
 
   return (
     <motion.div
@@ -88,82 +66,76 @@ export function CommunicationPane() {
         <span className="icon text-2xl text-mauve">{icon}</span>
         <div className="min-w-0 flex-1">
           <h2 className="text-xl font-semibold text-text">{label}</h2>
-          <p className="mt-0.5 text-xs text-subtext1">
-            {isLoading
-              ? "Loading unread counts…"
-              : isError
-                ? "Could not refresh inbox stats."
-                : totalUnread === 0
-                  ? "Inbox is clear — no unread across connected sources."
-                  : `${totalUnread} unread across ${sourceCount} source${sourceCount === 1 ? "" : "s"}.`}
-            {isFetching && !isLoading ? <span className="text-subtext0"> · Updating…</span> : null}
+          <p className="mt-0.5 text-xs text-subtext1 max-w-prose">
+            Launch installed clients here. Unified inbox unread counts come from your separate comm app via{" "}
+            <code className="text-subtext0">Communication.ImportUnread</code> (see{" "}
+            <code className="text-subtext0">docs/integrations/communication-hub.md</code>).
           </p>
         </div>
       </div>
 
+      <section className="glass-card p-4">
+        <h3 className="text-sm font-semibold text-text mb-2">Quick launch</h3>
+        {appsQuery.isLoading ? (
+          <div className="skeleton h-12 rounded-lg" />
+        ) : apps.length === 0 ? (
+          <p className="text-xs text-subtext0">
+            No supported messaging apps on PATH (telegram, discord, signal, whatsapp, slack).
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {apps.map((app) => (
+              <button
+                key={app}
+                type="button"
+                className="toggle-chip text-xs capitalize"
+                disabled={launchMut.isPending}
+                onClick={() => launchMut.mutate(app)}
+              >
+                <span className="icon text-base">{APP_ICONS[app] ?? "chat"}</span>
+                {app}
+              </button>
+            ))}
+          </div>
+        )}
+        {launchMut.isError ? (
+          <p className="mt-2 text-xs text-red">
+            {launchMut.error instanceof Error ? launchMut.error.message : "Launch failed"}
+          </p>
+        ) : null}
+      </section>
+
       {isError ? (
-        <EmptyPanel
-          icon="error_outline"
-          title="Unread summary unavailable"
-          body={
-            error instanceof Error
-              ? error.message
-              : "Sidecar request failed. Check that ags-sidecar is running and Communication.GetUnread is registered."
-          }
-        />
-      ) : null}
-
-      {!isError && isLoading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="glass-card p-3">
-              <div className="skeleton mb-2 h-3 w-16 rounded" />
-              <div className="skeleton h-8 w-2/3 rounded-lg" />
-              <div className="skeleton mt-2 h-3 w-full rounded" />
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {!isError && !isLoading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <KpiTile label="Unread" value={totalUnread} />
-          <KpiTile label="Sources" value={sourceCount} detail={sourceCount ? "With new activity" : "None pending"} />
-          <KpiTile
-            label="Top source"
-            value={top ? top.count : "—"}
-            detail={topLabel ? `${topLabel}` : "All quiet"}
-          />
-        </div>
+        <p className="text-xs text-red">
+          {error instanceof Error ? error.message : "Could not load unread counts"}
+        </p>
       ) : null}
 
       {!isError && !isLoading && totalUnread === 0 ? (
-        <EmptyPanel
-          icon="all_inbox"
-          title="You're caught up"
-          body="When the sidecar aggregates mail, chat, and other feeds, new unread counts land here with per-source breakdown."
-        />
+        <div className="glass-card flex flex-col items-center gap-2 px-6 py-10 text-center">
+          <span className="icon text-5xl text-subtext1">all_inbox</span>
+          <p className="text-sm font-semibold text-text">Unified inbox pending</p>
+          <p className="text-xs text-subtext0 max-w-md">
+            When your comm hub pushes unread counts through the sidecar, they appear here. Until then, use quick
+            launch above.
+          </p>
+        </div>
       ) : null}
 
       {!isError && !isLoading && totalUnread > 0 ? (
         <div className="flex flex-col gap-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-subtext0">By source</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-subtext0">
+            Unread · {totalUnread}
+            {isFetching ? " · updating…" : ""}
+          </p>
           <ul className="flex flex-col gap-2">
             {rows.map(({ channel, count }) => (
               <li
                 key={channel}
-                className="glass-card flex items-center justify-between gap-3 p-3 transition-colors hover:bg-surface0/40"
+                className="glass-card flex items-center justify-between gap-3 p-3"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-text">{formatChannelLabel(channel)}</p>
-                  <p className="truncate font-mono text-[11px] text-subtext0">{channel}</p>
-                </div>
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums",
-                    "bg-mauve/20 text-mauve"
-                  )}
-                >
+                <p className="text-sm font-medium text-text">{formatChannelLabel(channel)}</p>
+                <span className="rounded-full bg-mauve/20 px-2.5 py-1 text-xs font-semibold text-mauve">
                   {count}
                 </span>
               </li>

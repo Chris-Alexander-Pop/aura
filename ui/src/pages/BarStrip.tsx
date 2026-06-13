@@ -323,14 +323,50 @@ function LauncherBlock() {
 }
 
 function TrayBlock() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["tray-items"],
+    queryFn: async () => (await api.trayList()).items,
+    refetchInterval: 5000,
+  })
+  const items = data ?? []
+
+  if (isLoading && items.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-1 py-1" aria-busy="true" aria-label="Loading tray">
+        <div className="h-8 w-8 animate-pulse rounded-lg bg-surface1/35" />
+      </div>
+    )
+  }
+
+  if (items.length === 0) {
+    return (
+      <div
+        className="mx-0.5 flex flex-col items-center gap-0.5 rounded-lg border border-dashed border-surface1/45 bg-surface0/30 px-1 py-1.5"
+        title="No StatusNotifier tray icons (start nm-applet, blueman, etc.)"
+        aria-label="System tray empty"
+      >
+        <span className="icon text-base text-overlay0/75">symptoms</span>
+      </div>
+    )
+  }
+
   return (
-    <div
-      className="mx-0.5 flex flex-col items-center gap-0.5 rounded-lg border border-dashed border-surface1/45 bg-surface0/30 px-1 py-1.5"
-      title="System tray — StatusNotifier D-Bus bridge planned (see docs/roadmap/react-bar-migration.md)"
-      aria-label="System tray placeholder"
-    >
-      <span className="icon text-base text-overlay0/75">symptoms</span>
-      <span className="text-[7px] font-medium uppercase tracking-wide text-overlay0/80">Tray</span>
+    <div className="flex flex-col items-center gap-1 py-1" aria-label="System tray">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          title={item.title || item.id}
+          className="flex h-8 w-full items-center justify-center rounded-lg text-subtext1 transition-colors hover:bg-surface0/70 hover:text-text"
+          onClick={() => void api.trayActivate(item.id)}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            void api.traySecondaryActivate(item.id)
+          }}
+        >
+          <span className="icon text-lg">{item.icon_name ?? "apps"}</span>
+        </button>
+      ))}
     </div>
   )
 }

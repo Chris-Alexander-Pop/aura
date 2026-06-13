@@ -4,6 +4,7 @@ import { HashRouter, Routes, Route } from "react-router-dom"
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query"
 import "./index.css"
 import { registerSidecarInvalidations } from "./lib/ws-invalidation"
+import ThemeBootstrap from "./components/ThemeBootstrap"
 
 import ControlCenter from "./pages/ControlCenter"
 import Dropdown from "./pages/Dropdown"
@@ -33,6 +34,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <SidecarWsInvalidation />
+      <ThemeBootstrap />
       <HashRouter>
         <Routes>
           <Route path="/control-center" element={<ControlCenter />} />

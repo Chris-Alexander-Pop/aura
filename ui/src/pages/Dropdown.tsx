@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils"
 import DropdownModuleTiles from "@/components/dropdown/DropdownModuleTiles"
 import { filterDropdownModules } from "@/lib/dropdown-tiles"
 import { notificationQueryKeys } from "@/lib/ws-invalidation"
+import { applyThemeToDocument, isDarkTheme } from "@/lib/applyTheme"
 import type { DndPrefsView } from "@/lib/api-types"
 import { isWithinScheduledQuietHours } from "@/pages/control-center/panes/NotificationsPane"
 
@@ -243,6 +244,33 @@ export default function Dropdown() {
     await api.captureScreenshot({ mode: "region", output: "clipboard" })
   }, [])
 
+  const { data: auraSettings } = useQuery({
+    queryKey: ["aura-settings"],
+    queryFn: api.getAuraSettings,
+    staleTime: 60_000,
+  })
+  const { data: nightLight } = useQuery({
+    queryKey: ["night-light"],
+    queryFn: api.getNightLight,
+    refetchInterval: 30_000,
+  })
+
+  const toggleTheme = useCallback(async () => {
+    const current = auraSettings?.settings.theme ?? "dark"
+    const next = isDarkTheme(current) ? "light" : "dark"
+    await api.setAppearanceTheme(next)
+    applyThemeToDocument(next)
+    await qc.invalidateQueries({ queryKey: ["aura-settings"] })
+  }, [auraSettings?.settings.theme, qc])
+
+  const toggleNightLight = useCallback(async () => {
+    const enabled = !(nightLight?.enabled ?? false)
+    await api.setNightLight({ enabled })
+    await qc.invalidateQueries({ queryKey: ["night-light"] })
+  }, [nightLight?.enabled, qc])
+
+  const themeDark = isDarkTheme(auraSettings?.settings.theme)
+
   const netLabel =
     quickLoading && !quick ? "…" : quickError ? "Wi‑Fi n/a" : (net?.active_connection ?? "Wi-Fi")
 
@@ -286,11 +314,18 @@ export default function Dropdown() {
           onClick={() => void toggleDnd()}
         />
         <QuickToggle
+          icon={themeDark ? "dark_mode" : "light_mode"}
+          label={themeDark ? "Dark" : "Light"}
+          active={themeDark}
+          title="Toggle light/dark theme (React panels)"
+          onClick={() => void toggleTheme()}
+        />
+        <QuickToggle
           icon="bedtime"
-          label="Night · n/a"
-          active={false}
-          disabled
-          title="No night-light / blue-filter integration yet (e.g. wlsunset)."
+          label={nightLight?.enabled ? "Night on" : "Night off"}
+          active={nightLight?.enabled}
+          title="Blue-light filter (wlsunset / gammastep via sidecar)"
+          onClick={() => void toggleNightLight()}
         />
         <QuickToggle
           icon={battIcon}

@@ -4,6 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type AuraSettingsView, type PowerProfile } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { DROPDOWN_TILE_IDS } from "@/lib/dropdown-tiles"
+import {
+  SortableIdList,
+  toggleChipInOrder,
+} from "@/components/settings/SortableIdList"
+import { applyThemeToDocument } from "@/lib/applyTheme"
 import { ALL_NAV_ITEMS, getNavItem } from "../navigation"
 const THEME_OPTIONS = ["dark", "light", "catppuccin-mocha", "catppuccin-frappe"] as const
 
@@ -193,7 +198,10 @@ export function SettingsPane() {
                     key={t}
                     type="button"
                     disabled={saveAura.isPending}
-                    onClick={() => void saveAura.mutateAsync({ theme: t })}
+                    onClick={() => {
+                      applyThemeToDocument(t)
+                      void saveAura.mutateAsync({ theme: t })
+                    }}
                     className={cn(
                       "toggle-chip text-xs",
                       auraSettings.data.settings.theme === t && "active"
@@ -205,43 +213,12 @@ export function SettingsPane() {
               </div>
             </div>
             <div>
-              <p className="text-xs text-subtext0 mb-2">Bar sections (order)</p>
-              <div className="flex flex-col gap-1">
-                {auraSettings.data.settings.bar_section_order.map((id, idx) => (
-                  <div key={id} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="text-text font-medium">{id}</span>
-                    <span className="flex gap-1">
-                      <button
-                        type="button"
-                        className="toggle-chip px-2 py-0.5"
-                        disabled={idx === 0 || saveAura.isPending}
-                        onClick={() => {
-                          const order = [...auraSettings.data!.settings.bar_section_order]
-                          ;[order[idx - 1], order[idx]] = [order[idx], order[idx - 1]]
-                          void saveAura.mutateAsync({ bar_section_order: order })
-                        }}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        className="toggle-chip px-2 py-0.5"
-                        disabled={
-                          idx >= auraSettings.data.settings.bar_section_order.length - 1 ||
-                          saveAura.isPending
-                        }
-                        onClick={() => {
-                          const order = [...auraSettings.data!.settings.bar_section_order]
-                          ;[order[idx + 1], order[idx]] = [order[idx], order[idx + 1]]
-                          void saveAura.mutateAsync({ bar_section_order: order })
-                        }}
-                      >
-                        ↓
-                      </button>
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <p className="text-xs text-subtext0 mb-2">Bar sections (drag to reorder)</p>
+              <SortableIdList
+                ids={auraSettings.data.settings.bar_section_order}
+                disabled={saveAura.isPending}
+                onReorder={(order) => void saveAura.mutateAsync({ bar_section_order: order })}
+              />
             </div>
             <div>
               <p className="text-xs text-subtext0 mb-2">Control center panes</p>
@@ -271,7 +248,7 @@ export function SettingsPane() {
             </div>
             <div>
               <p className="text-xs text-subtext0 mb-2">Dropdown modules</p>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 mb-2">
                 {DROPDOWN_TILE_IDS.map((mod) => {
                   const enabled = auraSettings.data.settings.dropdown_modules.includes(mod)
                   return (
@@ -280,12 +257,12 @@ export function SettingsPane() {
                       type="button"
                       disabled={saveAura.isPending}
                       onClick={() => {
-                        const set = new Set(auraSettings.data!.settings.dropdown_modules)
-                        if (enabled) set.delete(mod)
-                        else set.add(mod)
-                        void saveAura.mutateAsync({
-                          dropdown_modules: Array.from(set),
-                        })
+                        const next = toggleChipInOrder(
+                          auraSettings.data!.settings.dropdown_modules,
+                          mod,
+                          DROPDOWN_TILE_IDS
+                        )
+                        void saveAura.mutateAsync({ dropdown_modules: next })
                       }}
                       className={cn("toggle-chip text-[10px]", enabled && "active")}
                     >
@@ -294,6 +271,16 @@ export function SettingsPane() {
                   )
                 })}
               </div>
+              {auraSettings.data.settings.dropdown_modules.length > 0 ? (
+                <>
+                  <p className="text-[10px] text-subtext1 mb-1">Tile order (enabled only)</p>
+                  <SortableIdList
+                    ids={auraSettings.data.settings.dropdown_modules}
+                    disabled={saveAura.isPending}
+                    onReorder={(order) => void saveAura.mutateAsync({ dropdown_modules: order })}
+                  />
+                </>
+              ) : null}
             </div>
             <button
               type="button"

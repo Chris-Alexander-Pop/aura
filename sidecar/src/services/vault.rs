@@ -37,7 +37,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Vault.Backup.Status", |_params| async move {
-        let status = backup_status_stub();
+        let status = backup_status_probe().await;
         Ok(serde_json::to_value(&status)?)
     });
 
@@ -144,6 +144,83 @@ async fn list_remotes() -> Result<VaultListResponse> {
         remotes: parse_rclone_listremotes(&output),
         rclone_available: true,
     })
+}
+
+fn restic_repo_from_env() -> Option<String> {
+    std::env::var("AURA_VAULT_RESTIC_REPO")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+}
+
+async fn backup_status_probe() -> VaultBackupStatus {
+    let Some(repo) = restic_repo_from_env() else {
+        return backup_status_stub();
+    };
+
+    if process::exec_command(&["which", "restic"]).await.is_err() {
+        return VaultBackupStatus {
+            state: "error".to_string(),
+            engine: Some("restic".to_string()),
+            last_success_at: None,
+            last_error: Some("restic not installed".to_string()),
+            in_progress: false,
+        };
+    }
+
+    match process::exec_command(&["restic", "-r", repo.as_str(), "snapshots", "--json"]).await {
+        Ok(output) => parse_restic_snapshots(&output, &repo),
+        Err(e) => VaultBackupStatus {
+            state: "error".to_string(),
+            engine: Some("restic".to_string()),
+            last_success_at: None,
+            last_error: Some(e.to_string()),
+            in_progress: false,
+        },
+    }
+}
+
+fn parse_restic_snapshots(output: &str, repo: &str) -> VaultBackupStatus {
+    let trimmed = output.trim();
+    if trimmed.is_empty() || trimmed == "[]" {
+        return VaultBackupStatus {
+            state: "idle".to_string(),
+            engine: Some("restic".to_string()),
+            last_success_at: None,
+            last_error: None,
+            in_progress: false,
+        };
+    }
+
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+        return VaultBackupStatus {
+            state: "unknown".to_string(),
+            engine: Some("restic".to_string()),
+            last_success_at: None,
+            last_error: Some("could not parse restic snapshots JSON".to_string()),
+            in_progress: false,
+        };
+    };
+
+    let arr = v.as_array().cloned().unwrap_or_default();
+    let last = arr.last();
+    let last_success_at = last.and_then(|snap| {
+        snap.get("time")
+            .and_then(|t| t.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.timestamp())
+    });
+
+    VaultBackupStatus {
+        state: if last_success_at.is_some() {
+            "idle".to_string()
+        } else {
+            "unknown".to_string()
+        },
+        engine: Some(format!("restic ({repo})")),
+        last_success_at,
+        last_error: None,
+        in_progress: false,
+    }
 }
 
 fn backup_status_stub() -> VaultBackupStatus {

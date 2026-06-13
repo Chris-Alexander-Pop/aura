@@ -2,7 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
+@import "./theme/palettes.css";
+
 @layer base {
+  html,
+  html[data-theme="dark"],
+  html[data-theme="catppuccin-mocha"] {
+    color-scheme: dark;
+  }
+
+  html[data-theme="light"],
+  html[data-theme="catppuccin-latte"] {
+    color-scheme: light;
+  }
   * {
     box-sizing: border-box;
     margin: 0;

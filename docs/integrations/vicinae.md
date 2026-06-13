@@ -12,13 +12,27 @@ When unset or unreachable, `Launcher.VicinaeQuery` delegates to `Launcher.Query`
 
 ## RPC
 
+### Query
+
 - **`Launcher.VicinaeQuery`** — `{ query, limit? }` → `{ results, source: "vicinae" | "desktop" }`
 - Request payload on the socket: JSON line `{"query":"…","limit":N}\n`
-- Response: JSON object with a `results` array matching launcher result shape.
+- Response: JSON object with a `results` array matching launcher result shape (`id`, `name`, `icon?`, …).
+
+### Exec
+
+- **`Vicinae.Exec`** — `{ id, source?: "vicinae" | "desktop" }` → `{ ok: true }`
+- **`Launcher.Run`** — accepts optional `source`; `"vicinae"` routes to `Vicinae.Exec`.
+
+Exec order for Vicinae items:
+
+1. Unix socket (newline JSON), tried payloads: `{"exec":"<id>"}`, `{"launch_app":{"app_id":"<id>"}}`, `{"launchApp":{"id":"<id>"}}`
+2. CLI fallback: `vicinae vicinae://launch/<id>` then `vicinae launch <id>` (allowlisted)
+
+Desktop items always use `gtk-launch <id>`.
 
 ## UI
 
-GTK/React launcher hosts may show a “Vicinae mode” when `source === "vicinae"`. No socket protocol is implemented in the default build beyond newline-delimited JSON.
+React launcher (`ui/src/pages/Launcher.tsx`) merges Vicinae + desktop results, shows a **vicinae** badge, and calls `Vicinae.Exec` or `Launcher.Run` by source.
 
 ## See also
 
