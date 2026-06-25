@@ -1,20 +1,22 @@
-import { forwardRef, type ButtonHTMLAttributes } from "react"
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
-  icon: string
+  icon?: string
+  /** Custom icon content (e.g. proportional battery SVG). */
+  iconNode?: ReactNode
   active?: boolean
   size?: "sm" | "md"
 }
 
 const sizeClass = {
-  sm: { btn: "h-7 w-7", icon: "text-[16px]" },
-  md: { btn: "h-8 w-8", icon: "text-[17px]" },
+  sm: { btn: "h-6 w-6", icon: "text-[15px]" },
+  md: { btn: "h-7 w-7", icon: "text-[17px]" },
 } as const
 
 /** Compact circular icon control for the vertical bar strip. */
 const BarIconButton = forwardRef<HTMLButtonElement, Props>(function BarIconButton(
-  { icon, active, size = "sm", className, title, ...props },
+  { icon, iconNode, active, size = "sm", className, title, ...props },
   ref
 ) {
   const s = sizeClass[size]
@@ -33,7 +35,9 @@ const BarIconButton = forwardRef<HTMLButtonElement, Props>(function BarIconButto
       )}
       {...props}
     >
-      <span className={cn("icon block leading-none", s.icon)}>{icon}</span>
+      {iconNode ?? (
+        <span className={cn("icon block leading-none", s.icon)}>{icon}</span>
+      )}
     </button>
   )
 })

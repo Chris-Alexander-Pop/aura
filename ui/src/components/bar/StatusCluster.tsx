@@ -2,6 +2,7 @@ import { useCallback, useRef, type Ref, type RefObject } from "react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
 import BarIconButton from "@/components/bar/BarIconButton"
+import BatteryLevelIcon from "@/components/bar/BatteryLevelIcon"
 import type { StatusFlyoutId } from "./useFlyoutHover"
 
 type Props = {
@@ -49,15 +50,13 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
     id: StatusFlyoutId,
     ref: RefObject<HTMLButtonElement | null>,
     title: string,
-    icon: string,
-    highlight?: boolean
+    icon: string
   ) => (
     <div key={id} className="flex w-full justify-center py-0.5">
       <BarIconButton
         ref={ref as Ref<HTMLButtonElement>}
         title={title}
         icon={icon}
-        active={highlight}
         onMouseEnter={() => anchorFor(id, ref.current)}
         onMouseLeave={onSegmentLeave}
       />
@@ -70,15 +69,13 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
         "network",
         netRef,
         net?.wifi_enabled ? net?.active_connection ?? "Wi‑Fi" : "Wi‑Fi off",
-        net?.wifi_enabled ? "wifi" : "wifi_off",
-        !!net?.wifi_enabled
+        net?.wifi_enabled ? "wifi" : "wifi_off"
       )}
       {segment(
         "bluetooth",
         btRef,
         btOn ? (btConn ? "Bluetooth connected" : "Bluetooth on") : "Bluetooth off",
-        btOn ? (btConn ? "bluetooth_connected" : "bluetooth") : "bluetooth_disabled",
-        !!btConn
+        btOn ? (btConn ? "bluetooth_connected" : "bluetooth") : "bluetooth_disabled"
       )}
       {segment(
         "audio",
@@ -88,24 +85,30 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
             ? "Muted"
             : `${Math.round(defaultSink.volume * 100)}% volume`
           : "Audio",
-        sinkMuted ? "volume_off" : sinkLow ? "volume_mute" : "volume_up",
-        !sinkMuted && !sinkLow
+        sinkMuted ? "volume_off" : sinkLow ? "volume_mute" : "volume_up"
       )}
       {segment(
         "brightness",
         brightRef,
         `${brightPct}% brightness`,
-        brightLow ? "brightness_4" : brightPct >= 75 ? "brightness_7" : "brightness_6",
-        !brightLow
+        brightLow ? "brightness_4" : brightPct >= 75 ? "brightness_7" : "brightness_6"
       )}
-      {segment(
-        "battery",
-        battRef,
-        batt ? `${batt.percent}%${batt.charging ? ", charging" : ""}` : "Battery",
-        batt ? (batt.charging ? "battery_charging_full" : "battery_5_bar") : "battery_unknown",
-        !!(batt && batt.percent <= 20 && !batt.charging)
-      )}
-      {segment("windows", winRef, "Windows & workspaces — hover for list", "layers", false)}
+      <div className="flex w-full justify-center py-0.5">
+        <BarIconButton
+          ref={battRef}
+          title={batt ? `${batt.percent}%${batt.charging ? ", charging" : ""}` : "Battery"}
+          iconNode={
+            batt ? (
+              <BatteryLevelIcon percent={batt.percent} charging={batt.charging} size={16} />
+            ) : (
+              <span className="icon block text-[16px] leading-none">battery_unknown</span>
+            )
+          }
+          onMouseEnter={() => anchorFor("battery", battRef.current)}
+          onMouseLeave={onSegmentLeave}
+        />
+      </div>
+      {segment("windows", winRef, "Windows & workspaces — hover for list", "layers")}
     </div>
   )
 }

@@ -4,18 +4,21 @@ import Bar from "./src/widget/bar/Bar"
 import sidecar from "./src/lib/sidecar"
 import OSD, { refreshOsdFromSidecar } from "./src/widget/osd/OSD"
 import LauncherWindow from "./src/widget/webview/LauncherWindow"
-import SidebarWindow from "./src/widget/webview/SidebarWindow"
+import ModuleHubWindow from "./src/widget/webview/ModuleHubWindow"
 
 // WebView overlay windows (React UI served from sidecar at localhost:9080)
 import ControlCenterWindow from "./src/widget/webview/ControlCenterWindow"
 import DropdownWindow from "./src/widget/webview/DropdownWindow"
 import CalendarWindow from "./src/widget/webview/CalendarWindow"
+import MediaPopupWindow from "./src/widget/webview/MediaPopupWindow"
 
 import { mountPanelEdgeTriggers } from "./src/widget/triggers/PanelEdgeTriggers"
 import BarWebViewWindow from "./src/widget/webview/BarWebViewWindow"
 
 /** Legacy GTK vertical bar — set `AURA_GTK_BAR=1` to restore it instead of the React/WebKit strip */
 const USE_GTK_BAR = GLib.getenv("AURA_GTK_BAR") === "1"
+
+const DEBUG_EDGE = GLib.getenv("AURA_DEBUG_EDGE_TRIGGERS") === "1"
 
 // Initialize sidecar (bar/osd use stdin/stdout path)
 // @ts-ignore
@@ -25,7 +28,9 @@ app.start({
     css: "./style/style.css",
     main() {
         const monitors = app.monitors || []
-        console.error(`[aura] main: ${monitors.length} monitor(s), mounting edge triggers`)
+        if (DEBUG_EDGE) {
+            console.error(`[aura] main: ${monitors.length} monitor(s), mounting edge triggers`)
+        }
 
         for (const monitor of monitors) {
             try {
@@ -54,12 +59,13 @@ app.start({
         // Singleton windows
         try {
             LauncherWindow()
-            SidebarWindow()
+            ModuleHubWindow()
 
             // WebKit overlay panels
             ControlCenterWindow()
             DropdownWindow()
             CalendarWindow()
+            MediaPopupWindow()
         } catch (e) {
             console.error("Failed to create singleton windows:", e)
         }

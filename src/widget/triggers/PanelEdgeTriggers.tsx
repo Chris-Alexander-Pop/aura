@@ -4,15 +4,17 @@ import Astal from "gi://Astal?version=4.0"
 import Gdk from "gi://Gdk?version=4.0"
 import app from "ags/gtk4/app"
 import { cancelHoverClose, scheduleHoverClose, showHoverPanel } from "../../lib/panel-hover"
+import { moduleHubLayout, verticalCenterMargins, monitorSize } from "../../lib/monitor"
 
 /** Keep strong refs so GJS does not collect layer-shell windows. */
 export const edgeTriggerWindows: Gtk.Window[] = []
 
-export const BAR_STRIP_W = 56
-const TRIGGER_W = 24
-const CAL_TRIGGER_H = 140
+const TRIGGER_SIZE = 2
+const MEDIA_TRIGGER_H = 140
+/** L-shaped dropdown corner: length of each leg along bottom and right edges. */
+const DROPDOWN_CORNER_LEG = 56
 
-const DEBUG_TRIGGERS = GLib.getenv("AURA_DEBUG_EDGE_TRIGGERS") !== "0"
+const DEBUG_TRIGGERS = GLib.getenv("AURA_DEBUG_EDGE_TRIGGERS") === "1"
 const HIT_RGBA = DEBUG_TRIGGERS ? "rgba(255, 34, 34, 0.92)" : "rgba(255, 255, 255, 0.01)"
 const WIN_RGBA = DEBUG_TRIGGERS ? "rgba(255, 0, 0, 0.25)" : "transparent"
 
@@ -57,7 +59,10 @@ function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
     box.set_size_request(spec.width, spec.height)
     box.set_vexpand(spec.height < 0)
     box.set_hexpand(spec.width < 0)
-    applyCss(box, `background-color: ${HIT_RGBA}; min-width: ${spec.width > 0 ? spec.width : 0}px; min-height: ${spec.height > 0 ? spec.height : 0}px;`)
+    applyCss(
+        box,
+        `background-color: ${HIT_RGBA}; min-width: ${spec.width > 0 ? spec.width : 0}px; min-height: ${spec.height > 0 ? spec.height : 0}px;`
+    )
     applyCss(win, `background-color: ${WIN_RGBA};`)
 
     const motion = Gtk.EventControllerMotion.new()
@@ -66,7 +71,7 @@ function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
             console.error(`edge-trigger enter: ${spec.name} → ${spec.targetWindow}`)
         }
         cancelHoverClose(spec.targetWindow)
-        showHoverPanel(spec.targetWindow)
+        showHoverPanel(spec.targetWindow, gdkmonitor)
     })
     motion.connect("leave", () => {
         if (DEBUG_TRIGGERS) {
@@ -87,43 +92,64 @@ function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
     return win
 }
 
+/** Bottom-right L: short strip along the bottom edge + short strip up the right edge. */
+function mountDropdownCornerTriggers(gdkmonitor: Gdk.Monitor, tag: string) {
+    const { height } = monitorSize(gdkmonitor)
+    const target = "dropdown"
+
+    // Horizontal leg — flush with bottom-right corner, extends left
+    createEdgeTrigger(gdkmonitor, {
+        name: `dropdown-trigger-bottom-${tag}`,
+        targetWindow: target,
+        anchor: Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT,
+        marginRight: 0,
+        marginTop: height - TRIGGER_SIZE,
+        width: DROPDOWN_CORNER_LEG,
+        height: TRIGGER_SIZE,
+    })
+
+    // Vertical leg — flush with bottom-right corner, extends up
+    createEdgeTrigger(gdkmonitor, {
+        name: `dropdown-trigger-right-${tag}`,
+        targetWindow: target,
+        anchor: Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT,
+        marginRight: 0,
+        marginTop: height - DROPDOWN_CORNER_LEG,
+        width: TRIGGER_SIZE,
+        height: DROPDOWN_CORNER_LEG,
+    })
+}
+
 /** Imperative layer-shell strips — must call app.add_window (JSX alone was not showing). */
 export function mountPanelEdgeTriggers(gdkmonitor: Gdk.Monitor) {
     const tag = monitorTag(gdkmonitor)
-    console.error(`mountPanelEdgeTriggers: monitor=${tag}`)
+    const { cardWidth, marginLeft } = moduleHubLayout(gdkmonitor)
+    const mediaMargins = verticalCenterMargins(gdkmonitor, MEDIA_TRIGGER_H)
+
+    if (DEBUG_TRIGGERS) {
+        console.error(`mountPanelEdgeTriggers: monitor=${tag} module-hub w=${cardWidth} ml=${marginLeft}`)
+    }
 
     createEdgeTrigger(gdkmonitor, {
-        name: `dropdown-trigger-${tag}`,
-        targetWindow: "dropdown",
-        anchor:
-            Astal.WindowAnchor.TOP |
-            Astal.WindowAnchor.LEFT |
-            Astal.WindowAnchor.RIGHT,
+        name: `module-hub-trigger-${tag}`,
+        targetWindow: "module-hub",
+        anchor: Astal.WindowAnchor.TOP,
+        marginLeft,
         marginTop: 0,
-        width: -1,
-        height: TRIGGER_W,
+        width: cardWidth,
+        height: TRIGGER_SIZE,
     })
 
-    createEdgeTrigger(gdkmonitor, {
-        name: `calendar-trigger-${tag}`,
-        targetWindow: "calendar",
-        anchor: Astal.WindowAnchor.LEFT | Astal.WindowAnchor.TOP,
-        marginLeft: BAR_STRIP_W,
-        marginTop: 8,
-        width: TRIGGER_W,
-        height: CAL_TRIGGER_H,
-    })
+    mountDropdownCornerTriggers(gdkmonitor, tag)
 
     createEdgeTrigger(gdkmonitor, {
-        name: `sidebar-trigger-${tag}`,
-        targetWindow: "sidebar",
-        anchor:
-            Astal.WindowAnchor.LEFT |
-            Astal.WindowAnchor.TOP |
-            Astal.WindowAnchor.BOTTOM,
-        marginLeft: BAR_STRIP_W,
-        marginTop: 8 + CAL_TRIGGER_H + 4,
-        width: TRIGGER_W,
-        height: -1,
+        name: `media-popup-trigger-${tag}`,
+        targetWindow: "media-popup",
+        anchor: Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.TOP | Astal.WindowAnchor.BOTTOM,
+        marginRight: 0,
+        marginTop: mediaMargins.marginTop,
+        marginBottom: mediaMargins.marginBottom,
+        width: TRIGGER_SIZE,
+        height: MEDIA_TRIGGER_H,
     })
 }

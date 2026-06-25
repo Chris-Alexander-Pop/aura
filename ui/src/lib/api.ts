@@ -428,7 +428,7 @@ export const api = {
   sessionSuspend: () => call<{ ok: boolean }>("Session.Suspend"),
   sessionReboot: () => call<{ ok: boolean }>("Session.Reboot"),
   sessionPowerOff: () => call<{ ok: boolean }>("Session.PowerOff"),
-  auraToggleWindow: (name: "control-center" | "calendar" | "dropdown" | "sidebar" | "launcher") =>
+  auraToggleWindow: (name: "control-center" | "calendar" | "dropdown" | "module-hub" | "launcher") =>
     call<{ ok: boolean }>("Aura.ToggleWindow", { name }),
   openControlCenterPane: (pane: PaneId) => {
     requestControlCenterPane(pane)

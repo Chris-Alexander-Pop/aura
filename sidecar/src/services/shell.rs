@@ -8,8 +8,16 @@ use std::collections::HashMap;
 pub(crate) fn aura_window_allowed(name: &str) -> bool {
     matches!(
         name,
-        "control-center" | "sidebar" | "calendar" | "dropdown" | "launcher"
+        "control-center" | "module-hub" | "calendar" | "dropdown" | "launcher" | "media-popup"
     )
+}
+
+/// Legacy window names from older configs / keybinds.
+fn normalize_aura_window(name: &str) -> &str {
+    match name {
+        "sidebar" => "module-hub",
+        n => n,
+    }
 }
 
 lazy_static::lazy_static! {
@@ -189,14 +197,14 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Aura.ToggleWindow", |params| async move {
-        let name = params
+        let raw = params
             .as_ref()
             .and_then(|p| p.get("name"))
             .and_then(|n| n.as_str())
-            .map(str::to_owned)
             .ok_or_else(|| anyhow::anyhow!("missing name"))?;
+        let name = normalize_aura_window(raw).to_owned();
         if !aura_window_allowed(&name) {
-            bail!("window name not allowed: {name}");
+            bail!("window name not allowed: {raw}");
         }
         process::exec_command_detached(&["ags", "request", "toggle", name.as_str()]).await?;
         Ok(json!({"ok": true}))
@@ -249,10 +257,12 @@ mod tests {
 
     #[test]
     fn aura_window_allowlist() {
-        for allowed in ["control-center", "sidebar", "calendar", "dropdown"] {
+        for allowed in ["control-center", "module-hub", "calendar", "dropdown"] {
             assert!(aura_window_allowed(allowed), "{allowed}");
         }
         assert!(aura_window_allowed("launcher"));
+        assert!(aura_window_allowed("media-popup"));
+        assert!(!aura_window_allowed("sidebar"));
         assert!(!aura_window_allowed(""));
         assert!(!aura_window_allowed("control_center"));
     }

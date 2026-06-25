@@ -1,4 +1,4 @@
-// Always-on sidebar strip (#/bar) + separate flyout overlay window.
+// Always-on left bar strip (#/bar) + separate flyout overlay window.
 //
 // Splitting into two windows eliminates the "wide transparent WebKit layer
 // steals pointer input" problem: the strip window is narrow and EXCLUSIVE
@@ -14,7 +14,9 @@ import App from "ags/gtk4/app"
 import { createWebViewWindow } from "./WebViewWindow"
 import hyprland from "../../lib/hyprland"
 
-const STRIP_W = 56
+import { BAR_STRIP_WIDTH_PX } from "../../lib/monitor"
+
+const STRIP_W = BAR_STRIP_WIDTH_PX
 const FLYOUT_W = 320 // max popout width; individual panels use narrower content inside
 const CLOSE_DELAY_MS = 250
 

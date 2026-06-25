@@ -13,6 +13,7 @@ import {
 } from "@/lib/api-types"
 import {
   BAR_SECTION_IDS,
+  BAR_STRIP_WIDTH_PX,
   DEFAULT_BAR_SECTION_ORDER,
   HIDDEN_BAR_SECTIONS,
   TOP_BAR_SECTIONS,
@@ -338,8 +339,11 @@ export default function BarStrip() {
   return (
     <div className="aura-bar-root relative flex h-full min-h-0 w-full flex-row text-text pointer-events-none">
       <NotificationToasts />
-      <div className="relative z-10 flex min-h-0 w-14 shrink-0 flex-col overflow-hidden border-r border-surface0/80 bg-mantle pointer-events-auto">
-        <div className="flex min-h-0 flex-1 flex-col px-1 py-2">
+      <div
+        className="relative z-10 flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-surface0/80 bg-mantle pointer-events-auto"
+        style={{ width: BAR_STRIP_WIDTH_PX }}
+      >
+        <div className="flex min-h-0 flex-1 flex-col px-0.5 py-1.5">
           <div className="scrollbar-thin flex min-h-0 shrink-0 flex-col gap-1 overflow-y-auto overflow-x-hidden">
             <BarSectionGroup ids={topSections} renderSection={renderSection} />
           </div>

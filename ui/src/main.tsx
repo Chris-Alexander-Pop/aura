@@ -12,7 +12,8 @@ import Calendar from "./pages/Calendar"
 import BarStrip from "./pages/BarStrip"
 import BarFlyout from "./pages/BarFlyout"
 import Launcher from "./pages/Launcher"
-import Sidebar from "./pages/Sidebar"
+import ModuleHub from "./pages/ModuleHub"
+import MediaPopup from "./pages/MediaPopup"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -53,7 +54,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/bar" element={<BarStrip />} />
           <Route path="/bar-flyout" element={<BarFlyout />} />
           <Route path="/launcher" element={<Launcher />} />
-          <Route path="/sidebar" element={<Sidebar />} />
+          <Route path="/module-hub" element={<ModuleHub />} />
+          <Route path="/media-popup" element={<MediaPopup />} />
           {/* Dev landing page */}
           <Route
             path="/"

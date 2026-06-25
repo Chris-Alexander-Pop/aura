@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils"
 import { postPanelHover } from "@/lib/panel-hover"
 
-function SidebarTile({ tileId }: { tileId: string }) {
+function ModuleTile({ tileId }: { tileId: string }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["sidebar-tile", tileId],
     queryFn: () => api.sidebarGetTileData(tileId),
@@ -47,7 +47,7 @@ function SidebarTile({ tileId }: { tileId: string }) {
   )
 }
 
-export default function Sidebar() {
+export default function ModuleHub() {
   const { data: settings } = useQuery({
     queryKey: ["aura-settings"],
     queryFn: api.getAuraSettings,
@@ -62,18 +62,18 @@ export default function Sidebar() {
   return (
     <div
       className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto bg-mantle/95 p-4 text-text backdrop-blur-2xl"
-      onMouseEnter={() => postPanelHover("sidebarHover", true)}
-      onMouseLeave={() => postPanelHover("sidebarHover", false)}
+      onMouseEnter={() => postPanelHover("moduleHubHover", true)}
+      onMouseLeave={() => postPanelHover("moduleHubHover", false)}
     >
       <header>
-        <h1 className="text-lg font-semibold">Sidebar</h1>
+        <h1 className="text-lg font-semibold">Modules</h1>
         <p className="text-xs text-subtext0">
           Tile hub — configure modules in Control Center → Settings.
         </p>
       </header>
       <div className="grid grid-cols-2 gap-3">
         {modules.map((id) => (
-          <SidebarTile key={id} tileId={id} />
+          <ModuleTile key={id} tileId={id} />
         ))}
       </div>
     </div>

@@ -1,4 +1,6 @@
-/** Fixed vertical sections on the always-on sidebar strip. */
+/** Fixed vertical sections on the always-on left bar strip. */
+/** Must match `BAR_STRIP_WIDTH_PX` in `src/lib/monitor.ts`. */
+export const BAR_STRIP_WIDTH_PX = 44
 export const BAR_SECTION_IDS = [
   "launcher",
   "tray",

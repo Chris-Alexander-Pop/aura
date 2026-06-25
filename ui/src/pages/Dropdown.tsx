@@ -277,7 +277,7 @@ export default function Dropdown() {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -16 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
       className="flex flex-col gap-3 h-full bg-mantle/90 backdrop-blur-2xl border border-surface0/60 rounded-2xl shadow-2xl p-4 overflow-hidden"
@@ -287,7 +287,7 @@ export default function Dropdown() {
       <DashboardHeader />
 
       {/* Top row: quick toggles */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <QuickToggle
           icon="wifi"
           label={netLabel}

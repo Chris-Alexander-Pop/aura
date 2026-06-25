@@ -1,6 +1,6 @@
 /**
  * Flyout overlay page (#/bar-flyout) — loaded once in a separate transparent
- * WebKit window positioned immediately to the right of the sidebar strip.
+ * WebKit window positioned immediately to the right of the bar strip.
  *
  * Content is driven by custom events dispatched from AGS via evaluate_javascript:
  *   window.dispatchEvent(new CustomEvent('aura-flyout', { detail: { panel, y } }))
