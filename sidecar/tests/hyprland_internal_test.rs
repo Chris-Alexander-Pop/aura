@@ -4,7 +4,8 @@ mod common;
 
 use ags_sidecar::services::hyprland::{
     event_triggers_state_changed, note_hyprland_event_line, parse_active_window,
-    parse_clients, parse_monitors, parse_workspaces, validate_dispatch,
+    parse_clients, parse_monitors, parse_workspaces, parse_workspace_event_id,
+    validate_dispatch,
 };
 use common::{call_method_unchecked, load_fixture, test_registry};
 use serde_json::json;
@@ -61,6 +62,14 @@ fn event_names_cover_bar_invalidation() {
 fn event_line_parses_socket2_format() {
     note_hyprland_event_line("workspace>>3");
     note_hyprland_event_line("garbage without delimiter");
+}
+
+#[test]
+fn workspace_event_id_parses_numeric_payload() {
+    assert_eq!(parse_workspace_event_id("3"), Some(3));
+    assert_eq!(parse_workspace_event_id(" 10 "), Some(10));
+    assert_eq!(parse_workspace_event_id("name:special"), None);
+    assert_eq!(parse_workspace_event_id("0"), None);
 }
 
 #[test]

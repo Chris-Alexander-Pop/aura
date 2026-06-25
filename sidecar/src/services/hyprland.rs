@@ -310,6 +310,11 @@ fn hyprland_socket_path() -> Option<PathBuf> {
     }
 }
 
+/// Parse numeric workspace id from Hyprland socket2 `workspace>>` payload.
+pub fn parse_workspace_event_id(data: &str) -> Option<i64> {
+    data.trim().parse::<i64>().ok().filter(|&id| id > 0)
+}
+
 /// Hyprland socket2 event names that should invalidate bar state.
 pub fn event_triggers_state_changed(event: &str) -> bool {
     matches!(
@@ -322,15 +327,25 @@ pub fn event_triggers_state_changed(event: &str) -> bool {
             | "closewindow"
             | "movewindow"
             | "windowtitle"
+            | "createworkspace"
+            | "destroyworkspace"
             | "float"
             | "pin"
     )
 }
 
 pub fn note_hyprland_event_line(line: &str) {
-    let Some((event, _data)) = line.split_once(">>") else {
+    let Some((event, data)) = line.split_once(">>") else {
         return;
     };
+    if event == "workspace" {
+        if let Some(id) = parse_workspace_event_id(data) {
+            notify::emit(
+                "Hyprland.WorkspaceActive",
+                json!({ "id": id, "name": id.to_string() }),
+            );
+        }
+    }
     if event_triggers_state_changed(event) {
         schedule_hyprland_state_emit();
     }
@@ -342,7 +357,7 @@ fn schedule_hyprland_state_emit() {
     }
     let gen = HYPRLAND_EMIT_GEN.fetch_add(1, Ordering::Relaxed) + 1;
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
         if HYPRLAND_EMIT_GEN.load(Ordering::Relaxed) != gen {
             return;
         }
@@ -383,11 +398,30 @@ pub fn spawn_event_listener() {
     });
 }
 
+async fn bar_snapshot() -> Value {
+    let (ws_raw, active_raw, clients_raw, win_raw) = tokio::join!(
+        hyprctl_json_or_null(&["workspaces"]),
+        hyprctl_json_or_null(&["activeworkspace"]),
+        hyprctl_json_or_null(&["clients"]),
+        hyprctl_json_or_null(&["activewindow"]),
+    );
+    json!({
+        "workspaces": parse_workspaces(&ws_raw),
+        "active_workspace": parse_active_workspace(&active_raw),
+        "clients": parse_clients(&clients_raw),
+        "active_window": parse_active_window(&win_raw),
+    })
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
     registry.register("Hyprland.GetWorkspaces", |_p| async move {
         let raw = hyprctl_json_or_null(&["workspaces"]).await;
         let workspaces = parse_workspaces(&raw);
         Ok(serde_json::to_value(workspaces)?)
+    });
+
+    registry.register("Hyprland.GetBarSnapshot", |_p| async move {
+        Ok(bar_snapshot().await)
     });
 
     registry.register("Hyprland.GetActiveWorkspace", |_p| async move {

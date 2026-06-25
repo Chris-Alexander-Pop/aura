@@ -12,8 +12,8 @@ function TileCard({ tileId }: { tileId: string }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["dropdown-tile", tileId],
     queryFn: () => api.sidebarGetTileData(tileId),
-    staleTime: 8000,
-    refetchInterval: 12_000,
+    staleTime: 0,
+    refetchInterval: 8_000,
     enabled: isDropdownTileId(tileId),
   })
 

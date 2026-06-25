@@ -3,13 +3,13 @@ import { cn } from "@/lib/utils"
 export function FlyoutLoading({ label = "Loading…" }: { label?: string }) {
   return (
     <div
-      className="flex flex-col items-center justify-center gap-2 rounded-xl border border-surface1/50 bg-surface0/40 px-4 py-8 text-center"
+      className="flex items-center gap-2 py-1 text-subtext0"
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
-      <span className="icon animate-spin text-3xl text-teal">progress_activity</span>
-      <p className="text-[11px] text-subtext0">{label}</p>
+      <span className="icon animate-spin text-base text-teal">progress_activity</span>
+      <p className="text-[10px]">{label}</p>
     </div>
   )
 }
@@ -20,21 +20,18 @@ export function FlyoutEmpty({
   detail,
   className,
 }: {
-  icon: string
+  icon?: string
   title: string
   detail?: string
   className?: string
 }) {
   return (
-    <div
-      className={cn(
-        "flex flex-col items-center justify-center gap-2 rounded-xl border border-surface1/50 bg-surface0/40 px-4 py-6 text-center",
-        className,
-      )}
-    >
-      <span className="icon text-3xl text-overlay0">{icon}</span>
-      <p className="text-[12px] font-medium text-subtext1">{title}</p>
-      {detail ? <p className="mx-auto max-w-[16rem] text-[10px] leading-snug text-subtext0">{detail}</p> : null}
+    <div className={cn("flex items-start gap-1.5 py-1 text-subtext0", className)}>
+      {icon ? <span className="icon shrink-0 text-sm text-overlay0">{icon}</span> : null}
+      <div className="min-w-0">
+        <p className="text-[10px] font-medium text-subtext1">{title}</p>
+        {detail ? <p className="text-[10px] leading-snug">{detail}</p> : null}
+      </div>
     </div>
   )
 }

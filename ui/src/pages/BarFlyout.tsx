@@ -16,9 +16,8 @@ import BluetoothFlyout from "@/components/bar/flyouts/BluetoothFlyout"
 import BatteryFlyout from "@/components/bar/flyouts/BatteryFlyout"
 import WindowsFlyout from "@/components/bar/flyouts/WindowsFlyout"
 import PowerFlyout from "@/components/bar/flyouts/PowerFlyout"
+import { flyoutWidthFor } from "@/lib/flyout-layout"
 import { AnimatePresence, motion } from "framer-motion"
-
-const FLYOUT_W = 320
 
 function postHover(hovered: boolean) {
   try {
@@ -57,18 +56,20 @@ export default function BarFlyout() {
     }
   })()
 
+  const panelW = state ? flyoutWidthFor(state.panel) : 320
+
   return (
     <div className="aura-bar-root relative h-full w-full pointer-events-none">
       <AnimatePresence mode="wait">
         {content && state ? (
           <motion.div
             key={state.panel}
-            className="pointer-events-auto absolute max-h-[min(520px,calc(100vh-48px))] origin-left overflow-hidden rounded-r-2xl border border-surface0/90 border-l-transparent bg-mantle/90 text-text shadow-xl backdrop-blur-xl"
-            style={{ top: state.y, width: FLYOUT_W }}
-            initial={{ opacity: 0, x: -10, y: "-50%", scale: 0.96 }}
-            animate={{ opacity: 1, x: 0, y: "-50%", scale: 1 }}
-            exit={{ opacity: 0, x: -8, y: "-50%", scale: 0.97 }}
-            transition={{ type: "spring", stiffness: 420, damping: 34, mass: 0.7 }}
+            className="pointer-events-auto absolute max-h-[min(440px,calc(100vh-48px))] origin-left overflow-hidden overflow-y-auto rounded-r-xl border border-surface0/90 border-l-transparent bg-mantle/90 text-text shadow-xl backdrop-blur-xl"
+            style={{ top: state.y, width: panelW }}
+            initial={{ opacity: 0, x: -panelW, y: "-50%" }}
+            animate={{ opacity: 1, x: 0, y: "-50%" }}
+            exit={{ opacity: 0, x: -Math.min(panelW, 48), y: "-50%" }}
+            transition={{ type: "spring", stiffness: 520, damping: 38, mass: 0.65 }}
             onMouseEnter={() => postHover(true)}
             onMouseLeave={() => postHover(false)}
           >

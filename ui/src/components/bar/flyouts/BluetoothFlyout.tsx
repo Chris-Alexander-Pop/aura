@@ -3,7 +3,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
 import { connectWs, useWsStore } from "@/lib/ws"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
-import { cn } from "@/lib/utils"
+import {
+  FlyoutActionButton,
+  FlyoutExpandLink,
+  FlyoutIconButton,
+  FlyoutList,
+  FlyoutMeta,
+  FlyoutRow,
+  FlyoutRowIcon,
+  FlyoutRowLabel,
+  FlyoutShell,
+  FlyoutTitle,
+  FlyoutToggleRow,
+} from "@/components/bar/flyouts/FlyoutPrimitives"
 
 function adapterSummary(
   adapters: Awaited<ReturnType<typeof api.getBluetoothAdapters>> | undefined
@@ -45,7 +57,6 @@ export default function BluetoothFlyout() {
   const shown = list.slice(0, 6)
   const connected = list.filter((d) => d.connected).length
   const powered = adapters?.some((a) => a.powered)
-  const discovering = adapters?.some((a) => a.discovering)
 
   const countLine = (() => {
     const n = list.length
@@ -70,83 +81,61 @@ export default function BluetoothFlyout() {
     }
   }
 
-  const toggleAdapterPower = async () => {
+  const toggleAdapterPower = async (enabled: boolean) => {
     if (!adapters?.length) return
-    const wantOn = !powered
-    await Promise.all(adapters.map((a) => api.setBluetoothAdapterPower(a.path, wantOn)))
+    await Promise.all(adapters.map((a) => api.setBluetoothAdapterPower(a.path, enabled)))
     await qc.invalidateQueries({ queryKey: ["bt-ad"] })
     await qc.invalidateQueries({ queryKey: ["bt-dev"] })
   }
 
   if (adPending) {
     return (
-      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Bluetooth</h2>
+      <FlyoutShell>
+        <FlyoutTitle>Bluetooth</FlyoutTitle>
         <FlyoutLoading label="Fetching Bluetooth adapters…" />
-      </div>
+      </FlyoutShell>
     )
   }
 
   if (adError || devError) {
     return (
-      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Bluetooth</h2>
+      <FlyoutShell>
+        <FlyoutTitle>Bluetooth</FlyoutTitle>
         <FlyoutEmpty
           icon="bluetooth_disabled"
           title="Could not load Bluetooth"
-          detail="Check that BlueZ is running and try again from Control Center."
+          detail="Check that BlueZ is running."
         />
-      </div>
+      </FlyoutShell>
     )
   }
 
   if (!adapters?.length) {
     return (
-      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Bluetooth</h2>
+      <FlyoutShell>
+        <FlyoutTitle>Bluetooth</FlyoutTitle>
         <FlyoutEmpty
           icon="settings_bluetooth"
           title="No adapter found"
-          detail="This system did not report a Bluetooth controller."
+          detail="No Bluetooth controller reported."
         />
-      </div>
+      </FlyoutShell>
     )
   }
 
   return (
-    <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-      <div className="flex items-start justify-between gap-2 pr-1">
-        <h2 className="min-w-0 text-sm font-semibold leading-tight text-subtext1">
-          Bluetooth {adapterSummary(adapters)}
-        </h2>
-        <button
-          type="button"
-          className="shrink-0 rounded-lg bg-surface0/90 px-2.5 py-1 text-[10px] font-semibold text-subtext1 transition-colors hover:bg-surface1 hover:text-text"
-          onClick={() => void toggleAdapterPower()}
-        >
-          {powered ? "Turn off" : "Turn on"}
-        </button>
-      </div>
+    <FlyoutShell>
+      <FlyoutTitle>Bluetooth {adapterSummary(adapters)}</FlyoutTitle>
 
-      <div className="flex flex-wrap gap-2 px-0.5">
-        <span
-          className={cn(
-            "rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide",
-            powered ? "bg-teal/20 text-teal" : "bg-surface1 text-subtext0"
-          )}
-        >
-          {powered ? "Powered" : "Off"}
-        </span>
-        {discovering ? (
-          <span className="rounded-full bg-blue/20 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-blue">
-            Discovering
-          </span>
-        ) : null}
-      </div>
+      <FlyoutToggleRow
+        label="Enabled"
+        checked={!!powered}
+        onChange={toggleAdapterPower}
+      />
 
-      <p className="px-0.5 text-[11px] leading-snug text-subtext0">
+      <FlyoutMeta>
         {devPending && list.length === 0 ? "Loading devices…" : countLine}
-      </p>
+      </FlyoutMeta>
 
       {devPending && list.length === 0 ? (
         <FlyoutLoading label="Fetching paired devices…" />
@@ -154,50 +143,43 @@ export default function BluetoothFlyout() {
         <FlyoutEmpty
           icon="bluetooth_searching"
           title="No devices yet"
-          detail={powered ? "Scan below to discover hardware nearby." : "Turn Bluetooth on to see devices here."}
+          detail={powered ? "Scan below to discover hardware." : "Turn Bluetooth on first."}
         />
       ) : (
-        <ul className="flex max-h-48 flex-col gap-1.5 overflow-y-auto pr-0.5">
+        <FlyoutList>
           {shown.map((d) => {
             const loading = busyAddr === d.address
             return (
-              <li key={d.address} className="flex items-center gap-2 rounded-xl bg-surface0/90 px-2.5 py-2">
-                <span className="icon shrink-0 text-[22px] text-subtext1">bluetooth</span>
-                <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-subtext1">{d.name || d.address}</span>
-                <button
-                  type="button"
-                  disabled={loading || !powered}
-                  className={cn(
-                    "flex min-w-[5.5rem] shrink-0 items-center justify-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-40",
-                    d.connected ? "bg-teal/25 text-teal hover:bg-teal/35" : "bg-teal/90 text-crust hover:bg-teal",
-                  )}
+              <FlyoutRow key={d.address}>
+                <FlyoutRowIcon icon="bluetooth" active={d.connected} />
+                <FlyoutRowLabel active={d.connected}>{d.name || d.address}</FlyoutRowLabel>
+                <FlyoutIconButton
+                  icon={d.connected ? "link_off" : "link"}
+                  active={d.connected}
+                  disabled={!powered}
+                  loading={loading}
+                  title={d.connected ? "Disconnect" : "Connect"}
                   onClick={() => toggleConn(d.address, d.connected)}
-                >
-                  {loading ? (
-                    <span className="icon animate-spin text-[16px] leading-none text-current">progress_activity</span>
-                  ) : (
-                    <span>{d.connected ? "Disconnect" : "Connect"}</span>
-                  )}
-                </button>
-              </li>
+                />
+              </FlyoutRow>
             )
           })}
-        </ul>
+        </FlyoutList>
       )}
 
-      <button
-        type="button"
-        className="flex w-full items-center justify-center gap-2 rounded-full bg-blue/25 py-3 text-[12px] font-semibold text-blue hover:bg-blue/35 disabled:opacity-40"
+      <FlyoutActionButton
+        icon="bluetooth_searching"
         disabled={!powered || devPending}
+        variant="primary"
         onClick={() => scan()}
       >
-        <span className="icon text-lg">bluetooth_searching</span>
         Scan for devices
-      </button>
+      </FlyoutActionButton>
 
-      <p className="px-0.5 text-[10px] leading-snug text-subtext0">
-        Enable Bluetooth in system settings if toggles are unavailable here.
-      </p>
-    </div>
+      <FlyoutExpandLink
+        label="Bluetooth settings"
+        onClick={() => api.openControlCenterPane("bluetooth")}
+      />
+    </FlyoutShell>
   )
 }

@@ -12,11 +12,12 @@ import WebKit from "gi://WebKit?version=6.0"
 import { Astal, Gdk } from "ags/gtk4"
 import App from "ags/gtk4/app"
 import { createWebViewWindow } from "./WebViewWindow"
+import hyprland from "../../lib/hyprland"
 
 const PAD_V = 12
 const PAD_H = 8
 const STRIP_W = 56
-const FLYOUT_W = 320
+const FLYOUT_W = 320 // max popout width; individual panels use narrower content inside
 const CLOSE_DELAY_MS = 250
 
 type AnyWv = WebKit.WebView & {
@@ -68,6 +69,21 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
 
     // ── Flyout WebView (built manually to keep a reference) ──────────────────
     const flyoutWv = new WebKit.WebView() as AnyWv
+    flyoutWv.connect("context-menu", (_wv, menu) => {
+        try {
+            const ctx = menu as {
+                n_items?: () => number
+                item_at_index?: (i: number) => unknown
+                remove?: (item: unknown) => void
+            }
+            const n = ctx.n_items?.() ?? 0
+            for (let i = n - 1; i >= 0; i--) {
+                const item = ctx.item_at_index?.(i)
+                if (item) ctx.remove?.(item)
+            }
+        } catch { /* ignore */ }
+        return true
+    })
     flyoutWv.load_uri(`http://localhost:9080/#/bar-flyout`)
     flyoutWv.set_size_request(FLYOUT_W, height)
     const flyoutSettings = flyoutWv.get_settings()
@@ -123,7 +139,7 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
         })
     } catch (e) { print(`barFlyoutHover setup error: ${e}`) }
 
-    // ── Flyout window (transparent overlay, right of the strip) ──────────────
+    // ── Flyout window (below strip in z-order; emerges from behind the bar) ──
     const flyoutWin = <window
         name={flyoutName}
         gdkmonitor={gdkmonitor}
@@ -134,7 +150,7 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
             Astal.WindowAnchor.BOTTOM
         }
         exclusivity={Astal.Exclusivity.IGNORE}
-        layer={Astal.Layer.OVERLAY}
+        layer={Astal.Layer.TOP}
         marginLeft={PAD_H + STRIP_W}
         marginTop={PAD_V}
         marginBottom={PAD_V}
@@ -147,7 +163,7 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
 
     void flyoutWin
 
-    // ── Strip window — EXCLUSIVE so tiled clients don't tuck under it ─────────
+    // ── Strip window — EXCLUSIVE + OVERLAY so flyouts stay underneath ───────
     return createWebViewWindow({
         name: `bar-wv-${safeId}`,
         page: "#/bar",
@@ -157,7 +173,7 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
             Astal.WindowAnchor.TOP |
             Astal.WindowAnchor.BOTTOM,
         exclusivity: Astal.Exclusivity.EXCLUSIVE,
-        layer: Astal.Layer.TOP,
+        layer: Astal.Layer.OVERLAY,
         transparentWebView: true,
         marginLeft: PAD_H,
         marginTop: PAD_V,
@@ -169,6 +185,17 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
         onSetup: (wv) => {
             try {
                 const webview = wv as AnyWv
+
+                const pushWorkspaceToBar = (id: number) => {
+                    if (!Number.isFinite(id) || id <= 0) return
+                    const script =
+                        `window.dispatchEvent(new CustomEvent('aura-hypr-workspace',{detail:{id:${id}}}))`
+                    webview.evaluate_javascript?.(script, -1, null, null, null, null)
+                }
+                hyprland.connect("focused-workspace-changed", (_svc: unknown, id: number) => {
+                    pushWorkspaceToBar(id)
+                })
+
                 const mgr = webview.get_user_content_manager()
                 mgr.register_script_message_handler('barFlyout', null)
                 mgr.connect('script-message-received::barFlyout', (_m: unknown, jsVal: unknown) => {

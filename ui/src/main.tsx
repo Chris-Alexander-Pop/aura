@@ -30,10 +30,20 @@ function SidecarWsInvalidation() {
   return null
 }
 
+function SuppressContextMenu() {
+  useEffect(() => {
+    const block = (e: MouseEvent) => e.preventDefault()
+    document.addEventListener("contextmenu", block)
+    return () => document.removeEventListener("contextmenu", block)
+  }, [])
+  return null
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <SidecarWsInvalidation />
+      <SuppressContextMenu />
       <ThemeBootstrap />
       <HashRouter>
         <Routes>

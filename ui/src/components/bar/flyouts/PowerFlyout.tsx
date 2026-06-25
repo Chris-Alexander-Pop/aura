@@ -1,5 +1,10 @@
 import { useState } from "react"
 import api from "@/lib/api"
+import {
+  FlyoutActionRow,
+  FlyoutShell,
+  FlyoutTitle,
+} from "@/components/bar/flyouts/FlyoutPrimitives"
 import { cn } from "@/lib/utils"
 
 type ConfirmAction = "reboot" | "poweroff"
@@ -30,60 +35,49 @@ export default function PowerFlyout() {
   }
 
   return (
-    <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-      <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Session</h2>
+    <FlyoutShell>
+      <FlyoutTitle>Session</FlyoutTitle>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="flex flex-col gap-0.5">
         {actions.map((action) => (
-          <button
+          <FlyoutActionRow
             key={action.id}
-            type="button"
-            className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl bg-surface0/90 px-2 py-3 text-subtext1 transition-colors hover:bg-surface1 hover:text-text disabled:opacity-50"
+            icon={action.icon}
+            label={action.label}
             disabled={busy != null}
+            loading={busy === action.id}
             onClick={() => run(action.id, action.run)}
-          >
-            <span
-              className={cn("icon text-[26px]", busy === action.id && "animate-spin")}
-              aria-busy={busy === action.id}
-            >
-              {busy === action.id ? "progress_activity" : action.icon}
-            </span>
-            <span className="text-[11px] font-medium">{action.label}</span>
-          </button>
+          />
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          className="flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl bg-red/10 px-2 py-3 text-red transition-colors hover:bg-red/20 disabled:opacity-50"
+      <div className="mt-1 flex flex-col gap-0.5 border-t border-surface0/40 pt-1.5">
+        <FlyoutActionRow
+          icon="restart_alt"
+          label="Reboot"
+          destructive
           disabled={busy != null}
           onClick={() => setConfirm("reboot")}
-        >
-          <span className="icon text-[24px]">restart_alt</span>
-          <span className="text-[11px] font-semibold">Reboot</span>
-        </button>
-        <button
-          type="button"
-          className="flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl bg-red/10 px-2 py-3 text-red transition-colors hover:bg-red/20 disabled:opacity-50"
+        />
+        <FlyoutActionRow
+          icon="power_settings_new"
+          label="Power off"
+          destructive
           disabled={busy != null}
           onClick={() => setConfirm("poweroff")}
-        >
-          <span className="icon text-[24px]">power_settings_new</span>
-          <span className="text-[11px] font-semibold">Power off</span>
-        </button>
+        />
       </div>
 
       {confirm ? (
-        <div className="rounded-2xl border border-red/30 bg-red/10 p-3">
-          <p className="text-[12px] font-medium text-red">
+        <div className="rounded-lg border border-red/25 bg-red/10 p-2">
+          <p className="text-[10px] font-medium text-red">
             Confirm {confirm === "reboot" ? "reboot" : "power off"}?
           </p>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-2 flex gap-1.5">
             <button
               type="button"
               className={cn(
-                "flex flex-1 items-center justify-center gap-1.5 rounded-full bg-red px-3 py-2 text-[12px] font-semibold text-crust",
+                "flex flex-1 items-center justify-center gap-1 rounded-full bg-red px-2 py-1.5 text-[10px] font-semibold text-crust",
                 busy === confirm && "opacity-70",
               )}
               disabled={busy != null}
@@ -91,7 +85,7 @@ export default function PowerFlyout() {
             >
               {busy === confirm ? (
                 <>
-                  <span className="icon animate-spin text-lg">progress_activity</span>
+                  <span className="icon animate-spin text-sm">progress_activity</span>
                   Working…
                 </>
               ) : (
@@ -100,7 +94,7 @@ export default function PowerFlyout() {
             </button>
             <button
               type="button"
-              className="flex-1 rounded-full bg-surface1 px-3 py-2 text-[12px] font-semibold text-subtext1 hover:text-text"
+              className="flex-1 rounded-full bg-surface1 px-2 py-1.5 text-[10px] font-semibold text-subtext1 hover:text-text"
               disabled={busy != null}
               onClick={() => setConfirm(null)}
             >
@@ -109,6 +103,6 @@ export default function PowerFlyout() {
           </div>
         </div>
       ) : null}
-    </div>
+    </FlyoutShell>
   )
 }

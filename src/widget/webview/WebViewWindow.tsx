@@ -40,8 +40,29 @@ export interface WebViewWindowOptions {
     onSetup?: (webview: unknown) => void
 }
 
+function suppressWebViewContextMenu(webview: WebKit.WebView) {
+    webview.connect("context-menu", (_wv, menu) => {
+        try {
+            const ctx = menu as {
+                n_items?: () => number
+                item_at_index?: (i: number) => unknown
+                remove?: (item: unknown) => void
+            }
+            const n = ctx.n_items?.() ?? 0
+            for (let i = n - 1; i >= 0; i--) {
+                const item = ctx.item_at_index?.(i)
+                if (item) ctx.remove?.(item)
+            }
+        } catch {
+            /* older WebKit */
+        }
+        return true
+    })
+}
+
 function makeWebView(page: string, width: number, height: number, fixedMinSize: boolean, transparent?: boolean) {
     const webview = new WebKit.WebView()
+    suppressWebViewContextMenu(webview)
     webview.load_uri(`${SIDECAR_URL}/${page}`)
     if (fixedMinSize) {
         webview.set_size_request(width, height)

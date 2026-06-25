@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import api from "@/lib/api"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
+import { FlyoutShell, FlyoutSlider, FlyoutTitle } from "@/components/bar/flyouts/FlyoutPrimitives"
 
 export default function BrightnessFlyout() {
   const qc = useQueryClient()
@@ -50,33 +51,33 @@ export default function BrightnessFlyout() {
 
   if ((isPending || listPending) && level == null) {
     return (
-      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Brightness</h2>
+      <FlyoutShell>
+        <FlyoutTitle>Brightness</FlyoutTitle>
         <FlyoutLoading label="Reading backlight…" />
-      </div>
+      </FlyoutShell>
     )
   }
 
   if (isError) {
     return (
-      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Brightness</h2>
+      <FlyoutShell>
+        <FlyoutTitle>Brightness</FlyoutTitle>
         <FlyoutEmpty
           icon="brightness_6"
           title="Not supported"
-          detail="This display may not expose DDC/CI or backlight controls."
+          detail="This display may not expose backlight controls."
         />
-      </div>
+      </FlyoutShell>
     )
   }
 
   return (
-    <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-      <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Brightness</h2>
+    <FlyoutShell>
+      <FlyoutTitle>Brightness</FlyoutTitle>
 
       {monitorNames.length > 1 ? (
         <select
-          className="input text-xs py-1.5"
+          className="input py-1 text-[10px]"
           value={monitor}
           aria-label="Display"
           onChange={(e) => setMonitor(e.target.value)}
@@ -89,25 +90,15 @@ export default function BrightnessFlyout() {
         </select>
       ) : null}
 
-      <div className="space-y-2">
-        <input
-          type="range"
-          min={5}
-          max={100}
-          step={1}
-          value={pct}
-          disabled={setMut.isPending}
-          aria-label="Brightness"
-          aria-valuenow={pct}
-          aria-valuemin={5}
-          aria-valuemax={100}
-          onChange={(e) =>
-            setMut.mutate({ mon: monitor, percent: Number(e.target.value) / 100 })
-          }
-          className="h-2 w-full cursor-pointer appearance-none rounded-full border border-surface1/30 bg-base/90 accent-amber"
-        />
-        <p className="text-[11px] tabular-nums text-subtext0">{pct}%</p>
-      </div>
-    </div>
+      <FlyoutSlider
+        label={`Brightness (${pct}%)`}
+        value={pct}
+        min={5}
+        max={100}
+        disabled={setMut.isPending}
+        accent="amber"
+        onChange={(v) => setMut.mutate({ mon: monitor, percent: v / 100 })}
+      />
+    </FlyoutShell>
   )
 }

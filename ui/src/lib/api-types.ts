@@ -298,6 +298,14 @@ export interface HyprActiveWorkspace {
   name: string
 }
 
+/** Batched bar state from `Hyprland.GetBarSnapshot`. */
+export interface HyprBarSnapshot {
+  workspaces: HyprWorkspace[]
+  active_workspace: HyprActiveWorkspace | null
+  clients: HyprClient[]
+  active_window: HyprActiveWindow | null
+}
+
 export interface HyprMonitor {
   name: string
   id: number

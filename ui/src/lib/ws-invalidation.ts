@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query"
 import { connectWs, useWsStore } from "./ws"
 import { DROPDOWN_TILE_IDS } from "./dropdown-tiles"
+import { scheduleHyprlandSnapshotRefresh } from "./hyprland-bar-cache"
 
 export const notificationQueryKeys = {
   list: ["notifications-list"] as const,
@@ -12,13 +13,15 @@ function invalidate(qc: QueryClient, queryKey: unknown[]) {
   void qc.invalidateQueries({ queryKey })
 }
 
-function invalidateDropdownTiles(qc: QueryClient, tileId?: string) {
+function invalidateModuleTiles(qc: QueryClient, tileId?: string) {
   if (tileId) {
     invalidate(qc, ["dropdown-tile", tileId])
+    invalidate(qc, ["sidebar-tile", tileId])
     return
   }
   for (const id of DROPDOWN_TILE_IDS) {
     invalidate(qc, ["dropdown-tile", id])
+    invalidate(qc, ["sidebar-tile", id])
   }
 }
 
@@ -33,7 +36,7 @@ export function registerSidecarInvalidations(qc: QueryClient): () => void {
       invalidate(qc, [...notificationQueryKeys.list])
       invalidate(qc, ["dashboard-quick-status"])
       invalidate(qc, [...notificationQueryKeys.dnd])
-      invalidateDropdownTiles(qc, "notifications")
+      invalidateModuleTiles(qc, "notifications")
     }),
     useWsStore.getState().on("Dashboard.QuickStatusChanged", () => {
       invalidate(qc, ["dashboard-quick-status"])
@@ -41,42 +44,39 @@ export function registerSidecarInvalidations(qc: QueryClient): () => void {
     useWsStore.getState().on("Audio.StateChanged", () => {
       invalidate(qc, ["audio-devices"])
       invalidate(qc, ["audio-streams"])
-      invalidateDropdownTiles(qc, "audio")
+      invalidateModuleTiles(qc, "audio")
     }),
     useWsStore.getState().on("Network.StateChanged", () => {
       invalidate(qc, ["net"])
       invalidate(qc, ["dashboard-quick-status"])
-      invalidateDropdownTiles(qc, "network")
+      invalidateModuleTiles(qc, "network")
     }),
     useWsStore.getState().on("Bluetooth.StateChanged", () => {
       invalidate(qc, ["bt-ad"])
       invalidate(qc, ["bt-dev"])
       invalidate(qc, ["dashboard-quick-status"])
-      invalidateDropdownTiles(qc, "bluetooth")
+      invalidateModuleTiles(qc, "bluetooth")
     }),
     useWsStore.getState().on("Calendar.EventsChanged", () => {
       invalidate(qc, ["cal"])
       invalidate(qc, ["calendar-upcoming"])
       invalidate(qc, ["dashboard-quick-status"])
-      invalidateDropdownTiles(qc, "calendar")
+      invalidateModuleTiles(qc, "calendar")
     }),
     useWsStore.getState().on("Power.BatteryState", () => {
       invalidate(qc, ["batt"])
       invalidate(qc, ["dashboard-quick-status"])
-      invalidateDropdownTiles(qc, "battery")
+      invalidateModuleTiles(qc, "battery")
     }),
     useWsStore.getState().on("Hyprland.StateChanged", () => {
-      invalidate(qc, ["hypr-ws"])
-      invalidate(qc, ["hypr-active-ws"])
-      invalidate(qc, ["clients"])
-      invalidate(qc, ["hypr-active"])
+      scheduleHyprlandSnapshotRefresh(qc)
     }),
     useWsStore.getState().on("Power.Profile", () => {
       invalidate(qc, ["pwr"])
       invalidate(qc, ["settings", "power-profile"])
       invalidate(qc, ["performance", "power-profile"])
       invalidate(qc, ["dashboard-quick-status"])
-      invalidateDropdownTiles(qc, "battery")
+      invalidateModuleTiles(qc, "battery")
     }),
     useWsStore.getState().on("Performance.MetricsChanged", () => {
       invalidate(qc, ["system-stats"])
@@ -85,7 +85,7 @@ export function registerSidecarInvalidations(qc: QueryClient): () => void {
       invalidate(qc, ["process-top"])
     }),
     useWsStore.getState().on("Productivity.TimerTick", () => {
-      invalidateDropdownTiles(qc, "productivity")
+      invalidateModuleTiles(qc, "productivity")
     }),
     useWsStore.getState().on("Brightness.StateChanged", () => {
       invalidate(qc, ["brightness"])
@@ -96,6 +96,7 @@ export function registerSidecarInvalidations(qc: QueryClient): () => void {
     }),
     useWsStore.getState().on("Settings.Changed", () => {
       invalidate(qc, ["aura-settings"])
+      invalidateModuleTiles(qc)
     }),
     useWsStore.getState().on("Tray.Changed", () => {
       invalidate(qc, ["tray-items"])

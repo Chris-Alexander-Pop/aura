@@ -24,6 +24,17 @@ const BAR_SECTION_IDS: &[&str] = &[
     "power",
 ];
 
+/// Default strip order (launcher/tray omitted from the live strip).
+const DEFAULT_BAR_SECTION_ORDER: &[&str] = &[
+    "workspaces",
+    "runningApps",
+    "media",
+    "connectivity",
+    "calendar",
+    "clock",
+    "power",
+];
+
 /// Control center nav pane ids (subset of `ui/src/pages/control-center/navigation.ts`).
 const CC_PANE_IDS: &[&str] = &[
     "packages",
@@ -68,7 +79,10 @@ pub struct AuraSettings {
 
 pub fn default_settings() -> AuraSettings {
     AuraSettings {
-        bar_section_order: BAR_SECTION_IDS.iter().map(|s| (*s).to_string()).collect(),
+        bar_section_order: DEFAULT_BAR_SECTION_ORDER
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect(),
         cc_enabled_panes: CC_PANE_IDS.iter().map(|s| (*s).to_string()).collect(),
         theme: "dark".to_string(),
         dropdown_modules: vec![],
@@ -226,6 +240,6 @@ mod tests {
     fn defaults_match_allowlists() {
         let d = default_settings();
         validate_settings(&d).unwrap();
-        assert_eq!(d.bar_section_order.len(), BAR_SECTION_IDS.len());
+        assert_eq!(d.bar_section_order.len(), DEFAULT_BAR_SECTION_ORDER.len());
     }
 }

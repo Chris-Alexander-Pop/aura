@@ -3,6 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type PowerProfile } from "@/lib/api"
 import { connectWs, useWsStore } from "@/lib/ws"
 import { FlyoutLoading, FlyoutEmpty } from "@/components/bar/flyouts/FlyoutStates"
+import {
+  FlyoutMeta,
+  FlyoutProfilePicker,
+  FlyoutShell,
+  FlyoutTitle,
+} from "@/components/bar/flyouts/FlyoutPrimitives"
 import { cn } from "@/lib/utils"
 
 export default function BatteryFlyout() {
@@ -40,12 +46,7 @@ export default function BatteryFlyout() {
   })
 
   const profileMut = useMutation({
-    mutationFn: async () => {
-      const order: PowerProfile[] = ["balanced", "performance", "saver"]
-      const cur = prof?.profile ?? "balanced"
-      const i = order.indexOf(cur)
-      await api.setPowerProfile(order[(i + 1) % order.length])
-    },
+    mutationFn: (profile: PowerProfile) => api.setPowerProfile(profile),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["pwr"] }),
   })
 
@@ -58,6 +59,7 @@ export default function BatteryFlyout() {
 
   const low = displayBatt && !displayBatt.charging && displayBatt.percent <= 20
   const hasBattery = displayBatt != null && displayBatt.percent >= 0
+  const currentProfile = (prof?.profile ?? "balanced") as PowerProfile
 
   const timeLine = (() => {
     if (!displayBatt) return "Battery status unavailable"
@@ -65,81 +67,44 @@ export default function BatteryFlyout() {
     if (!tr || tr === "Unknown") {
       return displayBatt.charging ? "Time until charged: calculating…" : "Time remaining: calculating…"
     }
-    return displayBatt.charging ? `Time until charged: ${tr}` : `Time remaining: ${tr}`
+    return displayBatt.charging ? `Until charged: ${tr}` : `Remaining: ${tr}`
   })()
-
-  const profileLine = `Power profile: ${prof?.profile ?? "balanced"}`
 
   if (battPending) {
     return (
-      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Battery</h2>
+      <FlyoutShell>
+        <FlyoutTitle>Battery</FlyoutTitle>
         <FlyoutLoading label="Reading battery status…" />
-      </div>
+      </FlyoutShell>
     )
   }
 
   if (battErr || batt == null) {
     return (
-      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Battery</h2>
+      <FlyoutShell>
+        <FlyoutTitle>Battery</FlyoutTitle>
         <FlyoutEmpty
           icon="battery_unknown"
           title="Battery status unavailable"
-          detail="Plug in AC or open Control Center to troubleshoot power info."
+          detail="Open Control Center to troubleshoot."
         />
-      </div>
+      </FlyoutShell>
     )
   }
 
   return (
-    <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-      <h2 className={cn("pr-2 text-sm font-semibold leading-tight", low ? "text-red" : "text-subtext1")}>
+    <FlyoutShell>
+      <FlyoutTitle className={cn(low && "text-red")}>
         {hasBattery ? `Remaining: ${displayBatt!.percent}%` : "No battery detected"}
-      </h2>
+      </FlyoutTitle>
 
-      <p className="text-[12px] leading-relaxed text-subtext0">{timeLine}</p>
+      <FlyoutMeta>{timeLine}</FlyoutMeta>
 
-      <p className="text-[12px] text-subtext1">{profileLine}</p>
-
-      <button
-        type="button"
+      <FlyoutProfilePicker
+        value={currentProfile}
         disabled={profPending || profileMut.isPending}
-        className="w-full rounded-xl bg-surface0/90 px-3 py-2.5 text-left text-[12px] font-medium text-subtext1 transition-colors hover:bg-surface1 disabled:opacity-60"
-        onClick={() => profileMut.mutate()}
-      >
-        {profPending || profileMut.isPending ? (
-          <span className="flex items-center gap-2 text-subtext0">
-            <span className="icon animate-spin text-xl text-teal">progress_activity</span>
-            Loading profile…
-          </span>
-        ) : (
-          <>
-            <span className="text-text">{prof?.profile ?? "balanced"}</span>
-            <span className="mt-0.5 block text-[10px] font-normal text-subtext0">
-              Click to cycle performance / balanced / saver
-            </span>
-          </>
-        )}
-      </button>
-
-      <div className="flex justify-center pt-1">
-        <span
-          className={cn(
-            "icon text-5xl leading-none",
-            low ? "text-red" : "text-subtext1",
-            displayBatt?.charging ? "text-teal" : ""
-          )}
-        >
-          {displayBatt
-            ? displayBatt.charging
-              ? "battery_charging_full"
-              : displayBatt.percent > 50
-                ? "battery_5_bar"
-                : "battery_2_bar"
-            : "battery_unknown"}
-        </span>
-      </div>
-    </div>
+        onChange={(p) => profileMut.mutate(p)}
+      />
+    </FlyoutShell>
   )
 }

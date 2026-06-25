@@ -414,6 +414,8 @@ export const api = {
     call<import("./api-types").HyprWorkspace[]>("Hyprland.GetWorkspaces"),
   hyprlandGetActiveWorkspace: () =>
     call<import("./api-types").HyprActiveWorkspace | null>("Hyprland.GetActiveWorkspace"),
+  hyprlandGetBarSnapshot: () =>
+    call<import("./api-types").HyprBarSnapshot>("Hyprland.GetBarSnapshot"),
   hyprlandGetClients: () => call<import("./api-types").HyprClient[]>("Hyprland.GetClients"),
   hyprlandGetActiveWindow: () =>
     call<import("./api-types").HyprActiveWindow | null>("Hyprland.GetActiveWindow"),

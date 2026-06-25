@@ -2,8 +2,21 @@ import { useEffect, useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
 import { connectWs, useWsStore } from "@/lib/ws"
-import { cn } from "@/lib/utils"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
+import {
+  FlyoutActionButton,
+  FlyoutBanner,
+  FlyoutExpandLink,
+  FlyoutIconButton,
+  FlyoutList,
+  FlyoutMeta,
+  FlyoutRow,
+  FlyoutRowIcon,
+  FlyoutRowLabel,
+  FlyoutShell,
+  FlyoutTitle,
+  FlyoutToggleRow,
+} from "@/components/bar/flyouts/FlyoutPrimitives"
 import { NetworkConnectModal } from "@/pages/control-center/panes/NetworkConnectModal"
 
 function strengthIcon(strength: number): string {
@@ -105,150 +118,104 @@ export default function NetworkFlyout() {
     await qc.refetchQueries({ queryKey: ["wifi-scan"] })
   }
 
-  const availableCount = sorted.length
-
   if (netPending) {
     return (
-      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Wi‑Fi</h2>
+      <FlyoutShell>
+        <FlyoutTitle>Wi‑Fi</FlyoutTitle>
         <FlyoutLoading label="Fetching network status…" />
-      </div>
+      </FlyoutShell>
     )
   }
 
   if (netError) {
     return (
-      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">Wi‑Fi</h2>
+      <FlyoutShell>
+        <FlyoutTitle>Wi‑Fi</FlyoutTitle>
         <FlyoutEmpty icon="wifi_off" title="Could not load Wi‑Fi" detail="Try again from Control Center." />
-      </div>
+      </FlyoutShell>
     )
   }
 
   const listBusy = wifiOn && sorted.length === 0 && (scanning || scanPending)
+  const showCount = wifiOn && sorted.length > 0
 
   return (
     <>
-      <div className="flex flex-col gap-3 px-3 pb-3 pt-3 text-text">
-        <h2 className="pr-2 text-sm font-semibold leading-tight text-subtext1">
-          Wi‑Fi {wifiOn ? "enabled" : "disabled"}
-        </h2>
+      <FlyoutShell>
+        <FlyoutTitle>Wi‑Fi {wifiOn ? "enabled" : "disabled"}</FlyoutTitle>
 
         {keyring && keyring.available && !keyring.unlocked ? (
-          <p className="rounded-lg bg-yellow/15 px-2.5 py-2 text-[11px] leading-snug text-yellow">
+          <FlyoutBanner>
             {keyring.message ?? "Login keyring is locked — saved passwords unavailable."}
-          </p>
+          </FlyoutBanner>
         ) : null}
 
-        {connectError ? (
-          <p className="rounded-lg bg-red/15 px-2.5 py-2 text-[11px] leading-snug text-red" role="alert">
-            {connectError}
-          </p>
+        {connectError ? <FlyoutBanner tone="error">{connectError}</FlyoutBanner> : null}
+
+        <FlyoutToggleRow label="Enabled" checked={wifiOn} onChange={toggleWifi} />
+
+        {showCount ? (
+          <FlyoutMeta>
+            {sorted.length} network{sorted.length === 1 ? "" : "s"} available
+          </FlyoutMeta>
         ) : null}
-
-        <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-surface0/90 px-3 py-2.5">
-          <span className="text-[12px] font-medium text-text">Enabled</span>
-          <input
-            type="checkbox"
-            className="h-4 w-4 accent-teal"
-            checked={wifiOn}
-            onChange={(e) => toggleWifi(e.target.checked)}
-          />
-        </label>
-
-        <p className="px-0.5 text-[11px] leading-snug text-subtext0">
-          {wifiOn
-            ? `${availableCount} network${availableCount === 1 ? "" : "s"} available`
-            : "Turn on Wi‑Fi to scan and connect."}
-        </p>
 
         {listBusy ? <FlyoutLoading label="Scanning for networks…" /> : null}
         {!wifiOn ? (
-          <FlyoutEmpty icon="wifi_off" title="Wi‑Fi is off" detail="Enable Wi‑Fi above to see nearby networks." />
+          <FlyoutEmpty icon="wifi_off" title="Wi‑Fi is off" detail="Enable Wi‑Fi to scan and connect." />
         ) : null}
         {wifiOn && !listBusy && sorted.length === 0 ? (
           <FlyoutEmpty
             icon="wifi_find"
             title="No networks found"
-            detail="Move close to your router or rescan. Hidden SSIDs may not appear here."
+            detail="Move closer to your router or rescan."
           />
         ) : null}
 
-        {wifiOn ? (
-          <ul className="flex max-h-56 flex-col gap-1.5 overflow-y-auto pr-0.5">
+        {wifiOn && sorted.length > 0 ? (
+          <FlyoutList>
             {sorted.map((ap) => {
               const isConnecting = connectingToSsid === ap.ssid
               const secure = isSecured(ap.security)
 
               return (
-                <li
-                  key={ap.ssid}
-                  className="flex items-center gap-2 rounded-xl bg-surface0/90 px-2 py-2"
-                >
-                  <span
-                    className={cn(
-                      "icon shrink-0 text-[22px] leading-none",
-                      ap.active ? "text-teal" : "text-subtext0"
-                    )}
-                  >
-                    {strengthIcon(ap.strength)}
-                  </span>
+                <FlyoutRow key={ap.ssid}>
+                  <FlyoutRowIcon icon={strengthIcon(ap.strength)} active={ap.active} />
                   {secure ? (
-                    <span className="icon shrink-0 text-[14px] text-subtext0" title="Secured network">
+                    <span className="icon shrink-0 text-[12px] text-subtext0" title="Secured network">
                       lock
                     </span>
                   ) : null}
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate text-[13px] leading-tight",
-                      ap.active ? "font-semibold text-teal" : "text-subtext1"
-                    )}
-                  >
-                    {ap.ssid}
-                  </span>
-
-                  <button
-                    type="button"
-                    disabled={isConnecting || !wifiOn}
+                  <FlyoutRowLabel active={ap.active}>{ap.ssid}</FlyoutRowLabel>
+                  <FlyoutIconButton
+                    icon={ap.active ? "link_off" : "link"}
+                    active={ap.active}
+                    disabled={!wifiOn}
+                    loading={isConnecting}
                     title={ap.active ? "Disconnect" : secure ? "Enter password" : "Connect"}
-                    className={cn(
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40",
-                      ap.active
-                        ? "bg-teal text-crust"
-                        : "bg-teal/90 text-crust hover:bg-teal"
-                    )}
                     onClick={() => onConnectClick(ap, ap.active)}
-                  >
-                    {isConnecting ? (
-                      <span className="icon animate-spin text-[20px] text-crust">progress_activity</span>
-                    ) : (
-                      <span className="icon text-[22px]">{ap.active ? "link_off" : "link"}</span>
-                    )}
-                  </button>
-                </li>
+                  />
+                </FlyoutRow>
               )
             })}
-          </ul>
+          </FlyoutList>
         ) : null}
 
-        <button
-          type="button"
+        <FlyoutActionButton
+          icon="wifi_find"
+          loading={scanning}
           disabled={scanning || !wifiOn}
-          className="flex w-full items-center justify-center gap-2 rounded-full bg-blue/30 py-3 text-[12px] font-semibold text-blue hover:bg-blue/40 disabled:opacity-40"
+          variant="primary"
           onClick={() => rescan()}
         >
-          <span className={cn("icon text-lg", scanning && "animate-spin")}>wifi_find</span>
           {scanning ? "Scanning…" : "Rescan networks"}
-        </button>
+        </FlyoutActionButton>
 
-        <button
-          type="button"
-          className="rounded-lg py-2 text-center text-[11px] text-subtext0 underline-offset-2 hover:text-subtext1 hover:underline"
-          onClick={() => api.auraToggleWindow("control-center")}
-        >
-          Wi‑Fi settings
-        </button>
-      </div>
+        <FlyoutExpandLink
+          label="Wi‑Fi settings"
+          onClick={() => api.openControlCenterPane("network")}
+        />
+      </FlyoutShell>
 
       <NetworkConnectModal
         open={passwordTarget != null}

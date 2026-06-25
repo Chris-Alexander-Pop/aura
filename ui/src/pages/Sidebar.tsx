@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
 import {
   DROPDOWN_TILE_IDS,
@@ -8,16 +8,14 @@ import {
   DROPDOWN_TILE_LABELS,
   sidebarTileSummary,
 } from "@/lib/dropdown-tiles"
-import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
-import { useEffect } from "react"
 
 function SidebarTile({ tileId }: { tileId: string }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["sidebar-tile", tileId],
     queryFn: () => api.sidebarGetTileData(tileId),
-    staleTime: 10_000,
-    refetchInterval: 15_000,
+    staleTime: 0,
+    refetchInterval: 8_000,
   })
 
   const label = isDropdownTileId(tileId) ? DROPDOWN_TILE_LABELS[tileId] : tileId
@@ -49,29 +47,10 @@ function SidebarTile({ tileId }: { tileId: string }) {
 }
 
 export default function Sidebar() {
-  const queryClient = useQueryClient()
-
-  useEffect(() => {
-    connectWs()
-    const invalidate = (tile: string) => {
-      void queryClient.invalidateQueries({ queryKey: ["sidebar-tile", tile] })
-    }
-    const offs = [
-      useWsStore.getState().on("Network.StateChanged", () => invalidate("network")),
-      useWsStore.getState().on("Audio.StateChanged", () => invalidate("audio")),
-      useWsStore.getState().on("Bluetooth.StateChanged", () => invalidate("bluetooth")),
-      useWsStore.getState().on("Power.BatteryState", () => invalidate("battery")),
-      useWsStore.getState().on("Power.Profile", () => invalidate("battery")),
-      useWsStore.getState().on("Calendar.EventsChanged", () => invalidate("calendar")),
-      useWsStore.getState().on("Notifications.Changed", () => invalidate("notifications")),
-      useWsStore.getState().on("Productivity.TimerTick", () => invalidate("productivity")),
-    ]
-    return () => offs.forEach((off) => off())
-  }, [queryClient])
-
   const { data: settings } = useQuery({
     queryKey: ["aura-settings"],
     queryFn: api.getAuraSettings,
+    staleTime: 0,
   })
 
   const modules =

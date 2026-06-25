@@ -1,7 +1,7 @@
 /**
  * Always-on vertical strip (#/bar) — replaces GTK Bar.tsx when AURA_GTK_BAR is unset.
  */
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
 import {
@@ -14,6 +14,8 @@ import {
 import {
   BAR_SECTION_IDS,
   DEFAULT_BAR_SECTION_ORDER,
+  HIDDEN_BAR_SECTIONS,
+  TOP_BAR_SECTIONS,
   type BarSectionId,
 } from "@/components/bar/useBarLayoutStore"
 import StatusCluster from "@/components/bar/StatusCluster"
@@ -21,8 +23,8 @@ import NotificationToasts from "@/components/notifications/NotificationToasts"
 import { type StatusFlyoutId } from "@/components/bar/useFlyoutHover"
 import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
 import { cn } from "@/lib/utils"
-
-const HYPRLAND_REFETCH_MS = 60_000
+import { hyprlandQueryDefaults, useHyprlandSync } from "@/lib/useHyprlandSync"
+import { onHyprlandWorkspaceActive } from "@/lib/hyprland-bar-cache"
 
 /** Post a message to the AGS-registered WebKit message handler. */
 function postFlyoutMessage(payload: { open: boolean; panel?: string; y?: number }) {
@@ -38,20 +40,21 @@ function clientWorkspaceId(client: HyprClient): number | null {
 }
 
 function WorkspacesBlock() {
+  const qc = useQueryClient()
   const { data: wsRaw, isPending: wsPending } = useQuery({
     queryKey: ["hypr-ws"],
     queryFn: api.hyprlandGetWorkspaces,
-    refetchInterval: HYPRLAND_REFETCH_MS,
+    ...hyprlandQueryDefaults,
   })
   const { data: activeRaw, isPending: activePending } = useQuery({
     queryKey: ["hypr-active-ws"],
     queryFn: api.hyprlandGetActiveWorkspace,
-    refetchInterval: HYPRLAND_REFETCH_MS,
+    ...hyprlandQueryDefaults,
   })
   const { data: clientsRaw, isPending: clientsPending } = useQuery({
     queryKey: ["clients"],
     queryFn: api.hyprlandGetClients,
-    refetchInterval: HYPRLAND_REFETCH_MS,
+    ...hyprlandQueryDefaults,
   })
 
   const list = useMemo(() => parseHyprWorkspaces(wsRaw), [wsRaw])
@@ -100,7 +103,10 @@ function WorkspacesBlock() {
             key={id}
             type="button"
             title={`Workspace ${id}${occupied ? ` (${w?.windows} windows)` : ""}`}
-            onClick={() => void api.hyprlandDispatch(`workspace ${id}`)}
+            onClick={() => {
+              onHyprlandWorkspaceActive(qc, id)
+              void api.hyprlandDispatch(`workspace ${id}`)
+            }}
             className={cn(
               "group flex min-h-11 w-full flex-col items-center justify-center gap-0.5 rounded-2xl border px-1 py-1 transition-colors",
               activeId === id
@@ -134,7 +140,7 @@ function ActiveWindowBlock() {
   const { data: activeRaw, isPending } = useQuery({
     queryKey: ["hypr-active"],
     queryFn: api.hyprlandGetActiveWindow,
-    refetchInterval: HYPRLAND_REFETCH_MS,
+    ...hyprlandQueryDefaults,
   })
 
   const active = useMemo(() => parseHyprActiveWindow(activeRaw), [activeRaw])
@@ -161,67 +167,6 @@ function ActiveWindowBlock() {
       >
         <span className="icon text-[21px]">{iconFromHyprClass(active.class)}</span>
       </button>
-    </div>
-  )
-}
-
-function RunningAppsBlock() {
-  const { data: clientsRaw, isPending: clientsPending } = useQuery({
-    queryKey: ["clients"],
-    queryFn: api.hyprlandGetClients,
-    refetchInterval: HYPRLAND_REFETCH_MS,
-  })
-  const { data: activeRaw } = useQuery({
-    queryKey: ["hypr-active"],
-    queryFn: api.hyprlandGetActiveWindow,
-    refetchInterval: HYPRLAND_REFETCH_MS,
-  })
-
-  const activeAddr = parseHyprActiveWindow(activeRaw)?.address ?? ""
-
-  const apps = useMemo(() => {
-    const byClass = new Map<string, HyprClient>()
-    for (const client of parseHyprClients(clientsRaw)) {
-      const address = client.address
-      if (!address || address === activeAddr) continue
-      const cls = client.class || "Window"
-      const key = cls.toLowerCase()
-      if (!byClass.has(key)) byClass.set(key, client)
-    }
-    return [...byClass.values()].slice(0, 7)
-  }, [activeAddr, clientsRaw])
-
-  if (clientsPending && apps.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-1 px-0.5 py-1" aria-busy="true" aria-label="Loading apps">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-9 w-full animate-pulse rounded-xl bg-surface1/35" />
-        ))}
-      </div>
-    )
-  }
-
-  if (apps.length === 0) return null
-
-  return (
-    <div className="flex flex-col items-center gap-0.5 py-1">
-      {apps.map((client) => {
-        const addr = client.address
-        const cls = client.class
-        const title = client.title || cls || "Window"
-
-        return (
-          <button
-            key={addr || cls}
-            type="button"
-            title={title}
-            className="flex h-9 w-full items-center justify-center rounded-xl text-subtext1 transition-colors hover:bg-surface1/70 hover:text-text"
-            onClick={() => addr && void api.hyprlandDispatch(`focuswindow address:${addr}`)}
-          >
-            <span className="icon text-[21px]">{iconFromHyprClass(cls)}</span>
-          </button>
-        )
-      })}
     </div>
   )
 }
@@ -307,70 +252,6 @@ function CalendarPreviewBlock() {
   )
 }
 
-function LauncherBlock() {
-  return (
-    <div className="flex justify-center py-1">
-      <button
-        type="button"
-        title="Launcher (Super+Space)"
-        className="flex h-9 w-full items-center justify-center rounded-xl text-mauve transition-colors hover:bg-surface1/70"
-        onClick={() => void api.auraToggleWindow("launcher")}
-      >
-        <span className="icon text-[22px]">search</span>
-      </button>
-    </div>
-  )
-}
-
-function TrayBlock() {
-  const { data, isLoading } = useQuery({
-    queryKey: ["tray-items"],
-    queryFn: async () => (await api.trayList()).items,
-    refetchInterval: 5000,
-  })
-  const items = data ?? []
-
-  if (isLoading && items.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-1 py-1" aria-busy="true" aria-label="Loading tray">
-        <div className="h-8 w-8 animate-pulse rounded-lg bg-surface1/35" />
-      </div>
-    )
-  }
-
-  if (items.length === 0) {
-    return (
-      <div
-        className="mx-0.5 flex flex-col items-center gap-0.5 rounded-lg border border-dashed border-surface1/45 bg-surface0/30 px-1 py-1.5"
-        title="No StatusNotifier tray icons (start nm-applet, blueman, etc.)"
-        aria-label="System tray empty"
-      >
-        <span className="icon text-base text-overlay0/75">symptoms</span>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-col items-center gap-1 py-1" aria-label="System tray">
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          title={item.title || item.id}
-          className="flex h-8 w-full items-center justify-center rounded-lg text-subtext1 transition-colors hover:bg-surface0/70 hover:text-text"
-          onClick={() => void api.trayActivate(item.id)}
-          onContextMenu={(e) => {
-            e.preventDefault()
-            void api.traySecondaryActivate(item.id)
-          }}
-        >
-          <span className="icon text-lg">{item.icon_name ?? "apps"}</span>
-        </button>
-      ))}
-    </div>
-  )
-}
-
 function PowerBlock() {
   const buttonRef = useRef<HTMLButtonElement>(null)
 
@@ -423,19 +304,38 @@ function useBarSectionOrder(): BarSectionId[] {
     staleTime: 60_000,
   })
   const raw = data?.settings.bar_section_order
-  if (!raw?.length) return DEFAULT_BAR_SECTION_ORDER
+  const base = raw?.length ? raw : DEFAULT_BAR_SECTION_ORDER
   const allowed = new Set<string>(BAR_SECTION_IDS)
-  const filtered = raw.filter((id): id is BarSectionId => allowed.has(id))
+  const filtered = base.filter(
+    (id): id is BarSectionId => allowed.has(id) && !HIDDEN_BAR_SECTIONS.has(id as BarSectionId)
+  )
   return filtered.length > 0 ? filtered : DEFAULT_BAR_SECTION_ORDER
 }
 
+function BarSectionGroup({ ids, renderSection }: { ids: BarSectionId[]; renderSection: (id: BarSectionId) => ReactNode }) {
+  if (ids.length === 0) return null
+  return (
+    <>
+      {ids.map((id) => (
+        <div key={id} className="border-b border-surface0/40 pb-1">
+          {renderSection(id)}
+        </div>
+      ))}
+    </>
+  )
+}
+
 export default function BarStrip() {
+  useHyprlandSync()
+
   useEffect(() => {
     document.documentElement.classList.add("aura-bar-host")
     return () => document.documentElement.classList.remove("aura-bar-host")
   }, [])
 
   const ordered = useBarSectionOrder()
+  const topSections = useMemo(() => ordered.filter((id) => TOP_BAR_SECTIONS.has(id)), [ordered])
+  const bottomSections = useMemo(() => ordered.filter((id) => !TOP_BAR_SECTIONS.has(id)), [ordered])
 
   const onSegmentEnter = (id: StatusFlyoutId, centerY: number) =>
     postFlyoutMessage({ open: true, panel: id, y: centerY })
@@ -445,18 +345,12 @@ export default function BarStrip() {
   const renderSection = (id: BarSectionId) => {
     switch (id) {
       case "launcher":
-        return <LauncherBlock />
       case "tray":
-        return <TrayBlock />
+        return null
       case "workspaces":
         return <WorkspacesBlock />
       case "runningApps":
-        return (
-          <>
-            <ActiveWindowBlock />
-            <RunningAppsBlock />
-          </>
-        )
+        return <ActiveWindowBlock />
       case "media":
         return <MediaBlock />
       case "connectivity":
@@ -476,12 +370,14 @@ export default function BarStrip() {
     <div className="aura-bar-root relative flex h-full min-h-0 w-full flex-row text-text pointer-events-none">
       <NotificationToasts />
       <div className="relative z-10 flex min-h-0 w-14 shrink-0 flex-col overflow-hidden border-r border-surface0/80 bg-mantle pointer-events-auto">
-        <div className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden px-1 py-2">
-          {ordered.map((id) => (
-            <div key={id} className="border-b border-surface0/40 pb-1">
-              {renderSection(id)}
-            </div>
-          ))}
+        <div className="flex min-h-0 flex-1 flex-col px-1 py-2">
+          <div className="scrollbar-thin flex min-h-0 shrink-0 flex-col gap-1 overflow-y-auto overflow-x-hidden">
+            <BarSectionGroup ids={topSections} renderSection={renderSection} />
+          </div>
+          <div className="min-h-0 flex-1" aria-hidden />
+          <div className="flex shrink-0 flex-col gap-1">
+            <BarSectionGroup ids={bottomSections} renderSection={renderSection} />
+          </div>
         </div>
       </div>
     </div>
