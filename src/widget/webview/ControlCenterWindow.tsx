@@ -1,4 +1,5 @@
 // ControlCenter — normal Gtk toplevel so Hyprland can tile / float / close it.
+import { registerPanelHoverHandler } from "../../lib/panel-hover"
 import { createWebViewWindow } from "./WebViewWindow"
 
 export default function ControlCenterWindow() {
@@ -10,5 +11,6 @@ export default function ControlCenterWindow() {
         width: 860,
         height: 720,
         visible: false,
+        onSetup: (wv) => registerPanelHoverHandler(wv, "controlCenterHover", "control-center"),
     })
 }

@@ -1,7 +1,7 @@
 import { useCallback, useRef, type Ref, type RefObject } from "react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
-import { cn } from "@/lib/utils"
+import BarIconButton from "@/components/bar/BarIconButton"
 import type { StatusFlyoutId } from "./useFlyoutHover"
 
 type Props = {
@@ -36,8 +36,6 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
   const brightPct = Math.round((brightness?.brightness ?? 0.5) * 100)
   const brightLow = brightPct <= 25
 
-  // Y is viewport-relative — matches the flyout window's coordinate space
-  // (same marginTop as the strip, so viewport Y transfers directly).
   const anchorFor = useCallback(
     (id: StatusFlyoutId, el: HTMLElement | null) => {
       if (!el) return
@@ -54,23 +52,20 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
     icon: string,
     highlight?: boolean
   ) => (
-    <button
-      ref={ref as Ref<HTMLButtonElement>}
-      type="button"
-      title={title}
-      className={cn(
-        "flex h-9 w-full shrink-0 items-center justify-center rounded-xl transition-colors",
-        highlight ? "text-text hover:bg-surface1/70" : "text-subtext1 hover:bg-surface1/70 hover:text-text"
-      )}
-      onMouseEnter={() => anchorFor(id, ref.current)}
-      onMouseLeave={onSegmentLeave}
-    >
-      <span className="icon text-[21px]">{icon}</span>
-    </button>
+    <div key={id} className="flex w-full justify-center py-0.5">
+      <BarIconButton
+        ref={ref as Ref<HTMLButtonElement>}
+        title={title}
+        icon={icon}
+        active={highlight}
+        onMouseEnter={() => anchorFor(id, ref.current)}
+        onMouseLeave={onSegmentLeave}
+      />
+    </div>
   )
 
   return (
-    <div className="flex flex-col items-center gap-0.5 py-1">
+    <div className="flex flex-col items-center py-0.5">
       {segment(
         "network",
         netRef,

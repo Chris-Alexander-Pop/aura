@@ -19,6 +19,7 @@ import {
   type BarSectionId,
 } from "@/components/bar/useBarLayoutStore"
 import StatusCluster from "@/components/bar/StatusCluster"
+import BarIconButton from "@/components/bar/BarIconButton"
 import NotificationToasts from "@/components/notifications/NotificationToasts"
 import { type StatusFlyoutId } from "@/components/bar/useFlyoutHover"
 import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
@@ -83,21 +84,21 @@ function WorkspacesBlock() {
 
   if (workspacesLoading) {
     return (
-      <div className="flex flex-col items-center gap-1 py-1" aria-busy="true" aria-label="Loading workspaces">
+      <div className="flex flex-col items-center gap-0.5 py-0.5" aria-busy="true" aria-label="Loading workspaces">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-11 w-full animate-pulse rounded-2xl bg-surface1/35" />
+          <div key={i} className="h-8 w-8 animate-pulse rounded-full bg-surface1/35" />
         ))}
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col items-center gap-1 py-1">
+    <div className="flex flex-col items-center gap-0.5 py-0.5">
       {ids.map((id) => {
         const w = wsById.get(id)
         const wsClients = clientsByWs.get(id) ?? []
         const occupied = wsClients.length > 0 || (w?.windows ?? 0) > 0
-        const icons = wsClients.slice(0, 3).map((client) => iconFromHyprClass(client.class))
+        const icons = wsClients.slice(0, 2).map((client) => iconFromHyprClass(client.class))
         return (
           <button
             key={id}
@@ -108,7 +109,7 @@ function WorkspacesBlock() {
               void api.hyprlandDispatch(`workspace ${id}`)
             }}
             className={cn(
-              "group flex min-h-11 w-full flex-col items-center justify-center gap-0.5 rounded-2xl border px-1 py-1 transition-colors",
+              "group flex h-8 w-8 shrink-0 flex-col items-center justify-center gap-px rounded-full border transition-colors",
               activeId === id
                 ? "border-teal bg-teal text-crust"
                 : occupied
@@ -116,17 +117,19 @@ function WorkspacesBlock() {
                   : "border-transparent text-overlay0 hover:bg-surface0/70 hover:text-subtext0"
             )}
           >
-            <span className="text-[10px] font-semibold leading-none">{id}</span>
             {icons.length > 0 ? (
-              <span className="flex max-w-full flex-wrap items-center justify-center gap-0.5">
-                {icons.map((icon, index) => (
-                  <span key={`${icon}-${index}`} className="icon text-[13px] leading-none">
-                    {icon}
-                  </span>
-                ))}
-              </span>
+              <>
+                <span className="text-[8px] font-semibold leading-none">{id}</span>
+                <span className="flex items-center justify-center gap-px leading-none">
+                  {icons.map((icon, index) => (
+                    <span key={`${icon}-${index}`} className="icon text-[10px] leading-none">
+                      {icon}
+                    </span>
+                  ))}
+                </span>
+              </>
             ) : (
-              <span className="h-3" />
+              <span className="text-[11px] font-semibold leading-none">{id}</span>
             )}
           </button>
         )
@@ -148,7 +151,7 @@ function ActiveWindowBlock() {
   if (isPending && !active) {
     return (
       <div className="px-0.5 py-0.5" aria-busy="true" aria-label="Loading active window">
-        <div className="h-9 w-full animate-pulse rounded-xl bg-surface1/35" />
+        <div className="h-7 w-7 animate-pulse rounded-full bg-surface1/35" />
       </div>
     )
   }
@@ -159,14 +162,11 @@ function ActiveWindowBlock() {
 
   return (
     <div className="flex justify-center px-0.5 py-0.5">
-      <button
-        type="button"
+      <BarIconButton
         title={title}
-        className="flex h-9 w-full items-center justify-center rounded-xl bg-surface1/60 text-text transition-colors hover:bg-surface1"
+        icon={iconFromHyprClass(active.class)}
         onClick={() => void api.hyprlandDispatch(`focuswindow address:${active.address}`)}
-      >
-        <span className="icon text-[21px]">{iconFromHyprClass(active.class)}</span>
-      </button>
+      />
     </div>
   )
 }
@@ -190,63 +190,25 @@ function MediaBlock() {
 
   return (
     <div className="flex flex-col items-center gap-0.5 px-0.5 py-1" title={`${data?.title ?? ""} — ${data?.artist ?? ""}`}>
-      <button
-        type="button"
-        className="flex h-8 w-full items-center justify-center rounded-lg text-pink hover:bg-surface1/80"
+      <BarIconButton
+        icon={data?.playing ? "pause" : "play_arrow"}
+        className="text-pink hover:bg-pink/15 hover:text-pink"
         onClick={toggle}
         title={data?.playing ? "Pause" : "Play"}
-      >
-        <span className="icon text-lg">{data?.playing ? "pause" : "play_arrow"}</span>
-      </button>
-      <div className="flex w-full gap-0.5">
-        <button
-          type="button"
-          className="flex flex-1 items-center justify-center rounded-md text-subtext0 hover:bg-surface1/70"
+      />
+      <div className="flex w-full justify-center gap-1">
+        <BarIconButton
+          icon="skip_previous"
+          size="sm"
           onClick={() => void api.mediaPrevious(data?.player_name ?? undefined).then(() => qc.invalidateQueries({ queryKey: ["media"] }))}
           title="Previous"
-        >
-          <span className="icon text-base">skip_previous</span>
-        </button>
-        <button
-          type="button"
-          className="flex flex-1 items-center justify-center rounded-md text-subtext0 hover:bg-surface1/70"
+        />
+        <BarIconButton
+          icon="skip_next"
+          size="sm"
           onClick={() => void api.mediaNext(data?.player_name ?? undefined).then(() => qc.invalidateQueries({ queryKey: ["media"] }))}
           title="Next"
-        >
-          <span className="icon text-base">skip_next</span>
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function CalendarPreviewBlock() {
-  const { data: evs, isPending: calPending } = useQuery({
-    queryKey: ["cal"],
-    queryFn: () => api.fetchCalendarEvents(),
-    refetchInterval: 300_000,
-  })
-  const preview = Array.isArray(evs) ? evs.slice(0, 2) : []
-
-  return (
-    <div className="rounded-md border border-surface1/35 bg-surface0/50 px-1 py-1">
-      <button type="button" className="mb-1 flex w-full justify-center text-amber" onClick={() => api.auraToggleWindow("calendar")} title="Open calendar">
-        <span className="icon">calendar_month</span>
-      </button>
-      <div className="max-h-12 overflow-hidden text-[8px] leading-snug text-subtext0">
-        {calPending && preview.length === 0 ? (
-          <div className="space-y-1 px-0.5 py-1" aria-busy="true">
-            <div className="h-2.5 animate-pulse rounded bg-surface1/40" />
-            <div className="h-2.5 w-[85%] max-w-full animate-pulse rounded bg-surface1/30" />
-          </div>
-        ) : preview.length === 0 ? (
-          <div className="flex flex-col items-center gap-1 rounded-md border border-surface1/30 bg-mantle/40 px-1 py-2 text-center">
-            <span className="icon text-sm text-overlay0">event_busy</span>
-            <span>No events soon</span>
-          </div>
-        ) : (
-          preview.map((e, i) => <div key={i}>{String((e as { title?: unknown }).title ?? "—")}</div>)
-        )}
+        />
       </div>
     </div>
   )
@@ -256,20 +218,18 @@ function PowerBlock() {
   const buttonRef = useRef<HTMLButtonElement>(null)
 
   return (
-    <div className="flex justify-center py-1">
-      <button
+    <div className="flex justify-center py-0.5">
+      <BarIconButton
         ref={buttonRef}
-        type="button"
-        className="flex h-10 w-full items-center justify-center rounded-xl text-red/85 transition-colors hover:bg-red/10 hover:text-red"
+        icon="power_settings_new"
         title="Power menu"
+        className="text-red/85 hover:bg-red/10 hover:text-red"
         onMouseEnter={() => {
           const br = buttonRef.current?.getBoundingClientRect()
           if (br) postFlyoutMessage({ open: true, panel: "power", y: br.top + br.height / 2 })
         }}
         onMouseLeave={() => postFlyoutMessage({ open: false })}
-      >
-        <span className="icon text-[22px]">power_settings_new</span>
-      </button>
+      />
     </div>
   )
 }
@@ -283,17 +243,26 @@ function ClockBlock() {
   const hh = String(now.getHours()).padStart(2, "0")
   const mm = String(now.getMinutes()).padStart(2, "0")
 
+  const openCalendar = () => void api.auraToggleWindow("calendar")
+
   return (
-    <button
-      type="button"
-      title="Open calendar"
-      className="flex flex-col items-center py-1 font-mono text-[10px] text-subtext1 transition-colors hover:text-teal"
-      onClick={() => void api.auraToggleWindow("calendar")}
-    >
-      <span className="icon mb-0.5 text-lg text-teal">calendar_month</span>
-      <span>{hh}</span>
-      <span>{mm}</span>
-    </button>
+    <div className="flex w-full flex-col items-center gap-0.5 py-1">
+      <BarIconButton
+        icon="calendar_month"
+        title="Open calendar"
+        className="text-teal hover:bg-teal/15 hover:text-teal"
+        onClick={openCalendar}
+      />
+      <button
+        type="button"
+        title="Open calendar"
+        className="flex w-full flex-col items-center font-mono text-[10px] leading-tight text-subtext1 transition-colors hover:text-teal"
+        onClick={openCalendar}
+      >
+        <span>{hh}</span>
+        <span>{mm}</span>
+      </button>
+    </div>
   )
 }
 
@@ -356,7 +325,7 @@ export default function BarStrip() {
       case "connectivity":
         return <StatusCluster onSegmentEnter={onSegmentEnter} onSegmentLeave={onSegmentLeave} />
       case "calendar":
-        return <CalendarPreviewBlock />
+        return null
       case "clock":
         return <ClockBlock />
       case "power":

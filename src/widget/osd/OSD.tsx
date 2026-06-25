@@ -137,7 +137,12 @@ export default function OSD(gdkmonitor: Gdk.Monitor) {
                 />
                 <box orientation={Gtk.Orientation.VERTICAL} spacing={4}>
                     <label label={label()} css={`color: ${colors.m3onSurface}; font-size: 13px;`} />
-                    <level value={pct() / 100} css="min-width: 160px;" class="osd-scale" />
+                    <levelbar
+                        value={pct() / 100}
+                        widthRequest={160}
+                        css="min-width: 160px;"
+                        class="osd-scale"
+                    />
                 </box>
             </box>
         </window>

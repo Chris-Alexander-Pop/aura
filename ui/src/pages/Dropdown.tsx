@@ -5,6 +5,7 @@ import api, { type PowerProfile } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import DropdownModuleTiles from "@/components/dropdown/DropdownModuleTiles"
 import { filterDropdownModules } from "@/lib/dropdown-tiles"
+import { postPanelHover } from "@/lib/panel-hover"
 import { notificationQueryKeys } from "@/lib/ws-invalidation"
 import { applyThemeToDocument, isDarkTheme } from "@/lib/applyTheme"
 import type { DndPrefsView } from "@/lib/api-types"
@@ -280,6 +281,8 @@ export default function Dropdown() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
       className="flex flex-col gap-3 h-full bg-mantle/90 backdrop-blur-2xl border border-surface0/60 rounded-2xl shadow-2xl p-4 overflow-hidden"
+      onMouseEnter={() => postPanelHover("dropdownHover", true)}
+      onMouseLeave={() => postPanelHover("dropdownHover", false)}
     >
       <DashboardHeader />
 

@@ -105,6 +105,7 @@ function createHyprlandWebViewWindow(opts: WebViewWindowOptions) {
     } = opts
 
     const webview = makeWebView(page, width, height, false, false)
+    opts.onSetup?.(webview)
     const win = new Gtk.ApplicationWindow({ application: App })
     win.name = name
     win.title = title

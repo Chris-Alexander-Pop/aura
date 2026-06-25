@@ -110,7 +110,7 @@ export function FlyoutRowIcon({
   return (
     <span
       className={cn(
-        "icon shrink-0 text-[18px] leading-none",
+        "icon shrink-0 text-[16px] leading-none",
         active ? "text-teal" : "text-subtext0",
         className,
       )}
@@ -163,15 +163,15 @@ export function FlyoutIconButton({
       disabled={disabled || loading}
       title={title}
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40",
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40",
         active ? "bg-teal text-crust" : "text-subtext1 hover:bg-surface0/80 hover:text-text",
       )}
       onClick={onClick}
     >
       {loading ? (
-        <span className="icon animate-spin text-[16px]">progress_activity</span>
+        <span className="icon animate-spin text-[14px]">progress_activity</span>
       ) : (
-        <span className="icon text-[18px]">{icon}</span>
+        <span className="icon text-[16px]">{icon}</span>
       )}
     </button>
   )

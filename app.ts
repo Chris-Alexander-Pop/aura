@@ -11,8 +11,7 @@ import ControlCenterWindow from "./src/widget/webview/ControlCenterWindow"
 import DropdownWindow from "./src/widget/webview/DropdownWindow"
 import CalendarWindow from "./src/widget/webview/CalendarWindow"
 
-// Dropdown hot-corner trigger strip
-import DropdownTrigger from "./src/widget/dropdown/DropdownTrigger"
+import { mountPanelEdgeTriggers } from "./src/widget/triggers/PanelEdgeTriggers"
 import BarWebViewWindow from "./src/widget/webview/BarWebViewWindow"
 
 /** Legacy GTK vertical bar — set `AURA_GTK_BAR=1` to restore it instead of the React/WebKit strip */
@@ -26,6 +25,7 @@ app.start({
     css: "./style/style.css",
     main() {
         const monitors = app.monitors || []
+        console.error(`[aura] main: ${monitors.length} monitor(s), mounting edge triggers`)
 
         for (const monitor of monitors) {
             try {
@@ -34,9 +34,20 @@ app.start({
                 } else {
                     BarWebViewWindow(monitor)
                 }
+            } catch (e) {
+                console.error("Failed to create bar for monitor:", e)
+            }
+
+            try {
+                mountPanelEdgeTriggers(monitor)
+            } catch (e) {
+                console.error("Failed to create edge triggers for monitor:", e)
+            }
+
+            try {
                 OSD(monitor)
             } catch (e) {
-                console.error("Failed to create per-monitor windows:", e)
+                console.error("Failed to create OSD for monitor:", e)
             }
         }
 
@@ -47,11 +58,8 @@ app.start({
 
             // WebKit overlay panels
             ControlCenterWindow()
-            DropdownWindow()    // shown/hidden by hot-corner trigger
+            DropdownWindow()
             CalendarWindow()
-
-            // Dropdown hot-corner trigger strip (always-on, top-center)
-            DropdownTrigger()
         } catch (e) {
             console.error("Failed to create singleton windows:", e)
         }

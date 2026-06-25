@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
+import { postPanelHover } from "@/lib/panel-hover"
 import {
   consumeControlCenterPane,
   subscribeControlCenterPane,
@@ -84,7 +85,11 @@ export default function ControlCenter() {
   }, [])
 
   return (
-    <div className="flex h-full min-h-0 bg-base/80 backdrop-blur-2xl rounded-2xl overflow-hidden border border-surface0/60 shadow-2xl text-text">
+    <div
+      className="flex h-full min-h-0 bg-base/80 backdrop-blur-2xl rounded-2xl overflow-hidden border border-surface0/60 shadow-2xl text-text"
+      onMouseEnter={() => postPanelHover("controlCenterHover", true)}
+      onMouseLeave={() => postPanelHover("controlCenterHover", false)}
+    >
       <motion.nav
         animate={{ width: navExpanded ? 212 : 60 }}
         transition={{ type: "spring", stiffness: 400, damping: 35 }}

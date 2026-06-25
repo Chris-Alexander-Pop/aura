@@ -14,7 +14,7 @@ export const BAR_SECTION_IDS = [
 export type BarSectionId = (typeof BAR_SECTION_IDS)[number]
 
 /** Sections hidden from the strip (legacy ids may still exist in saved settings). */
-export const HIDDEN_BAR_SECTIONS = new Set<BarSectionId>(["launcher", "tray"])
+export const HIDDEN_BAR_SECTIONS = new Set<BarSectionId>(["launcher", "tray", "calendar"])
 
 /** Pinned above the vertical fill (workspaces + focused window). */
 export const TOP_BAR_SECTIONS = new Set<BarSectionId>(["workspaces", "runningApps"])
@@ -25,7 +25,6 @@ export const DEFAULT_BAR_SECTION_ORDER: BarSectionId[] = [
   "runningApps",
   "media",
   "connectivity",
-  "calendar",
   "clock",
   "power",
 ]

@@ -9,6 +9,7 @@ import {
   sidebarTileSummary,
 } from "@/lib/dropdown-tiles"
 import { cn } from "@/lib/utils"
+import { postPanelHover } from "@/lib/panel-hover"
 
 function SidebarTile({ tileId }: { tileId: string }) {
   const { data, isLoading, isError } = useQuery({
@@ -59,7 +60,11 @@ export default function Sidebar() {
       : [...DROPDOWN_TILE_IDS]
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto bg-mantle/95 p-4 text-text backdrop-blur-2xl">
+    <div
+      className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto bg-mantle/95 p-4 text-text backdrop-blur-2xl"
+      onMouseEnter={() => postPanelHover("sidebarHover", true)}
+      onMouseLeave={() => postPanelHover("sidebarHover", false)}
+    >
       <header>
         <h1 className="text-lg font-semibold">Sidebar</h1>
         <p className="text-xs text-subtext0">

@@ -24,13 +24,12 @@ const BAR_SECTION_IDS: &[&str] = &[
     "power",
 ];
 
-/// Default strip order (launcher/tray omitted from the live strip).
+/// Default strip order (launcher/tray/calendar omitted from the live strip).
 const DEFAULT_BAR_SECTION_ORDER: &[&str] = &[
     "workspaces",
     "runningApps",
     "media",
     "connectivity",
-    "calendar",
     "clock",
     "power",
 ];

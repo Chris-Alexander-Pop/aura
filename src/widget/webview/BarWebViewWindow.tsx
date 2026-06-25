@@ -14,8 +14,6 @@ import App from "ags/gtk4/app"
 import { createWebViewWindow } from "./WebViewWindow"
 import hyprland from "../../lib/hyprland"
 
-const PAD_V = 12
-const PAD_H = 8
 const STRIP_W = 56
 const FLYOUT_W = 320 // max popout width; individual panels use narrower content inside
 const CLOSE_DELAY_MS = 250
@@ -46,7 +44,7 @@ function monitorHeight(monitor: Gdk.Monitor): number {
 }
 
 export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
-    const height = Math.max(480, monitorHeight(gdkmonitor) - PAD_V * 2)
+    const height = Math.max(480, monitorHeight(gdkmonitor))
     const safeId = String(gdkmonitor.model ?? "monitor").replace(/[^a-zA-Z0-9_-]/g, "-")
     const flyoutName = `bar-flyout-${safeId}`
 
@@ -151,10 +149,7 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
         }
         exclusivity={Astal.Exclusivity.IGNORE}
         layer={Astal.Layer.TOP}
-        marginLeft={PAD_H + STRIP_W}
-        marginTop={PAD_V}
-        marginBottom={PAD_V}
-        marginRight={0}
+        marginLeft={STRIP_W}
         application={App}
         css="background-color: transparent;"
     >
@@ -175,10 +170,7 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
         exclusivity: Astal.Exclusivity.EXCLUSIVE,
         layer: Astal.Layer.OVERLAY,
         transparentWebView: true,
-        marginLeft: PAD_H,
-        marginTop: PAD_V,
-        marginBottom: PAD_V,
-        marginRight: 0,
+        margin: 0,
         width: STRIP_W,
         height,
         visible: true,

@@ -13,6 +13,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query"
 import api, { type CalendarEvent } from "@/lib/api"
 import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
+import { postPanelHover } from "@/lib/panel-hover"
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const MONTHS = [
@@ -335,7 +336,11 @@ export default function Calendar() {
   }, [newTaskText, createTodoMut])
 
   return (
-    <div className="flex flex-col h-full bg-base/80 backdrop-blur-2xl rounded-2xl border border-surface0/60 shadow-2xl overflow-hidden text-text">
+    <div
+      className="flex flex-col h-full bg-base/80 backdrop-blur-2xl rounded-2xl border border-surface0/60 shadow-2xl overflow-hidden text-text"
+      onMouseEnter={() => postPanelHover("calendarHover", true)}
+      onMouseLeave={() => postPanelHover("calendarHover", false)}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-surface0/60 shrink-0">
         <motion.button type="button" whileTap={{ scale: 0.8 }} onClick={prevMonth} className="icon-btn">
