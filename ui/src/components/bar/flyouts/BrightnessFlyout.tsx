@@ -2,7 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import api from "@/lib/api"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
-import { FlyoutShell, FlyoutSlider, FlyoutTitle } from "@/components/bar/flyouts/FlyoutPrimitives"
+import {
+  FlyoutRadioRow,
+  FlyoutSectionLabel,
+  FlyoutShell,
+  FlyoutSlider,
+  FlyoutTitle,
+} from "@/components/bar/flyouts/FlyoutPrimitives"
+
+function monitorLabel(name: string): string {
+  if (name === "active") return "Active display"
+  return name.replace(/_/g, " ")
+}
 
 export default function BrightnessFlyout() {
   const qc = useQueryClient()
@@ -76,18 +87,20 @@ export default function BrightnessFlyout() {
       <FlyoutTitle>Brightness</FlyoutTitle>
 
       {monitorNames.length > 1 ? (
-        <select
-          className="input py-1 text-[10px]"
-          value={monitor}
-          aria-label="Display"
-          onChange={(e) => setMonitor(e.target.value)}
-        >
-          {monitorNames.map((name) => (
-            <option key={name} value={name}>
-              {name === "active" ? "Active display" : name}
-            </option>
-          ))}
-        </select>
+        <div>
+          <FlyoutSectionLabel>Display</FlyoutSectionLabel>
+          <div className="mt-0.5 flex max-h-28 flex-col gap-0.5 overflow-y-auto">
+            {monitorNames.map((name) => (
+              <FlyoutRadioRow
+                key={name}
+                label={monitorLabel(name)}
+                checked={monitor === name}
+                disabled={setMut.isPending}
+                onSelect={() => setMonitor(name)}
+              />
+            ))}
+          </div>
+        </div>
       ) : null}
 
       <FlyoutSlider

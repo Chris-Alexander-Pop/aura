@@ -14,6 +14,60 @@ import {
     AccessPoint
 } from './types'
 
+const DEBUG_NOTIFICATIONS = GLib.getenv('AURA_DEBUG') === '1'
+
+/** High-frequency internal refresh signals — omit unless AURA_DEBUG=1. */
+const QUIET_NOTIFICATIONS = new Set([
+    'Hyprland.StateChanged',
+    'Performance.MetricsChanged',
+    'Tray.Changed',
+])
+
+function sanitizeLogValue(value: unknown, maxLen = 64): string {
+    if (value === null || value === undefined) return ''
+    const s = typeof value === 'string' ? value : JSON.stringify(value)
+    if (s.includes('<!DOCTYPE') || s.includes('<html')) return '<rejected>'
+    return s.length <= maxLen ? s : `${s.slice(0, maxLen - 1)}…`
+}
+
+function formatNotificationLine(method: string, params: Record<string, unknown> | undefined): string {
+    const p = params ?? {}
+
+    switch (method) {
+        case 'Network.StateChanged': {
+            const parts: string[] = []
+            if (p.connection_type) parts.push(`type=${p.connection_type}`)
+            if (p.active_ssid) parts.push(`ssid=${p.active_ssid}`)
+            if (p.local_ip) parts.push(`local=${p.local_ip}`)
+            if (p.public_ip) parts.push(`public=${sanitizeLogValue(p.public_ip)}`)
+            if (p.wifi_enabled !== undefined) parts.push(`wifi=${p.wifi_enabled ? 'on' : 'off'}`)
+            return parts.length ? parts.join(' ') : 'changed'
+        }
+        case 'Hyprland.StateChanged': {
+            const areas = Array.isArray(p.areas) ? p.areas.join(',') : ''
+            return areas ? `areas=${areas}` : 'changed'
+        }
+        case 'Notifications.Changed':
+            return `reason=${p.reason ?? 'changed'}`
+        case 'Power.BatteryState':
+            return [
+                p.percent != null && `${p.percent}%`,
+                p.status && String(p.status),
+                p.time_remaining != null && `${p.time_remaining}m`,
+            ].filter(Boolean).join(' ') || 'changed'
+        case 'Power.Profile':
+            return String(p.profile ?? 'changed')
+        case 'Audio.StateChanged':
+            return 'changed'
+        case 'Settings.Changed':
+            return p.field ? `field=${p.field}` : 'changed'
+        case 'Shell.Osd':
+            return [p.kind, p.label, p.percent != null && `${p.percent}%`].filter(Boolean).join(' ')
+        default:
+            return sanitizeLogValue(p)
+    }
+}
+
 class SidecarService extends GObject.Object {
     static {
         GObject.registerClass({
@@ -73,7 +127,7 @@ class SidecarService extends GObject.Object {
                 return
             }
 
-            console.log('Spawning sidecar from:', path)
+            console.log(`sidecar spawn ${path}`)
 
             this._proc = new Gio.Subprocess({
                 argv: [path],
@@ -156,8 +210,11 @@ class SidecarService extends GObject.Object {
     }
 
     private _handleNotification(msg: JsonRpcNotification) {
-        console.log('Sidecar Notification:', msg.method, msg.params)
-        
+        if (DEBUG_NOTIFICATIONS || !QUIET_NOTIFICATIONS.has(msg.method)) {
+            const detail = formatNotificationLine(msg.method, msg.params as Record<string, unknown> | undefined)
+            console.log(`sidecar notify ${msg.method}${detail ? ` ${detail}` : ''}`)
+        }
+
         // General signal
         this.emit('notification', msg.method, msg.params)
 

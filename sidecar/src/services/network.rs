@@ -487,6 +487,21 @@ pub fn parse_ip4_first_address(output: &str) -> Option<String> {
     })
 }
 
+/// Accept only a single plain-text IP from a public-IP lookup response.
+pub fn parse_public_ip_response(body: &str) -> Option<String> {
+    let trimmed = body.trim();
+    if trimmed.is_empty() || trimmed.len() > 45 {
+        return None;
+    }
+    if trimmed.contains('<') || trimmed.contains('\n') {
+        return None;
+    }
+    trimmed
+        .parse::<std::net::IpAddr>()
+        .ok()
+        .map(|ip| ip.to_string())
+}
+
 /// Compose [`NetworkStatus`] from captured `nmcli` outputs (contract / unit tests).
 pub fn build_network_status_from_nmcli(
     wifi_radio: &str,
@@ -617,12 +632,18 @@ async fn update_network_state() -> Result<()> {
 }
 
 async fn update_public_ip() -> Result<()> {
-    let public_ip = reqwest::get("https://ifconfig.me")
+    let body = reqwest::Client::new()
+        .get("https://ifconfig.me/ip")
+        .header(reqwest::header::ACCEPT, "text/plain")
+        .send()
         .await?
         .text()
-        .await?
-        .trim()
-        .to_string();
+        .await?;
+
+    let Some(public_ip) = parse_public_ip_response(&body) else {
+        tracing::debug!(body_len = body.len(), "public IP lookup returned non-IP body");
+        return Ok(());
+    };
 
     let mut state = STATE.write().await;
     if state.status.public_ip.as_deref() != Some(&public_ip) {
@@ -740,6 +761,25 @@ mod tests {
     fn parse_active_wifi_ssid_fixture() {
         let fixture = include_str!("../../tests/fixtures/network/nmcli_dev_wifi_active.txt");
         assert_eq!(parse_active_wifi_ssid(fixture).as_deref(), Some("CafeWiFi"));
+    }
+
+    #[test]
+    fn parse_public_ip_response_accepts_ipv4_and_ipv6() {
+        assert_eq!(
+            parse_public_ip_response("142.117.124.114\n").as_deref(),
+            Some("142.117.124.114")
+        );
+        assert_eq!(
+            parse_public_ip_response("2001:db8::1").as_deref(),
+            Some("2001:db8::1")
+        );
+    }
+
+    #[test]
+    fn parse_public_ip_response_rejects_html_and_garbage() {
+        assert!(parse_public_ip_response("<!DOCTYPE html>").is_none());
+        assert!(parse_public_ip_response("not-an-ip").is_none());
+        assert!(parse_public_ip_response("").is_none());
     }
 
     #[test]
