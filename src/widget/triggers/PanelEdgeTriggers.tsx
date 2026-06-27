@@ -14,6 +14,8 @@ export const edgeTriggerWindows: Gtk.Window[] = []
 const triggersByMonitor = new Map<string, Gtk.Window[]>()
 
 const TRIGGER_SIZE = 2
+/** Top module-hub strip — wider than corner legs so hover is reachable. */
+const TOP_HUB_TRIGGER_H = 10
 const MEDIA_TRIGGER_H = 140
 /** L-shaped dropdown corner: length of each leg along bottom and right edges. */
 const DROPDOWN_CORNER_LEG = 56
@@ -145,7 +147,8 @@ function mountModuleHubTrigger(
         marginLeft,
         marginTop: 0,
         width: cardWidth,
-        height: TRIGGER_SIZE,
+        height: TOP_HUB_TRIGGER_H,
+        layer: Astal.Layer.TOP,
     })
 }
 
@@ -164,6 +167,7 @@ function mountDropdownCornerTriggers(gdkmonitor: Gdk.Monitor, tag: string): Gtk.
             marginTop: height - TRIGGER_SIZE,
             width: DROPDOWN_CORNER_LEG,
             height: TRIGGER_SIZE,
+            layer: Astal.Layer.TOP,
         })
     )
 
@@ -176,6 +180,7 @@ function mountDropdownCornerTriggers(gdkmonitor: Gdk.Monitor, tag: string): Gtk.
             marginTop: height - DROPDOWN_CORNER_LEG,
             width: TRIGGER_SIZE,
             height: DROPDOWN_CORNER_LEG,
+            layer: Astal.Layer.TOP,
         })
     )
 
@@ -196,7 +201,7 @@ export function unmountPanelEdgeTriggers(gdkmonitor: Gdk.Monitor) {
 /** Imperative layer-shell strips — must call app.add_window (JSX alone was not showing). */
 export function mountPanelEdgeTriggers(
     gdkmonitor: Gdk.Monitor,
-    moduleHubMode: ModuleHubTriggerMode = "left_edge"
+    moduleHubMode: ModuleHubTriggerMode = "top_third"
 ) {
     const tag = monitorTag(gdkmonitor)
     unmountPanelEdgeTriggers(gdkmonitor)

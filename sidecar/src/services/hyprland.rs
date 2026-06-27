@@ -49,6 +49,8 @@ async fn hyprctl_dispatch(parts: &[String]) -> Result<()> {
         c.arg(p);
     }
     c.stdin(Stdio::null());
+    c.stdout(Stdio::null());
+    c.stderr(Stdio::null());
     let st = c.status().await?;
     if !st.success() {
         bail!("hyprctl dispatch failed: {st}");

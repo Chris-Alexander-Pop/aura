@@ -59,6 +59,8 @@ pub fn register(registry: &mut ServiceRegistry) {
             .arg("-TERM")
             .arg(pid_u.to_string())
             .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
             .await?;
 

@@ -275,19 +275,17 @@ export default function Dropdown() {
   const netLabel =
     quickLoading && !quick ? "…" : quickError ? "Wi‑Fi n/a" : (net?.active_connection ?? "Wi-Fi")
 
-  useEffect(() => {
-    document.documentElement.classList.add("aura-panel-host")
-    return () => document.documentElement.classList.remove("aura-panel-host")
-  }, [])
-
   return (
+    <div
+      className="h-full min-h-0 w-full"
+      onMouseEnter={() => postPanelHover("dropdownHover", true)}
+      onMouseLeave={() => postPanelHover("dropdownHover", false)}
+    >
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
-      className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-surface0/60 bg-mantle/90 p-3 text-text shadow-2xl backdrop-blur-2xl"
-      onMouseEnter={() => postPanelHover("dropdownHover", true)}
-      onMouseLeave={() => postPanelHover("dropdownHover", false)}
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-surface0/60 bg-mantle p-3 text-text shadow-2xl"
     >
       <DashboardHeader />
 
@@ -365,5 +363,6 @@ export default function Dropdown() {
         </div>
       </div>
     </motion.div>
+    </div>
   )
 }

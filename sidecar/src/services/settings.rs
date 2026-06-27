@@ -84,7 +84,7 @@ pub struct AuraSettings {
 }
 
 fn default_module_hub_trigger() -> String {
-    "left_edge".to_string()
+    "top_third".to_string()
 }
 
 fn default_hide_shell_on_fullscreen() -> bool {
@@ -267,7 +267,7 @@ mod tests {
         let d = default_settings();
         validate_settings(&d).unwrap();
         assert_eq!(d.bar_section_order.len(), DEFAULT_BAR_SECTION_ORDER.len());
-        assert_eq!(d.module_hub_trigger, "left_edge");
+        assert_eq!(d.module_hub_trigger, "top_third");
         assert!(d.hide_shell_on_fullscreen);
     }
 

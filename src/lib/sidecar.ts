@@ -205,6 +205,14 @@ class SidecarService extends GObject.Object {
                 this._handleNotification(msg as JsonRpcNotification)
             }
         } catch (e) {
+            const trimmed = text.trim()
+            // hyprctl dispatch (and similar) used to inherit stdout and print plain "ok"
+            if (trimmed === 'ok' || trimmed === 'error') {
+                if (DEBUG_NOTIFICATIONS) {
+                    console.log(`sidecar: ignored non-json stdout line: ${trimmed}`)
+                }
+                return
+            }
             console.error('Failed to parse sidecar message:', text, e)
         }
     }

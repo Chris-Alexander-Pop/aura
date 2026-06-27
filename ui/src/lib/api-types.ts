@@ -422,7 +422,7 @@ export function parseAuraSettings(raw: unknown): AuraSettingsView | null {
   const module_hub_trigger =
     typeof triggerRaw === "string" && MODULE_HUB_TRIGGER_MODES.has(triggerRaw as ModuleHubTriggerMode)
       ? (triggerRaw as ModuleHubTriggerMode)
-      : "left_edge"
+      : "top_third"
   const hideRaw = raw.hide_shell_on_fullscreen
   const hide_shell_on_fullscreen = typeof hideRaw === "boolean" ? hideRaw : true
   return {

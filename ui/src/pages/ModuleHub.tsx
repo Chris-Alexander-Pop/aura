@@ -38,11 +38,11 @@ function ModuleTile({ tileId }: { tileId: string }) {
       type="button"
       onClick={onOpen}
       className={cn(
-        "glass-card flex flex-col gap-2 rounded-2xl border border-surface0/70 p-4 text-left transition-colors hover:border-mauve/35"
+        "glass-card flex min-w-0 flex-col gap-1 rounded-xl border border-surface0/70 p-3 text-left transition-colors hover:border-mauve/35"
       )}
     >
-      <span className="text-xs font-semibold uppercase tracking-wide text-mauve">{label}</span>
-      <span className="text-sm text-text">{body}</span>
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-mauve">{label}</span>
+      <span className="line-clamp-2 text-xs text-text">{body}</span>
     </button>
   )
 }
@@ -54,6 +54,8 @@ export default function ModuleHub() {
     staleTime: 0,
   })
 
+  const atLeftEdge = settings?.settings.module_hub_trigger === "left_edge"
+
   const modules =
     settings?.settings.dropdown_modules?.length
       ? filterDropdownModules(settings.settings.dropdown_modules)
@@ -61,20 +63,29 @@ export default function ModuleHub() {
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto bg-mantle/95 p-4 text-text backdrop-blur-2xl"
+      className="h-full min-h-0 w-full"
       onMouseEnter={() => postPanelHover("moduleHubHover", true)}
       onMouseLeave={() => postPanelHover("moduleHubHover", false)}
     >
-      <header>
-        <h1 className="text-lg font-semibold">Modules</h1>
-        <p className="text-xs text-subtext0">
-          Tile hub — configure modules in Control Center → Settings.
-        </p>
-      </header>
-      <div className="grid grid-cols-2 gap-3">
-        {modules.map((id) => (
-          <ModuleTile key={id} tileId={id} />
-        ))}
+      <div
+        className={cn(
+          "flex h-full min-h-0 flex-col gap-2 overflow-y-auto bg-mantle p-3 text-text shadow-2xl",
+          atLeftEdge
+            ? "rounded-r-2xl border border-l-0 border-surface0/60"
+            : "rounded-b-2xl border border-t-0 border-surface0/60"
+        )}
+      >
+        <header className="shrink-0">
+          <h1 className="text-base font-semibold">Modules</h1>
+          <p className="text-[11px] text-subtext0">
+            Tile hub — configure modules in Control Center → Settings.
+          </p>
+        </header>
+        <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 content-start">
+          {modules.map((id) => (
+            <ModuleTile key={id} tileId={id} />
+          ))}
+        </div>
       </div>
     </div>
   )

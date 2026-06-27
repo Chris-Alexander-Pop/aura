@@ -17,9 +17,11 @@ const DROPDOWN_HEIGHT = 280
 const MEDIA_WIDTH = 320
 const MEDIA_HEIGHT = 380
 
+const HOVER_PANEL_NAMES = new Set(["module-hub", "dropdown", "media-popup"])
+
 export type ModuleHubTriggerMode = "left_edge" | "top_third" | "none"
 
-let moduleHubTriggerMode: ModuleHubTriggerMode = "left_edge"
+let moduleHubTriggerMode: ModuleHubTriggerMode = "top_third"
 let hideShellOnFullscreen = true
 
 export function setModuleHubTriggerMode(mode: ModuleHubTriggerMode): void {
@@ -61,12 +63,21 @@ function resizeWebViewChild(win: AuraWindow, width: number, height: number) {
 }
 
 /** Position hover panels on the monitor whose trigger was entered. */
-function applyPanelLayout(name: string, win: AuraWindow, monitor: Gdk.Monitor): void {
+function applyPanelLayout(
+    name: string,
+    win: AuraWindow,
+    monitor: Gdk.Monitor,
+    opts?: { moduleHubTop?: boolean }
+): void {
     win.set_gdkmonitor?.(monitor)
 
     switch (name) {
         case "module-hub": {
-            if (moduleHubTriggerMode === "left_edge") {
+            const useTop =
+                opts?.moduleHubTop === true ||
+                moduleHubTriggerMode === "top_third" ||
+                moduleHubTriggerMode === "none"
+            if (!useTop && moduleHubTriggerMode === "left_edge") {
                 const { panelWidth, panelHeight, marginLeft, marginTop, marginBottom } =
                     moduleHubLeftEdgeLayout(monitor)
                 win.set_anchor?.(
@@ -115,15 +126,34 @@ function applyPanelLayout(name: string, win: AuraWindow, monitor: Gdk.Monitor): 
     }
 }
 
-export function showHoverPanel(name: string, monitor?: Gdk.Monitor): void {
+function defaultMonitor(): Gdk.Monitor | undefined {
+    const monitors = (App.monitors ?? []) as Gdk.Monitor[]
+    if (monitors.length === 0) return undefined
+    for (const m of monitors) {
+        const primary = (m as Gdk.Monitor & { is_primary?: () => boolean }).is_primary?.()
+        if (primary) return m
+    }
+    return monitors[0]
+}
+
+export function isHoverPanel(name: string): boolean {
+    return HOVER_PANEL_NAMES.has(name)
+}
+
+export function showHoverPanel(
+    name: string,
+    monitor?: Gdk.Monitor,
+    opts?: { moduleHubTop?: boolean }
+): void {
     cancelHoverClose(name)
     const win = getWindow(name)
     if (!win) {
         print(`panel-hover: window not found: ${name}`)
         return
     }
-    if (monitor) {
-        applyPanelLayout(name, win, monitor)
+    const mon = monitor ?? defaultMonitor()
+    if (mon) {
+        applyPanelLayout(name, win, mon, opts)
     }
     try {
         win.show?.()
@@ -136,12 +166,29 @@ export function showHoverPanel(name: string, monitor?: Gdk.Monitor): void {
 export function hideHoverPanel(name: string): void {
     const win = getWindow(name)
     if (!win) return
+    cancelHoverClose(name)
     win.visible = false
     try {
         win.hide?.()
     } catch {
         /* ignore */
     }
+}
+
+/** Toggle a hover panel; keyboard shortcuts use top layout for module-hub. */
+export function toggleHoverPanel(
+    name: string,
+    monitor?: Gdk.Monitor,
+    opts?: { moduleHubTop?: boolean }
+): boolean {
+    const win = getWindow(name)
+    if (!win) return false
+    if (win.visible) {
+        hideHoverPanel(name)
+        return false
+    }
+    showHoverPanel(name, monitor, opts)
+    return true
 }
 
 export function cancelHoverClose(name: string): void {

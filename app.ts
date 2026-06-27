@@ -14,6 +14,7 @@ import MediaPopupWindow from "./src/widget/webview/MediaPopupWindow"
 
 import { initAuraSettingsShell, mountEdgeTriggersForMonitor } from "./src/lib/aura-settings-shell"
 import { initShellVisibility } from "./src/lib/shell-visibility"
+import { isHoverPanel, toggleHoverPanel } from "./src/lib/panel-hover"
 import BarWebViewWindow from "./src/widget/webview/BarWebViewWindow"
 
 /** Legacy GTK vertical bar — set `AURA_GTK_BAR=1` to restore it instead of the React/WebKit strip */
@@ -86,6 +87,15 @@ app.start({
             case "toggle": {
                 const name = parts[1]
                 if (name) {
+                    if (isHoverPanel(name)) {
+                        const visible = toggleHoverPanel(
+                            name,
+                            undefined,
+                            name === "module-hub" ? { moduleHubTop: true } : undefined
+                        )
+                        res(`toggled ${name} → ${visible}`)
+                        break
+                    }
                     const win = app.get_window(name)
                     if (win) {
                         win.visible = !win.visible
