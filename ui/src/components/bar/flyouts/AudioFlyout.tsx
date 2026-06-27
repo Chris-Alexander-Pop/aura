@@ -106,7 +106,8 @@ export default function AudioFlyout() {
       <FlyoutSlider
         label={volumeLabel}
         value={sinkPct}
-        disabled={busy || sinkMuted}
+        disabled={sinkMuted}
+        live
         onChange={(v) =>
           sinkVolMut.mutate({
             device_id: defaultSink.id,

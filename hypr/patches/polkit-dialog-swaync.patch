@@ -1,0 +1,159 @@
+diff --git a/src/ui/Dialog.cpp b/src/ui/Dialog.cpp
+index bec6947..b622fda 100644
+--- a/src/ui/Dialog.cpp
++++ b/src/ui/Dialog.cpp
+@@ -144,12 +144,28 @@ void CDialog::build() {
+         detailRows += m_req.details.size();
+     }
+     const double extraForDetails = detailRows > 0 ? (double)detailRows * 8.0 : 0.0;
+-    const double targetHeight    = (double)cfg.windowHeight + extraForDetails;
++
++    // Size the window to content so vertical centering stays tight (not a tall box with dead space).
++    constexpr double OUTER_MARGIN = 6.0;
++    constexpr double GAP          = 2.0;
++    double           contentH     = OUTER_MARGIN;
++    contentH += 18; // title
++    if (m_req.identities.size() > 1)
++        contentH += GAP + 28;
++    contentH += GAP + 14; // prompt
++    if (!m_req.command.empty())
++        contentH += GAP + 30; // command pill
++    contentH += GAP + 36; // password field
++    contentH += GAP + 28; // buttons
++    contentH += OUTER_MARGIN;
++    contentH += 20; // one status line without resizing the window
++
++    const double targetHeight = contentH + extraForDetails;
+ 
+     m_window = CWindowBuilder::begin()
+                    ->preferredSize({(double)cfg.windowWidth, targetHeight})
+-                   ->minSize({460.0, targetHeight})
+-                   ->maxSize({600.0, targetHeight})
++                   ->minSize({(double)cfg.windowWidth, targetHeight})
++                   ->maxSize({(double)cfg.windowWidth, targetHeight})
+                    ->appTitle("Authentication Required")
+                    ->appClass("hyprpolkitagent")
+                    ->commence();
+@@ -177,8 +193,8 @@ void CDialog::build() {
+ 
+     m_window->m_rootElement->addChild(CRectangleBuilder::begin()->color([] { return g_pAgent->backend()->getPalette()->m_colors.background; })->commence());
+ 
+-    auto outer = CColumnLayoutBuilder::begin()->size({CDynamicSize::HT_SIZE_PERCENT, CDynamicSize::HT_SIZE_AUTO, {0.88F, 0.0F}})->gap(12)->commence();
+-    outer->setMargin(20);
++    auto outer = CColumnLayoutBuilder::begin()->size({CDynamicSize::HT_SIZE_PERCENT, CDynamicSize::HT_SIZE_AUTO, {0.98F, 0.0F}})->gap(2)->commence();
++    outer->setMargin(3);
+     outer->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
+     outer->setPositionFlag(IElement::HT_POSITION_FLAG_CENTER, true);
+     m_window->m_rootElement->addChild(outer);
+@@ -190,45 +206,35 @@ void CDialog::build() {
+         wrap->addChild(CTextBuilder::begin()
+                            ->text(std::string{"Authentication Required"})
+                            ->fontSize({CFontSize::HT_FONT_H2})
+-                           ->color([] { return g_pAgent->backend()->getPalette()->m_colors.text; })
++                           ->color([] { return g_pAgent->backend()->getPalette()->m_colors.accent; })
+                            ->commence());
+         outer->addChild(wrap);
+     }
+ 
+-    {
++    if (m_req.identities.size() > 1) {
+         auto wrap = CRowLayoutBuilder::begin()->commence();
+         wrap->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
+         wrap->setPositionFlag(IElement::HT_POSITION_FLAG_HCENTER, true);
+ 
+-        if (m_req.identities.size() > 1) {
+-            auto                     cb = CComboboxBuilder::begin();
+-            std::vector<std::string> items;
+-            for (const auto& id : m_req.identities)
+-                items.push_back(id.display);
+-            cb->items(std::move(items));
+-            const std::string preferred = "unix-user:" + std::to_string(::geteuid());
+-            int               sel       = 0;
+-            for (size_t i = 0; i < m_req.identities.size(); i++) {
+-                if (m_req.identities[i].raw == preferred) {
+-                    sel = (int)i;
+-                    break;
+-                }
++        auto                     cb = CComboboxBuilder::begin();
++        std::vector<std::string> items;
++        for (const auto& id : m_req.identities)
++            items.push_back(id.display);
++        cb->items(std::move(items));
++        const std::string preferred = "unix-user:" + std::to_string(::geteuid());
++        int               sel       = 0;
++        for (size_t i = 0; i < m_req.identities.size(); i++) {
++            if (m_req.identities[i].raw == preferred) {
++                sel = (int)i;
++                break;
+             }
+-            cb->currentItem((size_t)sel);
+-            cb->onChanged([this](CSharedPointer<CComboboxElement>, size_t idx) {
+-                if (idx < m_req.identities.size())
+-                    g_pAgent->selectIdentity(m_req.identities[idx].raw);
+-            });
+-            wrap->addChild(cb->commence());
+-        } else {
+-            const std::string display = m_req.identities.empty() ? "" : m_req.identities[0].display;
+-            wrap->addChild(CTextBuilder::begin()
+-                               ->text(std::string{"for "} + display)
+-                               ->fontSize({CFontSize::HT_FONT_SMALL})
+-                               ->clampSize({(double)cfg.passwordFieldWidth, -1.0})
+-                               ->color([] { return g_pAgent->backend()->getPalette()->m_colors.text.darken(0.3); })
+-                               ->commence());
+         }
++        cb->currentItem((size_t)sel);
++        cb->onChanged([this](CSharedPointer<CComboboxElement>, size_t idx) {
++            if (idx < m_req.identities.size())
++                g_pAgent->selectIdentity(m_req.identities[idx].raw);
++        });
++        wrap->addChild(cb->commence());
+         outer->addChild(wrap);
+     }
+ 
+@@ -265,21 +271,25 @@ void CDialog::build() {
+ 
+         const auto palette = g_pAgent->backend()->getPalette();
+         auto       box     = CRectangleBuilder::begin()
+-                       ->color([] { return g_pAgent->backend()->getPalette()->m_colors.alternateBase; })
++                       ->color([] { return g_pAgent->backend()->getPalette()->m_colors.base; })
++                       ->borderColor([] { return g_pAgent->backend()->getPalette()->m_colors.alternateBase; })
++                       ->borderThickness(1)
+                        ->rounding(palette->m_vars.bigRounding)
+                        ->size(CDynamicSize{CDynamicSize::HT_SIZE_AUTO, CDynamicSize::HT_SIZE_AUTO, {}})
+                        ->commence();
+ 
+         auto inner = CRowLayoutBuilder::begin()->gap(0)->commence();
+-        inner->setMargin(12);
++        inner->setMargin(8);
+         inner->addChild(CTextBuilder::begin()
+                             ->text(std::string{"$ "})
+                             ->fontFamily(std::string{palette->m_vars.fontFamilyMonospace})
++                            ->fontSize({CFontSize::HT_FONT_SMALL})
+                             ->color([] { return g_pAgent->backend()->getPalette()->m_colors.accent; })
+                             ->commence());
+         inner->addChild(CTextBuilder::begin()
+                             ->text(std::string{cmd})
+                             ->fontFamily(std::string{palette->m_vars.fontFamilyMonospace})
++                            ->fontSize({CFontSize::HT_FONT_SMALL})
+                             ->clampSize({(double)cfg.passwordFieldWidth, -1.0})
+                             ->color([] { return g_pAgent->backend()->getPalette()->m_colors.text; })
+                             ->commence());
+@@ -299,7 +309,7 @@ void CDialog::build() {
+ 
+     // wraps are only attached when their label has text, so empty labels reserve no space
+     {
+-        auto statusCol = CColumnLayoutBuilder::begin()->gap(4)->commence();
++        auto statusCol = CColumnLayoutBuilder::begin()->gap(2)->commence();
+         statusCol->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
+         statusCol->setPositionFlag(IElement::HT_POSITION_FLAG_HCENTER, true);
+         outer->addChild(statusCol);
+@@ -323,8 +333,7 @@ void CDialog::build() {
+     }
+ 
+     {
+-        auto btnRow = CRowLayoutBuilder::begin()->gap(10)->commence();
+-        btnRow->setMargin(8);
++        auto btnRow = CRowLayoutBuilder::begin()->gap(8)->commence();
+         btnRow->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
+         btnRow->setPositionFlag(IElement::HT_POSITION_FLAG_HCENTER, true);
+ 

@@ -129,6 +129,14 @@ pub struct HyprClient {
     pub workspace: HyprWorkspaceRef,
     #[serde(default)]
     pub floating: bool,
+    #[serde(default)]
+    pub fullscreen: u8,
+    #[serde(default = "default_hypr_monitor_id")]
+    pub monitor: i64,
+}
+
+fn default_hypr_monitor_id() -> i64 {
+    -1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +148,10 @@ pub struct HyprActiveWindow {
     pub workspace: HyprWorkspaceRef,
     #[serde(default)]
     pub floating: bool,
+    #[serde(default)]
+    pub fullscreen: u8,
+    #[serde(default = "default_hypr_monitor_id")]
+    pub monitor: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,6 +166,14 @@ pub struct HyprMonitor {
     pub id: i64,
     #[serde(default)]
     pub active_workspace: HyprWorkspaceRef,
+    #[serde(default)]
+    pub x: i64,
+    #[serde(default)]
+    pub y: i64,
+    #[serde(default)]
+    pub width: i64,
+    #[serde(default)]
+    pub height: i64,
 }
 
 // JSON-RPC Request/Response Types

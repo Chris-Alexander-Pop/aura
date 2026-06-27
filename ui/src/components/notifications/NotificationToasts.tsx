@@ -82,7 +82,9 @@ export default function NotificationToasts() {
                   {t.app_name}
                 </p>
                 <p className="truncate text-sm font-medium text-text">{t.summary || "(notification)"}</p>
-                {t.body ? <p className="mt-0.5 line-clamp-2 text-xs text-subtext0">{t.body}</p> : null}
+                {t.body ? (
+                  <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-subtext0">{t.body}</p>
+                ) : null}
               </div>
               <button
                 type="button"

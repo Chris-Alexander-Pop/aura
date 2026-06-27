@@ -17,9 +17,27 @@ Docs: `docs/MIGRATION_STRATEGY.md`, `docs/COMPONENT_MAPPING.md` (legacy mapping)
 
 - Full dev stack: `./aura` (see script for cleanup of competing shells, sidecar build, UI build, `bun run watch`).
 - Frontend only: `bun run watch` (Tailwind + `ags run app.ts`).
-- Hyprland: `aura-launch` runs `~/.config/ags/aura` in `foot` (see `hyprland_aura.conf`).
+- Hyprland: `aura-launch` runs `~/.config/ags/aura` in `foot`. Aura-owned Hypr fragments: `hypr/` (see below).
 
 Smoke IPC (with AGS running): `ags msg toggle control-center` (also `sidebar`, `dropdown`, `calendar` — window names in `src/widget/webview/*.tsx`).
+
+## Hypr config (Aura-owned)
+
+Aura keeps polkit, lock screen, keybinds, and session autostart under `hypr/`:
+
+```bash
+./scripts/aura-hypr-link.sh          # symlink XDG paths into ~/.config/ags/hypr/
+./scripts/aura-hypr-link.sh --check  # verify links + hyprland.conf sources
+```
+
+Add to live `~/.config/hypr/hyprland.conf`:
+
+```ini
+source = ~/.config/ags/hypr/hyprland/execs-aura.conf
+source = ~/.config/ags/hypr/hyprland/aura-keybinds.conf
+```
+
+Full checklist: [`hypr/README.md`](hypr/README.md). Polkit: build hyprtoolkit agent with `./scripts/build-hypr-polkit.sh` (Arch’s package is still Qt).
 
 ## Critical: sidecar binary path
 

@@ -93,8 +93,8 @@ Implement in order; all are in scope, not mutually exclusive:
 | Topic | Decision |
 |--------|----------|
 | Source of truth | **Hyprland**, with binds maintained in an **Aura-managed file** included from `hyprland.conf` |
-| Suggested path | `~/.config/ags/hypr/aura-binds.conf` (generated/applied by `Keybinds.*` RPC) |
-| Hyprland include | `source = ~/.config/ags/hypr/aura-binds.conf` (or `~/.config/hypr/aura-binds.conf` — pick one path in implementation and document) |
+| Suggested path | `~/.config/ags/hypr/hyprland/aura-keybinds.conf` (generated/applied by `Keybinds.*` RPC) |
+| Hyprland include | `source = ~/.config/ags/hypr/hyprland/aura-keybinds.conf` and `source = ~/.config/ags/hypr/hyprland/execs-aura.conf` |
 | **keyd** | **Optional** for FN/media key layer below Hyprland — install when ready; sidecar documents toggle, does not require keyd for v1 keybind editor |
 
 ### What is keyd?
@@ -297,7 +297,6 @@ See [roadmap/](roadmap/) and [BACKEND_TODO.md](BACKEND_TODO.md) §3.9.
 
 ## 24. Open items (still TBD at implementation time)
 
-- Exact Hyprland path for `aura-binds.conf` (under `~/.config/ags/hypr/` vs `~/.config/hypr/`)
 - Vicinae socket JSON schema stability (see [integrations/vicinae.md](integrations/vicinae.md))
 - Local STT library choice for GPU path
 - Whether to autostart `swaync` from Aura or only document Hyprland user config

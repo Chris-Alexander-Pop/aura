@@ -83,4 +83,4 @@ Inbox and rules: filter by app, **DND** schedule, history, and **clear all**. Un
 1. **Arch-only** (`pacman` / optional AUR helper).
 2. **Local append-only** transaction log under `~/.local/share/ags-sidecar/`.
 3. **All VPN phases:** NetworkManager → nftables → optional mihomo/clash profile type.
-4. **Hyprland** + Aura-managed `aura-binds.conf`; optional **keyd** for FN row.
+4. **Hyprland** + Aura-managed `hypr/hyprland/aura-keybinds.conf`; optional **keyd** for FN row.

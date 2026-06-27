@@ -27,13 +27,22 @@ lazy_static::lazy_static! {
     static ref ACTIVE_BACKLIGHT: RwLock<Option<String>> = RwLock::new(None);
 }
 
+async fn ensure_monitors() {
+    if MONITORS.read().await.is_empty() {
+        detect_monitors().await.ok();
+    }
+}
+
 pub fn register(registry: &mut ServiceRegistry) {
     tokio::spawn(async {
         detect_monitors().await.ok();
     });
 
     registry.register("Brightness.Get", |params| async move {
+        ensure_monitors().await;
+
         let monitor_query = params
+            .as_ref()
             .and_then(|p| p.get("monitor").cloned())
             .and_then(|v| serde_json::from_value::<String>(v).ok())
             .unwrap_or_else(|| "active".to_string());
@@ -52,12 +61,22 @@ pub fn register(registry: &mut ServiceRegistry) {
             return Ok(json!({ "monitors": list }));
         }
 
+        let refresh = params
+            .as_ref()
+            .and_then(|p| p.get("refresh"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
         let active = ACTIVE_BACKLIGHT.read().await.clone();
         let monitors = MONITORS.read().await;
         let monitor = find_monitor(&monitors, &monitor_query, active.as_deref());
 
         if let Some(m) = monitor {
-            let brightness = refresh_monitor_brightness(m).await.unwrap_or(m.brightness);
+            let brightness = if refresh {
+                refresh_monitor_brightness(m).await.unwrap_or(m.brightness)
+            } else {
+                m.brightness
+            };
             Ok(json!({
                 "monitor": m.name,
                 "brightness": brightness
@@ -71,6 +90,8 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Brightness.Set", |params| async move {
+        ensure_monitors().await;
+
         let p = params
             .as_ref()
             .and_then(|v| v.as_object())
@@ -255,7 +276,7 @@ async fn set_brightness(monitor: &Monitor, brightness: f64) -> Result<()> {
             }
         }
         MonitorType::DDC { bus_num } => {
-            process::exec_command_detached(&[
+            process::exec_command(&[
                 "ddcutil",
                 "-b",
                 bus_num,
@@ -266,7 +287,7 @@ async fn set_brightness(monitor: &Monitor, brightness: f64) -> Result<()> {
             .await?;
         }
         MonitorType::Default { device } => {
-            process::exec_command_detached(&[
+            process::exec_command(&[
                 "brightnessctl",
                 "-d",
                 device,

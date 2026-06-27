@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
-import { connectWs, useWsStore } from "@/lib/ws"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
 import {
   FlyoutActionButton,
@@ -39,24 +38,23 @@ export default function NetworkFlyout() {
     null
   )
 
-  useEffect(() => {
-    connectWs()
-    const off = useWsStore.getState().on("Network.StateChanged", () => {
-      void qc.invalidateQueries({ queryKey: ["net"] })
-      void qc.invalidateQueries({ queryKey: ["wifi-scan"] })
-    })
-    return off
-  }, [qc])
-
-  const { data: net, isPending: netPending, isError: netError } = useQuery({
+  const { data: net, isLoading: netLoading, isError: netError } = useQuery({
     queryKey: ["net"],
     queryFn: api.getNetworkStatus,
-    refetchInterval: 8000,
+    staleTime: 15_000,
   })
-  const { data: scan, isFetching: scanning, isPending: scanPending } = useQuery({
+
+  const wifiOn = !!net?.wifi_enabled
+
+  const {
+    data: scan,
+    isFetching: scanning,
+    isLoading: scanLoading,
+  } = useQuery({
     queryKey: ["wifi-scan"],
     queryFn: api.scanNetworks,
-    staleTime: 15_000,
+    enabled: wifiOn,
+    staleTime: 30_000,
   })
   const { data: keyring } = useQuery({
     queryKey: ["keyring-status"],
@@ -71,8 +69,6 @@ export default function NetworkFlyout() {
       return b.strength - a.strength
     }).slice(0, 8)
   }, [scan])
-
-  const wifiOn = !!net?.wifi_enabled
 
   const toggleWifi = async (enabled: boolean) => {
     await api.toggleWifi(enabled)
@@ -118,7 +114,7 @@ export default function NetworkFlyout() {
     await qc.refetchQueries({ queryKey: ["wifi-scan"] })
   }
 
-  if (netPending) {
+  if (netLoading && net == null) {
     return (
       <FlyoutShell>
         <FlyoutTitle>Wi‑Fi</FlyoutTitle>
@@ -136,7 +132,7 @@ export default function NetworkFlyout() {
     )
   }
 
-  const listBusy = wifiOn && sorted.length === 0 && (scanning || scanPending)
+  const listBusy = wifiOn && sorted.length === 0 && scan == null && scanLoading
   const showCount = wifiOn && sorted.length > 0
 
   return (

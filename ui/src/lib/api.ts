@@ -38,6 +38,7 @@ import type { PaneId } from "@/pages/control-center/navigation"
 export type { AuraSettingsView }
 
 const BASE = "/api"
+const SIDECAR_TIMEOUT_MS = 12_000
 
 async function call<T>(method: string, params?: Record<string, unknown>): Promise<T> {
   const data = await callData(method, params)
@@ -48,11 +49,20 @@ async function callData(method: string, params?: Record<string, unknown>): Promi
   const isGet = !params || Object.keys(params).length === 0
   const url = `${BASE}/${encodeURIComponent(method)}`
 
-  const res = await fetch(url, {
-    method: isGet ? "GET" : "POST",
-    headers: { "Content-Type": "application/json" },
-    body: isGet ? undefined : JSON.stringify(params),
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: isGet ? "GET" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: isGet ? undefined : JSON.stringify(params),
+      signal: AbortSignal.timeout(SIDECAR_TIMEOUT_MS),
+    })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`Sidecar timed out after ${SIDECAR_TIMEOUT_MS / 1000}s (${method})`)
+    }
+    throw err
+  }
 
   const text = await res.text()
   const trimmed = text.trim()

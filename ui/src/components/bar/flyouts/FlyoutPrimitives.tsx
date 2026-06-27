@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 export function FlyoutShell({
@@ -288,6 +288,11 @@ export function FlyoutRadioRow({
   )
 }
 
+function clampStep(value: number, min: number, max: number, step: number): number {
+  const stepped = Math.round(value / step) * step
+  return Math.min(max, Math.max(min, stepped))
+}
+
 export function FlyoutSlider({
   value,
   min = 0,
@@ -296,6 +301,7 @@ export function FlyoutSlider({
   disabled,
   label,
   accent = "teal",
+  live = false,
   onChange,
 }: {
   value: number
@@ -305,31 +311,135 @@ export function FlyoutSlider({
   disabled?: boolean
   label: string
   accent?: "teal" | "amber" | "sapphire"
+  live?: boolean
   onChange: (value: number) => void
 }) {
-  const accentClass =
-    accent === "amber" ? "accent-amber" : accent === "sapphire" ? "accent-sapphire" : "accent-teal"
+  const trackRef = useRef<HTMLDivElement>(null)
+  const [local, setLocal] = useState(() => clampStep(value, min, max, step))
+  const draggingRef = useRef(false)
+  const liveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (!draggingRef.current) {
+      setLocal(clampStep(value, min, max, step))
+    }
+  }, [value, min, max, step])
+
+  useEffect(
+    () => () => {
+      if (liveTimerRef.current != null) clearTimeout(liveTimerRef.current)
+    },
+    [],
+  )
+
+  const fillPct = max === min ? 0 : ((local - min) / (max - min)) * 100
+
+  const accentFill =
+    accent === "amber" ? "bg-amber" : accent === "sapphire" ? "bg-sapphire" : "bg-teal"
+
+  const valueFromClientX = (clientX: number) => {
+    const track = trackRef.current
+    if (!track) return local
+    const { left, width } = track.getBoundingClientRect()
+    if (width <= 0) return local
+    const ratio = Math.max(0, Math.min(1, (clientX - left) / width))
+    return clampStep(min + ratio * (max - min), min, max, step)
+  }
+
+  const commit = (v: number) => {
+    if (liveTimerRef.current != null) {
+      clearTimeout(liveTimerRef.current)
+      liveTimerRef.current = null
+    }
+    onChange(v)
+  }
+
+  const scheduleLive = (v: number) => {
+    if (!live) return
+    if (liveTimerRef.current != null) clearTimeout(liveTimerRef.current)
+    liveTimerRef.current = setTimeout(() => {
+      liveTimerRef.current = null
+      onChange(v)
+    }, 40)
+  }
+
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (disabled) return
+    draggingRef.current = true
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const v = valueFromClientX(e.clientX)
+    setLocal(v)
+    scheduleLive(v)
+  }
+
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current || disabled) return
+    const v = valueFromClientX(e.clientX)
+    setLocal(v)
+    scheduleLive(v)
+  }
+
+  const endDrag = (e: PointerEvent<HTMLDivElement>) => {
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    }
+    const v = valueFromClientX(e.clientX)
+    setLocal(v)
+    commit(v)
+  }
+
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (disabled) return
+    let next: number | null = null
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") next = Math.min(max, local + step)
+    else if (e.key === "ArrowLeft" || e.key === "ArrowDown") next = Math.max(min, local - step)
+    else if (e.key === "Home") next = min
+    else if (e.key === "End") next = max
+    if (next == null) return
+    e.preventDefault()
+    setLocal(next)
+    commit(next)
+  }
 
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-medium text-subtext1">{label}</p>
-        <p className="text-[10px] tabular-nums text-subtext0">{value}%</p>
+        <p className="text-[10px] tabular-nums text-subtext0">{local}%</p>
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        disabled={disabled}
+      <div
+        ref={trackRef}
+        role="slider"
+        tabIndex={disabled ? -1 : 0}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={local}
         aria-label={label}
-        onChange={(e) => onChange(Number(e.target.value))}
         className={cn(
-          "h-1.5 w-full cursor-pointer appearance-none rounded-full border border-surface1/30 bg-base/90",
-          accentClass,
+          "relative h-2 w-full touch-none rounded-full border border-surface1/40 bg-base/90 outline-none",
+          "focus-visible:ring-2 focus-visible:ring-teal/40 focus-visible:ring-offset-1 focus-visible:ring-offset-base",
+          disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
         )}
-      />
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onKeyDown={onKeyDown}
+      >
+        <div
+          className={cn("pointer-events-none absolute inset-y-0 left-0 rounded-full opacity-75", accentFill)}
+          style={{ width: `${fillPct}%` }}
+        />
+        <div
+          className={cn(
+            "pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-mantle shadow-md",
+            accentFill,
+          )}
+          style={{ left: `calc(${fillPct}% - 7px)` }}
+        />
+      </div>
     </div>
   )
 }

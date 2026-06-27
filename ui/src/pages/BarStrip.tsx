@@ -340,7 +340,7 @@ export default function BarStrip() {
     <div className="aura-bar-root relative flex h-full min-h-0 w-full flex-row text-text pointer-events-none">
       <NotificationToasts />
       <div
-        className="relative z-10 flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-surface0/80 bg-mantle pointer-events-auto"
+        className="relative z-10 flex min-h-0 shrink-0 flex-col overflow-hidden rounded-r-2xl border border-surface0/80 border-l-transparent bg-mantle pointer-events-auto"
         style={{ width: BAR_STRIP_WIDTH_PX }}
       >
         <div className="flex min-h-0 flex-1 flex-col px-0.5 py-1.5">

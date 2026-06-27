@@ -46,9 +46,10 @@ pub fn aura_binds_path() -> PathBuf {
             .join(".config")
             .join("ags")
             .join("hypr")
-            .join("aura-binds.conf");
+            .join("hyprland")
+            .join("aura-keybinds.conf");
     }
-    PathBuf::from("/tmp/aura-binds.conf")
+    PathBuf::from("/tmp/aura-keybinds.conf")
 }
 
 pub fn register(registry: &mut ServiceRegistry) {
@@ -385,8 +386,8 @@ async fn write_aura_binds(entries: &[KeybindEntry]) -> Result<()> {
 
     let mut lines = vec![
         "# Aura-managed Hyprland binds — safe to edit via Keybinds.* RPC".to_string(),
-        "# Source from hyprland_aura.conf after Aura migration:".to_string(),
-        "# source = ~/.config/ags/hypr/aura-binds.conf".to_string(),
+        "# Source from live hyprland.conf (see hypr/README.md):".to_string(),
+        "# source = ~/.config/ags/hypr/hyprland/aura-keybinds.conf".to_string(),
         String::new(),
     ];
     for e in entries {
@@ -394,7 +395,7 @@ async fn write_aura_binds(entries: &[KeybindEntry]) -> Result<()> {
     }
     tokio::fs::write(&path, lines.join("\n") + "\n")
         .await
-        .context("write aura-binds.conf")?;
+        .context("write aura-keybinds.conf")?;
     Ok(())
 }
 
@@ -523,7 +524,7 @@ binde = SUPER, left, resizeactive, -20 0
     #[tokio::test]
     async fn write_aura_binds_uses_temp_path() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("aura-binds.conf");
+        let path = dir.path().join("aura-keybinds.conf");
         std::env::set_var("AURA_KEYBINDS_PATH", path.to_string_lossy().as_ref());
 
         let entries = vec![KeybindEntry {

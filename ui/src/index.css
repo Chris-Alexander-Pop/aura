@@ -36,10 +36,13 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Bar WebKit host: unpainted surface must stay transparent (no white slab). */
+  /* WebKit overlay hosts: unpainted pixels stay transparent (no sharp rectangle behind rounded panels). */
   html.aura-bar-host,
   html.aura-bar-host body,
-  html.aura-bar-host #root {
+  html.aura-bar-host #root,
+  html.aura-panel-host,
+  html.aura-panel-host body,
+  html.aura-panel-host #root {
     background: transparent !important;
   }
 
@@ -119,7 +122,7 @@
 
   /* Toggle chip */
   .toggle-chip {
-    @apply flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-surface0
+    @apply flex items-center gap-2 px-3 py-2 rounded-xl bg-surface0
            text-subtext1 text-sm font-medium cursor-pointer
            transition-all duration-200 select-none;
   }

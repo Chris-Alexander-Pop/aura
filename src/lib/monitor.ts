@@ -30,6 +30,25 @@ export function moduleHubLayout(monitor: Gdk.Monitor): { cardWidth: number; marg
     return { cardWidth, marginLeft }
 }
 
+/** Left-edge vertical module hub beside the bar strip. */
+export function moduleHubLeftEdgeLayout(monitor: Gdk.Monitor): {
+    panelWidth: number
+    panelHeight: number
+    marginLeft: number
+    marginTop: number
+    marginBottom: number
+} {
+    const { width, height } = monitorSize(monitor)
+    const panelWidth = Math.min(400, Math.max(320, Math.floor(width * 0.22)))
+    return {
+        panelWidth,
+        panelHeight: height,
+        marginLeft: BAR_STRIP_WIDTH_PX,
+        marginTop: 0,
+        marginBottom: 0,
+    }
+}
+
 /** @deprecated Use moduleHubLayout */
 export function topThirdLayout(monitor: Gdk.Monitor): { cardWidth: number; marginLeft: number } {
     return moduleHubLayout(monitor)

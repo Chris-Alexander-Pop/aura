@@ -6,8 +6,12 @@ import app from "ags/gtk4/app"
 import { cancelHoverClose, scheduleHoverClose, showHoverPanel } from "../../lib/panel-hover"
 import { moduleHubLayout, verticalCenterMargins, monitorSize } from "../../lib/monitor"
 
+export type ModuleHubTriggerMode = "left_edge" | "top_third" | "none"
+
 /** Keep strong refs so GJS does not collect layer-shell windows. */
 export const edgeTriggerWindows: Gtk.Window[] = []
+
+const triggersByMonitor = new Map<string, Gtk.Window[]>()
 
 const TRIGGER_SIZE = 2
 const MEDIA_TRIGGER_H = 140
@@ -18,7 +22,7 @@ const DEBUG_TRIGGERS = GLib.getenv("AURA_DEBUG_EDGE_TRIGGERS") === "1"
 const HIT_RGBA = DEBUG_TRIGGERS ? "rgba(255, 34, 34, 0.92)" : "rgba(255, 255, 255, 0.01)"
 const WIN_RGBA = DEBUG_TRIGGERS ? "rgba(255, 0, 0, 0.25)" : "transparent"
 
-function monitorTag(monitor: Gdk.Monitor): string {
+export function monitorTag(monitor: Gdk.Monitor): string {
     return String(monitor.model ?? "monitor").replace(/[^a-zA-Z0-9_-]/g, "-")
 }
 
@@ -38,6 +42,26 @@ type TriggerSpec = {
     marginBottom?: number
     width: number
     height: number
+    layer?: number
+}
+
+function removeFromEdgeRefs(win: Gtk.Window) {
+    const idx = edgeTriggerWindows.indexOf(win)
+    if (idx !== -1) edgeTriggerWindows.splice(idx, 1)
+}
+
+function destroyTriggerWindow(win: Gtk.Window) {
+    removeFromEdgeRefs(win)
+    try {
+        app.remove_window(win)
+    } catch {
+        /* ignore */
+    }
+    try {
+        win.destroy()
+    } catch {
+        /* ignore */
+    }
 }
 
 function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
@@ -45,7 +69,7 @@ function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
         name: spec.name,
         visible: true,
         anchor: spec.anchor,
-        layer: Astal.Layer.OVERLAY,
+        layer: spec.layer ?? Astal.Layer.OVERLAY,
         exclusivity: Astal.Exclusivity.IGNORE,
         gdkmonitor,
     })
@@ -92,45 +116,29 @@ function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
     return win
 }
 
-/** Bottom-right L: short strip along the bottom edge + short strip up the right edge. */
-function mountDropdownCornerTriggers(gdkmonitor: Gdk.Monitor, tag: string) {
-    const { height } = monitorSize(gdkmonitor)
-    const target = "dropdown"
+function mountModuleHubTrigger(
+    gdkmonitor: Gdk.Monitor,
+    tag: string,
+    mode: ModuleHubTriggerMode
+): Gtk.Window | null {
+    if (mode === "none") return null
 
-    // Horizontal leg — flush with bottom-right corner, extends left
-    createEdgeTrigger(gdkmonitor, {
-        name: `dropdown-trigger-bottom-${tag}`,
-        targetWindow: target,
-        anchor: Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT,
-        marginRight: 0,
-        marginTop: height - TRIGGER_SIZE,
-        width: DROPDOWN_CORNER_LEG,
-        height: TRIGGER_SIZE,
-    })
-
-    // Vertical leg — flush with bottom-right corner, extends up
-    createEdgeTrigger(gdkmonitor, {
-        name: `dropdown-trigger-right-${tag}`,
-        targetWindow: target,
-        anchor: Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT,
-        marginRight: 0,
-        marginTop: height - DROPDOWN_CORNER_LEG,
-        width: TRIGGER_SIZE,
-        height: DROPDOWN_CORNER_LEG,
-    })
-}
-
-/** Imperative layer-shell strips — must call app.add_window (JSX alone was not showing). */
-export function mountPanelEdgeTriggers(gdkmonitor: Gdk.Monitor) {
-    const tag = monitorTag(gdkmonitor)
-    const { cardWidth, marginLeft } = moduleHubLayout(gdkmonitor)
-    const mediaMargins = verticalCenterMargins(gdkmonitor, MEDIA_TRIGGER_H)
-
-    if (DEBUG_TRIGGERS) {
-        console.error(`mountPanelEdgeTriggers: monitor=${tag} module-hub w=${cardWidth} ml=${marginLeft}`)
+    if (mode === "left_edge") {
+        const { height } = monitorSize(gdkmonitor)
+        return createEdgeTrigger(gdkmonitor, {
+            name: `module-hub-trigger-left-${tag}`,
+            targetWindow: "module-hub",
+            anchor: Astal.WindowAnchor.LEFT | Astal.WindowAnchor.TOP,
+            marginLeft: 0,
+            marginTop: 0,
+            width: TRIGGER_SIZE,
+            height,
+            layer: Astal.Layer.TOP,
+        })
     }
 
-    createEdgeTrigger(gdkmonitor, {
+    const { cardWidth, marginLeft } = moduleHubLayout(gdkmonitor)
+    return createEdgeTrigger(gdkmonitor, {
         name: `module-hub-trigger-${tag}`,
         targetWindow: "module-hub",
         anchor: Astal.WindowAnchor.TOP,
@@ -139,17 +147,102 @@ export function mountPanelEdgeTriggers(gdkmonitor: Gdk.Monitor) {
         width: cardWidth,
         height: TRIGGER_SIZE,
     })
+}
 
-    mountDropdownCornerTriggers(gdkmonitor, tag)
+/** Bottom-right L: short strip along the bottom edge + short strip up the right edge. */
+function mountDropdownCornerTriggers(gdkmonitor: Gdk.Monitor, tag: string): Gtk.Window[] {
+    const { height } = monitorSize(gdkmonitor)
+    const target = "dropdown"
+    const out: Gtk.Window[] = []
 
-    createEdgeTrigger(gdkmonitor, {
-        name: `media-popup-trigger-${tag}`,
-        targetWindow: "media-popup",
-        anchor: Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.TOP | Astal.WindowAnchor.BOTTOM,
-        marginRight: 0,
-        marginTop: mediaMargins.marginTop,
-        marginBottom: mediaMargins.marginBottom,
-        width: TRIGGER_SIZE,
-        height: MEDIA_TRIGGER_H,
-    })
+    out.push(
+        createEdgeTrigger(gdkmonitor, {
+            name: `dropdown-trigger-bottom-${tag}`,
+            targetWindow: target,
+            anchor: Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT,
+            marginRight: 0,
+            marginTop: height - TRIGGER_SIZE,
+            width: DROPDOWN_CORNER_LEG,
+            height: TRIGGER_SIZE,
+        })
+    )
+
+    out.push(
+        createEdgeTrigger(gdkmonitor, {
+            name: `dropdown-trigger-right-${tag}`,
+            targetWindow: target,
+            anchor: Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT,
+            marginRight: 0,
+            marginTop: height - DROPDOWN_CORNER_LEG,
+            width: TRIGGER_SIZE,
+            height: DROPDOWN_CORNER_LEG,
+        })
+    )
+
+    return out
+}
+
+/** Remove all edge triggers for a monitor (dropdown, media, module-hub). */
+export function unmountPanelEdgeTriggers(gdkmonitor: Gdk.Monitor) {
+    const tag = monitorTag(gdkmonitor)
+    const wins = triggersByMonitor.get(tag)
+    if (!wins) return
+    for (const win of wins) {
+        destroyTriggerWindow(win)
+    }
+    triggersByMonitor.delete(tag)
+}
+
+/** Imperative layer-shell strips — must call app.add_window (JSX alone was not showing). */
+export function mountPanelEdgeTriggers(
+    gdkmonitor: Gdk.Monitor,
+    moduleHubMode: ModuleHubTriggerMode = "left_edge"
+) {
+    const tag = monitorTag(gdkmonitor)
+    unmountPanelEdgeTriggers(gdkmonitor)
+
+    const mediaMargins = verticalCenterMargins(gdkmonitor, MEDIA_TRIGGER_H)
+    const created: Gtk.Window[] = []
+
+    if (DEBUG_TRIGGERS) {
+        console.error(`mountPanelEdgeTriggers: monitor=${tag} module-hub mode=${moduleHubMode}`)
+    }
+
+    const hubTrigger = mountModuleHubTrigger(gdkmonitor, tag, moduleHubMode)
+    if (hubTrigger) created.push(hubTrigger)
+
+    created.push(...mountDropdownCornerTriggers(gdkmonitor, tag))
+
+    created.push(
+        createEdgeTrigger(gdkmonitor, {
+            name: `media-popup-trigger-${tag}`,
+            targetWindow: "media-popup",
+            anchor: Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.TOP | Astal.WindowAnchor.BOTTOM,
+            marginRight: 0,
+            marginTop: mediaMargins.marginTop,
+            marginBottom: mediaMargins.marginBottom,
+            width: TRIGGER_SIZE,
+            height: MEDIA_TRIGGER_H,
+        })
+    )
+
+    triggersByMonitor.set(tag, created)
+}
+
+export function remountPanelEdgeTriggers(
+    gdkmonitor: Gdk.Monitor,
+    moduleHubMode: ModuleHubTriggerMode
+) {
+    mountPanelEdgeTriggers(gdkmonitor, moduleHubMode)
+}
+
+/** Window name prefixes for edge triggers on a monitor tag. */
+export function edgeTriggerNamesForTag(tag: string): string[] {
+    return [
+        `module-hub-trigger-${tag}`,
+        `module-hub-trigger-left-${tag}`,
+        `dropdown-trigger-bottom-${tag}`,
+        `dropdown-trigger-right-${tag}`,
+        `media-popup-trigger-${tag}`,
+    ]
 }

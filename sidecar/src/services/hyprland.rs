@@ -103,6 +103,18 @@ fn parse_workspace_ref(item: &Value) -> Option<HyprWorkspaceRef> {
     Some(HyprWorkspaceRef { id, name })
 }
 
+fn parse_fullscreen(raw: &Value) -> u8 {
+    match raw.get("fullscreen") {
+        Some(Value::Bool(b)) => u8::from(*b),
+        Some(Value::Number(n)) => n.as_u64().unwrap_or(0).min(255) as u8,
+        _ => 0,
+    }
+}
+
+fn parse_client_monitor(item: &Value) -> i64 {
+    item.get("monitor").and_then(|v| v.as_i64()).unwrap_or(-1)
+}
+
 pub fn parse_clients(raw: &Value) -> Vec<HyprClient> {
     let Some(arr) = raw.as_array() else {
         return vec![];
@@ -134,12 +146,16 @@ pub fn parse_clients(raw: &Value) -> Vec<HyprClient> {
                 name: None,
             });
         let floating = item.get("floating").and_then(|v| v.as_bool()).unwrap_or(false);
+        let fullscreen = parse_fullscreen(item);
+        let monitor = parse_client_monitor(item);
         out.push(HyprClient {
             address: address.to_string(),
             title,
             class_name,
             workspace,
             floating,
+            fullscreen,
+            monitor,
         });
     }
     out
@@ -171,13 +187,30 @@ pub fn parse_active_window(raw: &Value) -> Option<HyprActiveWindow> {
             name: None,
         });
     let floating = raw.get("floating").and_then(|v| v.as_bool()).unwrap_or(false);
+    let fullscreen = parse_fullscreen(raw);
+    let monitor = parse_client_monitor(raw);
     Some(HyprActiveWindow {
         address: address.to_string(),
         title,
         class_name,
         workspace,
         floating,
+        fullscreen,
+        monitor,
     })
+}
+
+/// Monitor ids with at least one client in fullscreen (or maximized) mode.
+pub fn fullscreen_monitor_ids(clients: &[HyprClient]) -> Vec<i64> {
+    let mut ids: Vec<i64> = clients
+        .iter()
+        .filter(|c| c.fullscreen > 0)
+        .map(|c| c.monitor)
+        .filter(|&id| id >= 0)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
 }
 
 pub fn parse_monitors(raw: &Value) -> Vec<HyprMonitor> {
@@ -202,10 +235,18 @@ pub fn parse_monitors(raw: &Value) -> Vec<HyprMonitor> {
                 id: -1,
                 name: None,
             });
+        let x = item.get("x").and_then(|v| v.as_i64()).unwrap_or(0);
+        let y = item.get("y").and_then(|v| v.as_i64()).unwrap_or(0);
+        let width = item.get("width").and_then(|v| v.as_i64()).unwrap_or(0);
+        let height = item.get("height").and_then(|v| v.as_i64()).unwrap_or(0);
         out.push(HyprMonitor {
             name: name.to_string(),
             id,
             active_workspace,
+            x,
+            y,
+            width,
+            height,
         });
     }
     out
@@ -331,6 +372,7 @@ pub fn event_triggers_state_changed(event: &str) -> bool {
             | "destroyworkspace"
             | "float"
             | "pin"
+            | "fullscreen"
     )
 }
 
@@ -405,11 +447,14 @@ async fn bar_snapshot() -> Value {
         hyprctl_json_or_null(&["clients"]),
         hyprctl_json_or_null(&["activewindow"]),
     );
+    let clients = parse_clients(&clients_raw);
+    let fullscreen_monitor_ids = fullscreen_monitor_ids(&clients);
     json!({
         "workspaces": parse_workspaces(&ws_raw),
         "active_workspace": parse_active_workspace(&active_raw),
-        "clients": parse_clients(&clients_raw),
+        "clients": clients,
         "active_window": parse_active_window(&win_raw),
+        "fullscreen_monitor_ids": fullscreen_monitor_ids,
     })
 }
 
@@ -498,6 +543,18 @@ mod tests {
         assert_eq!(clients.len(), 1);
         assert_eq!(clients[0].class_name, "firefox");
         assert_eq!(clients[0].workspace.id, 1);
+        assert_eq!(clients[0].fullscreen, 0);
+        assert_eq!(clients[0].monitor, -1);
+    }
+
+    #[test]
+    fn parse_clients_fullscreen_fixture() {
+        let raw = fixture("clients_fullscreen.json");
+        let clients = parse_clients(&raw);
+        assert_eq!(clients.len(), 1);
+        assert_eq!(clients[0].fullscreen, 1);
+        assert_eq!(clients[0].monitor, 0);
+        assert_eq!(fullscreen_monitor_ids(&clients), vec![0]);
     }
 
     #[test]
@@ -557,6 +614,7 @@ mod tests {
         for name in [
             "workspaces.json",
             "clients.json",
+            "clients_fullscreen.json",
             "activewindow.json",
             "activeworkspace.json",
             "monitors.json",

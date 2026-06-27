@@ -2,7 +2,12 @@ import Astal from "gi://Astal?version=4.0"
 import Gdk from "gi://Gdk?version=4.0"
 import Gtk from "gi://Gtk?version=4.0"
 import App from "ags/gtk4/app"
-import { moduleHubLayout, verticalCenterMargins, bottomRightCardLayout } from "./monitor"
+import {
+    moduleHubLayout,
+    moduleHubLeftEdgeLayout,
+    verticalCenterMargins,
+    bottomRightCardLayout,
+} from "./monitor"
 
 const DEFAULT_CLOSE_MS = 450
 
@@ -11,6 +16,23 @@ const DROPDOWN_WIDTH = 400
 const DROPDOWN_HEIGHT = 280
 const MEDIA_WIDTH = 320
 const MEDIA_HEIGHT = 380
+
+export type ModuleHubTriggerMode = "left_edge" | "top_third" | "none"
+
+let moduleHubTriggerMode: ModuleHubTriggerMode = "left_edge"
+let hideShellOnFullscreen = true
+
+export function setModuleHubTriggerMode(mode: ModuleHubTriggerMode): void {
+    moduleHubTriggerMode = mode
+}
+
+export function setHideShellOnFullscreen(hide: boolean): void {
+    hideShellOnFullscreen = hide
+}
+
+export function getHideShellOnFullscreen(): boolean {
+    return hideShellOnFullscreen
+}
 
 type AuraWindow = Gtk.Window & {
     visible?: boolean
@@ -44,13 +66,28 @@ function applyPanelLayout(name: string, win: AuraWindow, monitor: Gdk.Monitor): 
 
     switch (name) {
         case "module-hub": {
-            const { cardWidth, marginLeft } = moduleHubLayout(monitor)
-            win.set_anchor?.(Astal.WindowAnchor.TOP)
-            win.set_margin_left?.(marginLeft)
-            win.set_margin_right?.(0)
-            win.set_margin_top?.(10)
-            win.set_margin_bottom?.(0)
-            resizeWebViewChild(win, cardWidth, SIDEBAR_HEIGHT)
+            if (moduleHubTriggerMode === "left_edge") {
+                const { panelWidth, panelHeight, marginLeft, marginTop, marginBottom } =
+                    moduleHubLeftEdgeLayout(monitor)
+                win.set_anchor?.(
+                    Astal.WindowAnchor.LEFT |
+                        Astal.WindowAnchor.TOP |
+                        Astal.WindowAnchor.BOTTOM
+                )
+                win.set_margin_left?.(marginLeft)
+                win.set_margin_right?.(0)
+                win.set_margin_top?.(marginTop)
+                win.set_margin_bottom?.(marginBottom)
+                resizeWebViewChild(win, panelWidth, panelHeight)
+            } else {
+                const { cardWidth, marginLeft } = moduleHubLayout(monitor)
+                win.set_anchor?.(Astal.WindowAnchor.TOP)
+                win.set_margin_left?.(marginLeft)
+                win.set_margin_right?.(0)
+                win.set_margin_top?.(10)
+                win.set_margin_bottom?.(0)
+                resizeWebViewChild(win, cardWidth, SIDEBAR_HEIGHT)
+            }
             break
         }
         case "dropdown": {

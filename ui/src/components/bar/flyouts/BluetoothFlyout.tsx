@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
-import { connectWs, useWsStore } from "@/lib/ws"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
 import {
   FlyoutActionButton,
@@ -17,9 +16,10 @@ import {
   FlyoutToggleRow,
 } from "@/components/bar/flyouts/FlyoutPrimitives"
 
-function adapterSummary(
-  adapters: Awaited<ReturnType<typeof api.getBluetoothAdapters>> | undefined
-): string {
+type Adapter = Awaited<ReturnType<typeof api.getBluetoothAdapters>>[number]
+type Device = Awaited<ReturnType<typeof api.getBluetoothDevices>>[number]
+
+function adapterSummary(adapters: Adapter[] | undefined): string {
   if (!adapters?.length) return "No adapter"
   const a = adapters[0]
   if (!a.powered) return "off"
@@ -31,24 +31,26 @@ export default function BluetoothFlyout() {
   const qc = useQueryClient()
   const [busyAddr, setBusyAddr] = useState<string | null>(null)
 
-  useEffect(() => {
-    connectWs()
-    const off = useWsStore.getState().on("Bluetooth.StateChanged", () => {
-      void qc.invalidateQueries({ queryKey: ["bt-ad"] })
-      void qc.invalidateQueries({ queryKey: ["bt-dev"] })
-    })
-    return off
-  }, [qc])
-
-  const { data: adapters, isPending: adPending, isError: adError } = useQuery({
+  const {
+    data: adapters,
+    isLoading: adLoading,
+    isError: adError,
+  } = useQuery({
     queryKey: ["bt-ad"],
     queryFn: api.getBluetoothAdapters,
-    refetchInterval: 6000,
+    staleTime: 15_000,
+    placeholderData: () => qc.getQueryData<Adapter[]>(["bt-ad"]),
   })
-  const { data: devices, isPending: devPending, isError: devError } = useQuery({
+
+  const {
+    data: devices,
+    isLoading: devLoading,
+    isError: devError,
+  } = useQuery({
     queryKey: ["bt-dev"],
     queryFn: api.getBluetoothDevices,
-    refetchInterval: 6000,
+    staleTime: 15_000,
+    placeholderData: () => qc.getQueryData<Device[]>(["bt-dev"]),
   })
 
   const list = [...(devices ?? [])].sort(
@@ -88,7 +90,7 @@ export default function BluetoothFlyout() {
     await qc.invalidateQueries({ queryKey: ["bt-dev"] })
   }
 
-  if (adPending) {
+  if (adLoading && adapters == null) {
     return (
       <FlyoutShell>
         <FlyoutTitle>Bluetooth</FlyoutTitle>
@@ -133,11 +135,9 @@ export default function BluetoothFlyout() {
         onChange={toggleAdapterPower}
       />
 
-      <FlyoutMeta>
-        {devPending && list.length === 0 ? "Loading devices…" : countLine}
-      </FlyoutMeta>
+      <FlyoutMeta>{devLoading && devices == null ? "Loading devices…" : countLine}</FlyoutMeta>
 
-      {devPending && list.length === 0 ? (
+      {devLoading && devices == null ? (
         <FlyoutLoading label="Fetching paired devices…" />
       ) : shown.length === 0 ? (
         <FlyoutEmpty
@@ -169,7 +169,7 @@ export default function BluetoothFlyout() {
 
       <FlyoutActionButton
         icon="bluetooth_searching"
-        disabled={!powered || devPending}
+        disabled={!powered}
         variant="primary"
         onClick={() => scan()}
       >

@@ -1,7 +1,6 @@
-import { useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import api, { type PowerProfile } from "@/lib/api"
-import { connectWs, useWsStore } from "@/lib/ws"
+import { useMemo } from "react"
+import api, { type BatteryState, type PowerProfile } from "@/lib/api"
 import { FlyoutLoading, FlyoutEmpty } from "@/components/bar/flyouts/FlyoutStates"
 import {
   FlyoutMeta,
@@ -14,35 +13,40 @@ import { cn } from "@/lib/utils"
 export default function BatteryFlyout() {
   const qc = useQueryClient()
 
-  useEffect(() => {
-    connectWs()
-    const offBatt = useWsStore.getState().on("Power.BatteryState", () => {
-      void qc.invalidateQueries({ queryKey: ["batt"] })
-      void qc.invalidateQueries({ queryKey: ["sidebar-tile", "battery"] })
-    })
-    const offProf = useWsStore.getState().on("Power.Profile", () => {
-      void qc.invalidateQueries({ queryKey: ["pwr"] })
-    })
-    return () => {
-      offBatt()
-      offProf()
-    }
-  }, [qc])
-
   const { data: tile } = useQuery({
     queryKey: ["sidebar-tile", "battery"],
     queryFn: () => api.sidebarGetTileData("battery"),
-    staleTime: 10_000,
+    staleTime: 30_000,
   })
+
+  const tileBatt = useMemo((): BatteryState | undefined => {
+    if (!tile || typeof tile !== "object" || !("percent" in tile)) return undefined
+    const t = tile as { percent?: number; charging?: boolean; time_remaining?: string }
+    if (t.percent == null) return undefined
+    return {
+      percent: t.percent,
+      charging: !!t.charging,
+      time_remaining: t.time_remaining ?? "Unknown",
+    }
+  }, [tile])
+
   const {
     data: batt,
-    isPending: battPending,
+    isLoading: battLoading,
     isError: battErr,
-  } = useQuery({ queryKey: ["batt"], queryFn: api.getBatteryState, refetchInterval: 8000 })
-  const { data: prof, isPending: profPending } = useQuery({
+  } = useQuery({
+    queryKey: ["batt"],
+    queryFn: api.getBatteryState,
+    staleTime: 30_000,
+    placeholderData: () =>
+      tileBatt ?? qc.getQueryData<BatteryState>(["batt"]),
+  })
+
+  const { data: prof, isLoading: profLoading } = useQuery({
     queryKey: ["pwr"],
     queryFn: api.getPowerProfile,
-    refetchInterval: 15_000,
+    staleTime: 30_000,
+    placeholderData: () => qc.getQueryData<{ profile: PowerProfile }>(["pwr"]),
   })
 
   const profileMut = useMutation({
@@ -50,13 +54,7 @@ export default function BatteryFlyout() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["pwr"] }),
   })
 
-  const battFromTile = tile && typeof tile === "object" && "percent" in (tile as object)
-    ? (tile as { percent?: number; charging?: boolean })
-    : null
-  const displayBatt = battFromTile?.percent != null && batt
-    ? { ...batt, percent: battFromTile.percent ?? batt.percent, charging: battFromTile.charging ?? batt.charging }
-    : batt
-
+  const displayBatt = batt
   const low = displayBatt && !displayBatt.charging && displayBatt.percent <= 20
   const hasBattery = displayBatt != null && displayBatt.percent >= 0
   const currentProfile = (prof?.profile ?? "balanced") as PowerProfile
@@ -70,7 +68,7 @@ export default function BatteryFlyout() {
     return displayBatt.charging ? `Until charged: ${tr}` : `Remaining: ${tr}`
   })()
 
-  if (battPending) {
+  if (battLoading && batt == null) {
     return (
       <FlyoutShell>
         <FlyoutTitle>Battery</FlyoutTitle>
@@ -95,14 +93,14 @@ export default function BatteryFlyout() {
   return (
     <FlyoutShell>
       <FlyoutTitle className={cn(low && "text-red")}>
-        {hasBattery ? `Remaining: ${displayBatt!.percent}%` : "No battery detected"}
+        {hasBattery ? `Remaining: ${displayBatt.percent}%` : "No battery detected"}
       </FlyoutTitle>
 
       <FlyoutMeta>{timeLine}</FlyoutMeta>
 
       <FlyoutProfilePicker
         value={currentProfile}
-        disabled={profPending || profileMut.isPending}
+        disabled={profLoading || profileMut.isPending}
         onChange={(p) => profileMut.mutate(p)}
       />
     </FlyoutShell>

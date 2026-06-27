@@ -18,6 +18,7 @@ export default function DropdownWindow() {
         width: DROPDOWN_WIDTH,
         height: DROPDOWN_HEIGHT,
         visible: false,
+        transparentWebView: true,
         onSetup: (wv) => registerPanelHoverHandler(wv, "dropdownHover", "dropdown"),
     })
 }

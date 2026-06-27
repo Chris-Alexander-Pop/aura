@@ -16,6 +16,7 @@ export default function MediaPopupWindow() {
         width: 320,
         height: 380,
         visible: false,
+        transparentWebView: true,
         onSetup: (wv) => registerPanelHoverHandler(wv, "mediaPopupHover", "media-popup"),
     })
 }

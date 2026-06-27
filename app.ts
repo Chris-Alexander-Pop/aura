@@ -12,7 +12,8 @@ import DropdownWindow from "./src/widget/webview/DropdownWindow"
 import CalendarWindow from "./src/widget/webview/CalendarWindow"
 import MediaPopupWindow from "./src/widget/webview/MediaPopupWindow"
 
-import { mountPanelEdgeTriggers } from "./src/widget/triggers/PanelEdgeTriggers"
+import { initAuraSettingsShell, mountEdgeTriggersForMonitor } from "./src/lib/aura-settings-shell"
+import { initShellVisibility } from "./src/lib/shell-visibility"
 import BarWebViewWindow from "./src/widget/webview/BarWebViewWindow"
 
 /** Legacy GTK vertical bar — set `AURA_GTK_BAR=1` to restore it instead of the React/WebKit strip */
@@ -44,7 +45,7 @@ app.start({
             }
 
             try {
-                mountPanelEdgeTriggers(monitor)
+                mountEdgeTriggersForMonitor(monitor)
             } catch (e) {
                 console.error("Failed to create edge triggers for monitor:", e)
             }
@@ -69,6 +70,9 @@ app.start({
         } catch (e) {
             console.error("Failed to create singleton windows:", e)
         }
+
+        initAuraSettingsShell()
+        initShellVisibility()
     },
 
     // Handle: ags request <command>…  (argv[] from DBus; may include leading "ags", "request")

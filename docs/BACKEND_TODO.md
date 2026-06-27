@@ -569,7 +569,7 @@ See **[ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)** for full rational
 | 1 | Package backend | **Arch only** |
 | 2 | Transaction history | Local append-only log |
 | 3 | Per-app VPN | Phased: NM → nftables → optional clash profile |
-| 4 | Keybinds | Hyprland + `aura-binds.conf`; keyd optional |
+| 4 | Keybinds | Hyprland + `hypr/hyprland/aura-keybinds.conf`; keyd optional |
 | 5 | Notifications | Freedesktop D-Bus; swaync recommended |
 | 6 | Vicinae | Long-lived socket/RPC (not implemented) |
 | 7 | Voice | Local default; cloud opt-in |

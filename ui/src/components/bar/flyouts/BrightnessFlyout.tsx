@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import api from "@/lib/api"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
 import {
+  FlyoutBanner,
   FlyoutRadioRow,
   FlyoutSectionLabel,
   FlyoutShell,
@@ -15,14 +16,23 @@ function monitorLabel(name: string): string {
   return name.replace(/_/g, " ")
 }
 
+function brightnessForMonitor(
+  monitorList: { monitors?: Array<{ monitor: string; brightness: number }> } | undefined,
+  name: string,
+): { brightness: number } | undefined {
+  const hit = monitorList?.monitors?.find((m) => m.monitor === name)
+  return hit ? { brightness: hit.brightness } : undefined
+}
+
 export default function BrightnessFlyout() {
   const qc = useQueryClient()
   const [monitor, setMonitor] = useState<string>("active")
+  const [setError, setSetError] = useState<string | null>(null)
 
-  const { data: monitorList, isPending: listPending } = useQuery({
+  const { data: monitorList, isLoading: monitorsLoading } = useQuery({
     queryKey: ["brightness-monitors"],
     queryFn: api.listBrightnessMonitors,
-    refetchInterval: 60_000,
+    staleTime: 60_000,
   })
 
   const monitorNames = useMemo(() => {
@@ -41,26 +51,53 @@ export default function BrightnessFlyout() {
     }
   }, [monitor, monitorNames])
 
-  const { data: level, isPending, isError } = useQuery({
+  const { data: level, isLoading: levelLoading, isError } = useQuery({
     queryKey: ["brightness", monitor],
     queryFn: () => api.getBrightness(monitor),
-    refetchInterval: 8000,
-    enabled: !listPending,
+    staleTime: 30_000,
+    placeholderData: () =>
+      brightnessForMonitor(monitorList, monitor) ??
+      qc.getQueryData<{ brightness: number }>(["brightness", monitor]),
   })
 
-  const setMut = useMutation({
+  const { mutate: setBrightness } = useMutation({
     mutationFn: ({ mon, percent }: { mon: string; percent: number }) =>
       api.setBrightness(mon, percent),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["brightness", monitor] })
-      void qc.invalidateQueries({ queryKey: ["brightness", "active"] })
-      void qc.invalidateQueries({ queryKey: ["brightness-monitors"] })
+    onSuccess: (data) => {
+      setSetError(null)
+      const row = data as { brightness?: number; monitor?: string }
+      if (typeof row.brightness !== "number") return
+      const key = row.monitor ?? monitor
+      qc.setQueryData(["brightness", key], { brightness: row.brightness })
+      if (key !== monitor) {
+        qc.setQueryData(["brightness", monitor], { brightness: row.brightness })
+      }
+      if (monitor === "active") {
+        qc.setQueryData(["brightness", "active"], { brightness: row.brightness })
+      }
+    },
+    onError: (err) => {
+      setSetError(err instanceof Error ? err.message : "Could not set brightness")
     },
   })
 
-  const pct = Math.round((level?.brightness ?? 0.5) * 100)
+  const applyBrightness = useCallback(
+    (v: number) => {
+      const frac = v / 100
+      setSetError(null)
+      qc.setQueryData(["brightness", monitor], { brightness: frac })
+      if (monitor === "active") {
+        qc.setQueryData(["brightness", "active"], { brightness: frac })
+      }
+      setBrightness({ mon: monitor, percent: frac })
+    },
+    [monitor, qc, setBrightness],
+  )
 
-  if ((isPending || listPending) && level == null) {
+  const pct = Math.round((level?.brightness ?? 0.5) * 100)
+  const bootstrapping = monitorList == null && level == null
+
+  if (bootstrapping && (monitorsLoading || levelLoading)) {
     return (
       <FlyoutShell>
         <FlyoutTitle>Brightness</FlyoutTitle>
@@ -86,6 +123,8 @@ export default function BrightnessFlyout() {
     <FlyoutShell>
       <FlyoutTitle>Brightness</FlyoutTitle>
 
+      {setError ? <FlyoutBanner tone="error">{setError}</FlyoutBanner> : null}
+
       {monitorNames.length > 1 ? (
         <div>
           <FlyoutSectionLabel>Display</FlyoutSectionLabel>
@@ -95,7 +134,6 @@ export default function BrightnessFlyout() {
                 key={name}
                 label={monitorLabel(name)}
                 checked={monitor === name}
-                disabled={setMut.isPending}
                 onSelect={() => setMonitor(name)}
               />
             ))}
@@ -104,13 +142,13 @@ export default function BrightnessFlyout() {
       ) : null}
 
       <FlyoutSlider
-        label={`Brightness (${pct}%)`}
+        label="Brightness"
         value={pct}
-        min={5}
+        min={0}
         max={100}
-        disabled={setMut.isPending}
+        live
         accent="amber"
-        onChange={(v) => setMut.mutate({ mon: monitor, percent: v / 100 })}
+        onChange={applyBrightness}
       />
     </FlyoutShell>
   )

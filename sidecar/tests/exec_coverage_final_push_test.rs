@@ -30,10 +30,10 @@ bind = SUPER, Q, killactive
         "bind = SUPER, X, exec foot\n",
     )
     .expect("extra.conf");
-    let aura_binds = dir.path().join("aura-binds.conf");
+    let aura_keybinds = dir.path().join("aura-keybinds.conf");
     std::env::set_var("HYPRLAND_CONFIG", &hypr_conf);
-    std::env::set_var("AURA_KEYBINDS_PATH", &aura_binds);
-    (dir, hypr_conf, aura_binds)
+    std::env::set_var("AURA_KEYBINDS_PATH", &aura_keybinds);
+    (dir, hypr_conf, aura_keybinds)
 }
 
 #[tokio::test]

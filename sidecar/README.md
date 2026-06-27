@@ -73,7 +73,7 @@ Symlink or copy builds into `~/.config/ags/sidecar/target/` when using `~/.confi
 
 **Arch-first** today: NetworkManager, PipeWire + WirePlumber, `powerprofilesctl`, pacman, Podman, GNOME Keyring, Freedesktop notifications D-Bus. Other distros may need alternate code paths later — see [../docs/ARCHITECTURE_DECISIONS.md](../docs/ARCHITECTURE_DECISIONS.md).
 
-Polkit: elevated commands go through `utils/polkit.rs` (`run_privileged` → `pkexec` when on PATH, else `sudo`). Used by firewall toggles (`Security.*`), package install/upgrade (`Packages.*`), and some performance helpers. A polkit agent must be available when those RPCs run from the UI.
+Polkit: elevated commands go through `utils/polkit.rs` (`run_privileged` → `pkexec` when on PATH, else `sudo`). Used by firewall toggles (`Security.*`), package install/upgrade (`Packages.*`), and some performance helpers. A polkit agent must be available when those RPCs run from the UI — recommend **hyprpolkitagent** (see [`../hypr/README.md`](../hypr/README.md) and `scripts/aura-hypr-link.sh`).
 
 ### CI
 

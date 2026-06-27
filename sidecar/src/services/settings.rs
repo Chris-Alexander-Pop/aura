@@ -67,6 +67,9 @@ const DROPDOWN_MODULE_IDS: &[&str] = &[
     "productivity",
 ];
 
+/// Module hub edge trigger modes (`PanelEdgeTriggers.tsx`).
+const MODULE_HUB_TRIGGER_MODES: &[&str] = &["left_edge", "top_third", "none"];
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct AuraSettings {
@@ -74,6 +77,18 @@ pub struct AuraSettings {
     pub cc_enabled_panes: Vec<String>,
     pub theme: String,
     pub dropdown_modules: Vec<String>,
+    #[serde(default = "default_module_hub_trigger")]
+    pub module_hub_trigger: String,
+    #[serde(default = "default_hide_shell_on_fullscreen")]
+    pub hide_shell_on_fullscreen: bool,
+}
+
+fn default_module_hub_trigger() -> String {
+    "left_edge".to_string()
+}
+
+fn default_hide_shell_on_fullscreen() -> bool {
+    true
 }
 
 pub fn default_settings() -> AuraSettings {
@@ -85,6 +100,8 @@ pub fn default_settings() -> AuraSettings {
         cc_enabled_panes: CC_PANE_IDS.iter().map(|s| (*s).to_string()).collect(),
         theme: "dark".to_string(),
         dropdown_modules: vec![],
+        module_hub_trigger: default_module_hub_trigger(),
+        hide_shell_on_fullscreen: default_hide_shell_on_fullscreen(),
     }
 }
 
@@ -104,6 +121,9 @@ pub fn validate_settings(settings: &AuraSettings) -> Result<()> {
     validate_id_list(&settings.bar_section_order, BAR_SECTION_IDS, "bar_section_order")?;
     validate_id_list(&settings.cc_enabled_panes, CC_PANE_IDS, "cc_enabled_panes")?;
     validate_id_list(&settings.dropdown_modules, DROPDOWN_MODULE_IDS, "dropdown_modules")?;
+    if !MODULE_HUB_TRIGGER_MODES.contains(&settings.module_hub_trigger.as_str()) {
+        bail!("invalid module_hub_trigger: {}", settings.module_hub_trigger);
+    }
     if settings.theme.len() > 64 {
         bail!("theme string too long");
     }
@@ -117,7 +137,12 @@ pub fn merge_partial(base: &AuraSettings, partial: &Map<String, Value>) -> Resul
     for (k, v) in partial {
         if !matches!(
             k.as_str(),
-            "bar_section_order" | "cc_enabled_panes" | "theme" | "dropdown_modules"
+            "bar_section_order"
+                | "cc_enabled_panes"
+                | "theme"
+                | "dropdown_modules"
+                | "module_hub_trigger"
+                | "hide_shell_on_fullscreen"
         ) {
             bail!("unknown settings key: {k}");
         }
@@ -187,6 +212,8 @@ pub fn register(registry: &mut ServiceRegistry) {
                 "cc_enabled_panes": { "type": "array", "items": CC_PANE_IDS },
                 "theme": { "type": "string", "examples": ["dark", "light", "catppuccin-mocha"] },
                 "dropdown_modules": { "type": "array", "items": DROPDOWN_MODULE_IDS },
+                "module_hub_trigger": { "type": "string", "enum": MODULE_HUB_TRIGGER_MODES },
+                "hide_shell_on_fullscreen": { "type": "boolean" },
             },
         }))
     });
@@ -240,5 +267,23 @@ mod tests {
         let d = default_settings();
         validate_settings(&d).unwrap();
         assert_eq!(d.bar_section_order.len(), DEFAULT_BAR_SECTION_ORDER.len());
+        assert_eq!(d.module_hub_trigger, "left_edge");
+        assert!(d.hide_shell_on_fullscreen);
+    }
+
+    #[test]
+    fn merge_partial_updates_module_hub_trigger() {
+        let base = default_settings();
+        let mut partial = Map::new();
+        partial.insert("module_hub_trigger".into(), json!("top_third"));
+        let merged = merge_partial(&base, &partial).unwrap();
+        assert_eq!(merged.module_hub_trigger, "top_third");
+    }
+
+    #[test]
+    fn validate_rejects_bad_module_hub_trigger() {
+        let mut s = default_settings();
+        s.module_hub_trigger = "corner".into();
+        assert!(validate_settings(&s).is_err());
     }
 }

@@ -44,13 +44,13 @@ function QuickToggle({
       title={title}
       disabled={disabled}
       className={cn(
-        "toggle-chip flex-1 flex-col gap-1 py-3 text-center",
+        "toggle-chip flex-1 min-w-0 flex-col gap-0.5 py-1.5 px-2 text-center",
         active && !disabled && "active",
         disabled && "opacity-55 cursor-default pointer-events-none"
       )}
     >
-      <span className="icon text-2xl">{icon}</span>
-      <span className="text-[11px] leading-tight line-clamp-2">{label}</span>
+      <span className="icon text-lg">{icon}</span>
+      <span className="text-[10px] leading-tight line-clamp-2">{label}</span>
     </motion.button>
   )
 }
@@ -275,87 +275,94 @@ export default function Dropdown() {
   const netLabel =
     quickLoading && !quick ? "…" : quickError ? "Wi‑Fi n/a" : (net?.active_connection ?? "Wi-Fi")
 
+  useEffect(() => {
+    document.documentElement.classList.add("aura-panel-host")
+    return () => document.documentElement.classList.remove("aura-panel-host")
+  }, [])
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
-      className="flex flex-col gap-3 h-full bg-mantle/90 backdrop-blur-2xl border border-surface0/60 rounded-2xl shadow-2xl p-4 overflow-hidden"
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-surface0/60 bg-mantle/90 p-3 text-text shadow-2xl backdrop-blur-2xl"
       onMouseEnter={() => postPanelHover("dropdownHover", true)}
       onMouseLeave={() => postPanelHover("dropdownHover", false)}
     >
       <DashboardHeader />
 
-      {/* Top row: quick toggles */}
-      <div className="flex flex-wrap gap-2">
-        <QuickToggle
-          icon="wifi"
-          label={netLabel}
-          active={net?.wifi_enabled}
-          disabled={quickLoading && !quick}
-          onClick={() => void toggleWifi()}
-        />
-        <QuickToggle
-          icon={
-            btPowered
-              ? btConnCount > 0
-                ? "bluetooth_connected"
-                : "bluetooth"
-              : "bluetooth_disabled"
-          }
-          label={btLabel}
-          active={btPowered}
-          disabled={(btFromQuick as { adapter_count?: number } | undefined)?.adapter_count === 0}
-          title="Bluetooth adapter power"
-          onClick={() => void toggleBluetooth()}
-        />
-        <QuickToggle
-          icon="do_not_disturb_on"
-          label={dndChipLabel}
-          active={dndSchedulePrefs.enabled || inScheduledQuietHours}
-          title="Toggle sidecar DND prefs"
-          onClick={() => void toggleDnd()}
-        />
-        <QuickToggle
-          icon={themeDark ? "dark_mode" : "light_mode"}
-          label={themeDark ? "Dark" : "Light"}
-          active={themeDark}
-          title="Toggle light/dark theme (React panels)"
-          onClick={() => void toggleTheme()}
-        />
-        <QuickToggle
-          icon="bedtime"
-          label={nightLight?.enabled ? "Night on" : "Night off"}
-          active={nightLight?.enabled}
-          title="Blue-light filter (wlsunset / gammastep via sidecar)"
-          onClick={() => void toggleNightLight()}
-        />
-        <QuickToggle
-          icon={battIcon}
-          label={battLabel}
-          title={`${profile}${lowBatt ? " · low battery" : ""} · tap to cycle power profile`}
-          disabled={quickLoading && !quick}
-          onClick={() => void cyclePowerProfile()}
-        />
-        <QuickToggle icon="screenshot_monitor" label="Screen" onClick={() => void takeScreenshot()} />
-      </div>
+      <div className="scrollbar-thin mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden">
+        {/* Quick toggles */}
+        <div className="grid grid-cols-4 gap-1.5">
+          <QuickToggle
+            icon="wifi"
+            label={netLabel}
+            active={net?.wifi_enabled}
+            disabled={quickLoading && !quick}
+            onClick={() => void toggleWifi()}
+          />
+          <QuickToggle
+            icon={
+              btPowered
+                ? btConnCount > 0
+                  ? "bluetooth_connected"
+                  : "bluetooth"
+                : "bluetooth_disabled"
+            }
+            label={btLabel}
+            active={btPowered}
+            disabled={(btFromQuick as { adapter_count?: number } | undefined)?.adapter_count === 0}
+            title="Bluetooth adapter power"
+            onClick={() => void toggleBluetooth()}
+          />
+          <QuickToggle
+            icon="do_not_disturb_on"
+            label={dndChipLabel}
+            active={dndSchedulePrefs.enabled || inScheduledQuietHours}
+            title="Toggle sidecar DND prefs"
+            onClick={() => void toggleDnd()}
+          />
+          <QuickToggle
+            icon={themeDark ? "dark_mode" : "light_mode"}
+            label={themeDark ? "Dark" : "Light"}
+            active={themeDark}
+            title="Toggle light/dark theme (React panels)"
+            onClick={() => void toggleTheme()}
+          />
+          <QuickToggle
+            icon="bedtime"
+            label={nightLight?.enabled ? "Night on" : "Night off"}
+            active={nightLight?.enabled}
+            title="Blue-light filter (wlsunset / gammastep via sidecar)"
+            onClick={() => void toggleNightLight()}
+          />
+          <QuickToggle
+            icon={battIcon}
+            label={battLabel}
+            title={`${profile}${lowBatt ? " · low battery" : ""} · tap to cycle power profile`}
+            disabled={quickLoading && !quick}
+            onClick={() => void cyclePowerProfile()}
+          />
+          <QuickToggle icon="screenshot_monitor" label="Screen" onClick={() => void takeScreenshot()} />
+        </div>
 
-      {quick?.next_event?.title ? (
-        <button
-          type="button"
-          className="text-xs text-subtext0 px-1 truncate text-left hover:text-text"
-          title="Open calendar"
-          onClick={() => void api.auraToggleWindow("calendar")}
-        >
-          Next: {quick.next_event.title}
-        </button>
-      ) : null}
+        {quick?.next_event?.title ? (
+          <button
+            type="button"
+            className="truncate px-0.5 text-left text-[11px] text-subtext0 hover:text-text"
+            title="Open calendar"
+            onClick={() => void api.auraToggleWindow("calendar")}
+          >
+            Next: {quick.next_event.title}
+          </button>
+        ) : null}
 
-      <DropdownModuleTiles moduleIds={moduleIds} />
+        <DropdownModuleTiles moduleIds={moduleIds} />
 
-      {/* Stats bar */}
-      <div className="glass-card px-4 py-3">
-        <MiniStats />
+        {/* Stats bar */}
+        <div className="glass-card shrink-0 px-3 py-2">
+          <MiniStats />
+        </div>
       </div>
     </motion.div>
   )

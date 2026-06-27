@@ -73,8 +73,8 @@ Stored WiFi passwords use **GNome Keyring** via `secret-tool` (`application=aura
 **Checklist for reliable post-login networking:**
 
 1. **Greeter session** — SDDM/greetd must start a session that launches `gnome-keyring-daemon` (or `seahorse` unlock on first secret access).
-2. **Polkit agent** — one of the polkit `exec-once` lines in [`hyprland_aura.conf`](../../hyprland_aura.conf) must be active in your live Hyprland config.
-3. **Aura Hyprland opt-in** — source `hyprland_aura.conf` or merge its `exec-once` / media-key sections (see file header).
+2. **Polkit agent** — **hyprpolkitagent** via `hypr/hyprland/execs-aura.conf` (or `systemctl --user enable --now hyprpolkitagent.service`). Run [`scripts/aura-hypr-link.sh`](../../scripts/aura-hypr-link.sh) so `hyprtoolkit.conf` and agent config resolve from `~/.config/ags/hypr/`.
+3. **Aura Hyprland opt-in** — source `hypr/hyprland/execs-aura.conf` and `hypr/hyprland/aura-keybinds.conf` from live `hyprland.conf` (see [`hypr/README.md`](../../hypr/README.md)).
 4. **Symptoms when broken** — secured WiFi shows “Password required” after reboot; VPN profiles missing credentials; `Security.GetKeyringStatus` reports keyring unavailable or locked.
 
 Aura surfaces keyring status in Network (control center) and Settings when the sidecar detects a locked or missing keyring.

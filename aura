@@ -87,6 +87,20 @@ check_dependencies() {
         echo -e "${GREEN}✓${NC} JS runtime: $RUNNER"
     fi
 
+    local astal_missing=()
+    for f in AstalTray-0.1.typelib AstalMpris-0.1.typelib; do
+        if [ ! -f "/usr/lib/girepository-1.0/$f" ]; then
+            astal_missing+=("${f%-0.1.typelib}")
+        fi
+    done
+    if [ ${#astal_missing[@]} -gt 0 ]; then
+        echo -e "${RED}✗${NC} Missing GObject introspection: ${astal_missing[*]}"
+        echo -e "  ${YELLOW}Install:${NC} yay -S libastal-tray-git libastal-mpris-git"
+        missing=1
+    else
+        echo -e "${GREEN}✓${NC} Astal typelibs (tray, mpris)"
+    fi
+
     if [ $missing -eq 1 ]; then
         echo -e "\n${RED}Missing required dependencies.${NC}"
         exit 1

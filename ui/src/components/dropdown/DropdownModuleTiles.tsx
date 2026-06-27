@@ -37,7 +37,7 @@ function TileCard({ tileId }: { tileId: string }) {
       onClick={openPanel}
       disabled={!isDropdownTileId(tileId)}
       className={cn(
-        "glass-card flex min-w-[120px] flex-1 flex-col gap-1 rounded-xl border border-surface0/60 p-3 text-left transition-colors hover:border-mauve/30",
+        "glass-card flex min-w-0 flex-col gap-0.5 rounded-lg border border-surface0/60 p-2 text-left transition-colors hover:border-mauve/30",
         (!isDropdownTileId(tileId) || isError) && "opacity-60"
       )}
     >
@@ -50,7 +50,7 @@ function TileCard({ tileId }: { tileId: string }) {
 export default function DropdownModuleTiles({ moduleIds }: { moduleIds: string[] }) {
   if (moduleIds.length === 0) return null
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="grid grid-cols-2 gap-1.5">
       {moduleIds.map((id) => (
         <TileCard key={id} tileId={id} />
       ))}

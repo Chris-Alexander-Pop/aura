@@ -389,12 +389,22 @@ export function parseHyprActiveWindow(raw: unknown): HyprActiveWindow | null {
 
 // ── Aura settings (matches settings.rs) ─────────────────────────────────────
 
+export type ModuleHubTriggerMode = "left_edge" | "top_third" | "none"
+
 export interface AuraSettingsView {
   bar_section_order: string[]
   cc_enabled_panes: string[]
   theme: string
   dropdown_modules: string[]
+  module_hub_trigger: ModuleHubTriggerMode
+  hide_shell_on_fullscreen: boolean
 }
+
+const MODULE_HUB_TRIGGER_MODES = new Set<ModuleHubTriggerMode>([
+  "left_edge",
+  "top_third",
+  "none",
+])
 
 export function parseAuraSettings(raw: unknown): AuraSettingsView | null {
   if (!isRecord(raw)) return null
@@ -408,11 +418,20 @@ export function parseAuraSettings(raw: unknown): AuraSettingsView | null {
     return null
   }
   if (!dropdown.every((x) => typeof x === "string")) return null
+  const triggerRaw = raw.module_hub_trigger
+  const module_hub_trigger =
+    typeof triggerRaw === "string" && MODULE_HUB_TRIGGER_MODES.has(triggerRaw as ModuleHubTriggerMode)
+      ? (triggerRaw as ModuleHubTriggerMode)
+      : "left_edge"
+  const hideRaw = raw.hide_shell_on_fullscreen
+  const hide_shell_on_fullscreen = typeof hideRaw === "boolean" ? hideRaw : true
   return {
     bar_section_order: bar as string[],
     cc_enabled_panes: cc as string[],
     theme,
     dropdown_modules: dropdown as string[],
+    module_hub_trigger,
+    hide_shell_on_fullscreen,
   }
 }
 

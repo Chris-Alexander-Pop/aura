@@ -1,0 +1,12 @@
+#%PAM-1.0
+# Aura polkit — try password first; fingerprint only if password auth fails.
+# Install: ./scripts/aura-pam-install.sh
+# Replaces Arch default (fprintd before unix, 30s fingerprint wait on every prompt).
+
+auth       sufficient                  pam_unix.so          nullok
+auth       sufficient                  pam_fprintd.so       max_tries=3 timeout=10
+auth       required                    pam_deny.so
+
+account    required                    pam_unix.so
+password   required                    pam_unix.so
+session    required                    pam_unix.so

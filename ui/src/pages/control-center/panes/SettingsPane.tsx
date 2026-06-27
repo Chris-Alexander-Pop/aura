@@ -247,6 +247,49 @@ export function SettingsPane() {
               </div>
             </div>
             <div>
+              <p className="text-xs text-subtext0 mb-2">Module hub trigger</p>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    { id: "left_edge", label: "Left edge" },
+                    { id: "top_third", label: "Top third" },
+                    { id: "none", label: "Off (keybind only)" },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={saveAura.isPending}
+                    onClick={() => void saveAura.mutateAsync({ module_hub_trigger: opt.id })}
+                    className={cn(
+                      "toggle-chip text-xs",
+                      auraSettings.data.settings.module_hub_trigger === opt.id && "active"
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-subtext0 mb-2">Fullscreen behavior</p>
+              <button
+                type="button"
+                disabled={saveAura.isPending}
+                onClick={() =>
+                  void saveAura.mutateAsync({
+                    hide_shell_on_fullscreen: !auraSettings.data.settings.hide_shell_on_fullscreen,
+                  })
+                }
+                className={cn(
+                  "toggle-chip text-xs",
+                  auraSettings.data.settings.hide_shell_on_fullscreen && "active"
+                )}
+              >
+                Hide bar and overlays on fullscreen
+              </button>
+            </div>
+            <div>
               <p className="text-xs text-subtext0 mb-2">Dropdown modules</p>
               <div className="flex flex-wrap gap-2 mb-2">
                 {DROPDOWN_TILE_IDS.map((mod) => {
