@@ -198,6 +198,7 @@ export default function BrightnessFlyout() {
         min={0}
         max={100}
         live
+        liveDebounceMs={0}
         accent="amber"
         showThumb={false}
         onLiveChange={applyLiveBrightness}

@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::{sleep, Duration, Instant};
 
-const BRIGHTNESS_SET_DEBOUNCE_MS: u64 = 70;
+const BRIGHTNESS_SET_DEBOUNCE_MS: u64 = 40;
 const BRIGHTNESS_EMIT_DEBOUNCE_MS: u64 = 300;
 
 #[derive(Debug, Clone)]
@@ -96,7 +96,10 @@ async fn brightness_coalescer_loop(mut rx: mpsc::Receiver<CoalescerMsg>) {
                     }
                     _ => {
                         if let Some(pending) = batch.take() {
-                            flush_brightness_batch(pending).await;
+                            let batch = pending;
+                            tokio::spawn(async move {
+                                flush_brightness_batch(batch).await;
+                            });
                         }
                         batch = Some(SetBatch {
                             monitor: req.monitor,
@@ -109,7 +112,9 @@ async fn brightness_coalescer_loop(mut rx: mpsc::Receiver<CoalescerMsg>) {
             }
             _ = sleep_fut, if flush_at.is_some() => {
                 if let Some(pending) = batch.take() {
-                    flush_brightness_batch(pending).await;
+                    tokio::spawn(async move {
+                        flush_brightness_batch(pending).await;
+                    });
                 }
                 flush_at = None;
             }
@@ -133,7 +138,7 @@ async fn flush_brightness_batch(batch: SetBatch) {
     }
 }
 
-/// Latest-wins debounced `set_brightness` — collapses rapid slider RPCs into one `brightnessctl` call.
+/// Await the coalesced hardware apply (unit tests).
 async fn coalesced_brightness_set(monitor: Monitor, target_brightness: f64) -> Result<f64> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     coalescer_sender()
@@ -145,6 +150,42 @@ async fn coalesced_brightness_set(monitor: Monitor, target_brightness: f64) -> R
         .await
         .map_err(|_| anyhow!("Brightness coalescer unavailable"))?;
     rx.await.map_err(|_| anyhow!("Brightness set cancelled"))?
+}
+
+/// Enqueue a set and return immediately — HTTP must not wait on `brightnessctl`.
+async fn enqueue_brightness_set(monitor: Monitor, target_brightness: f64) -> Result<f64> {
+    let monitor_name = monitor.name.clone();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    coalescer_sender()
+        .send(CoalescerMsg::Enqueue(SetRequest {
+            monitor,
+            brightness: target_brightness,
+            reply: tx,
+        }))
+        .await
+        .map_err(|_| anyhow!("Brightness coalescer unavailable"))?;
+
+    {
+        let mut monitors = MONITORS.write().await;
+        if let Some(m) = monitors.get_mut(&monitor_name) {
+            m.brightness = target_brightness;
+        }
+    }
+
+    tokio::spawn(async move {
+        match rx.await {
+            Ok(Ok(applied)) => {
+                let mut monitors = MONITORS.write().await;
+                if let Some(m) = monitors.get_mut(&monitor_name) {
+                    m.brightness = applied;
+                }
+            }
+            Ok(Err(e)) => tracing::warn!("brightness set failed: {}", e),
+            Err(_) => tracing::debug!("brightness set waiter dropped"),
+        }
+    });
+
+    Ok(target_brightness)
 }
 
 async fn apply_brightness_and_cache(monitor: &Monitor, target_brightness: f64) -> Result<f64> {
@@ -270,7 +311,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             .clone();
 
         let target_brightness = parse_brightness_value(&value, monitor.brightness)?;
-        let applied = coalesced_brightness_set(monitor.clone(), target_brightness).await?;
+        let applied = enqueue_brightness_set(monitor.clone(), target_brightness).await?;
 
         Ok(json!({
             "success": true,
@@ -510,22 +551,24 @@ async fn detect_monitors() -> Result<()> {
         );
     }
 
-    let ddc_output = process::exec_command(&["ddcutil", "detect", "--brief"]).await.ok();
-    let ddc_monitors = ddc_output
-        .as_deref()
-        .map(parse_ddc_monitors)
-        .unwrap_or_default();
+    if backlight_devices.is_empty() {
+        let ddc_output = process::exec_command(&["ddcutil", "detect", "--brief"]).await.ok();
+        let ddc_monitors = ddc_output
+            .as_deref()
+            .map(parse_ddc_monitors)
+            .unwrap_or_default();
 
-    for (name, bus_num) in ddc_monitors {
-        let brightness = get_ddc_brightness(&bus_num).await.unwrap_or(0.5);
-        monitors.insert(
-            name.clone(),
-            Monitor {
-                name,
-                monitor_type: MonitorType::DDC { bus_num },
-                brightness,
-            },
-        );
+        for (name, bus_num) in ddc_monitors {
+            let brightness = get_ddc_brightness(&bus_num).await.unwrap_or(0.5);
+            monitors.insert(
+                name.clone(),
+                Monitor {
+                    name,
+                    monitor_type: MonitorType::DDC { bus_num },
+                    brightness,
+                },
+            );
+        }
     }
 
     if apple_present {

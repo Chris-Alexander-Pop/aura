@@ -60,10 +60,16 @@ function suppressWebViewContextMenu(webview: WebKit.WebView) {
     })
 }
 
+function sidecarPageUri(page: string): string {
+    const route = page.startsWith("#") ? page : `#${page}`
+    // Bust WebKit HTTP cache on each shell start so bar UI picks up fresh ui/dist.
+    return `${SIDECAR_URL}/?v=${Date.now()}${route}`
+}
+
 function makeWebView(page: string, width: number, height: number, fixedMinSize: boolean, transparent?: boolean) {
     const webview = new WebKit.WebView()
     suppressWebViewContextMenu(webview)
-    webview.load_uri(`${SIDECAR_URL}/${page}`)
+    webview.load_uri(sidecarPageUri(page))
     if (fixedMinSize) {
         webview.set_size_request(width, height)
     } else {
@@ -73,6 +79,9 @@ function makeWebView(page: string, width: number, height: number, fixedMinSize: 
     const wk_settings = webview.get_settings()
     wk_settings.enable_developer_extras = true
     wk_settings.javascript_can_open_windows_automatically = false
+    try {
+        ;(wk_settings as Record<string, unknown>).enable_page_cache = false
+    } catch { /* older WebKit */ }
     if (transparent) {
         try {
             const rgba = new Gdk.RGBA()

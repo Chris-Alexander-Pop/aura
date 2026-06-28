@@ -35,7 +35,7 @@ describe("createBrightnessSession", () => {
     expect(inFlight).toBe(0)
     expect(session.isBusy()).toBe(true)
 
-    await vi.advanceTimersByTimeAsync(120)
+    await vi.advanceTimersByTimeAsync(50)
 
     expect(inFlight).toBe(1)
     expect(session.isBusy()).toBe(true)

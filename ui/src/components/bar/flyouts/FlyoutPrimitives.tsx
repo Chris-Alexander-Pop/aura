@@ -302,6 +302,7 @@ export function FlyoutSlider({
   label,
   accent = "teal",
   live = false,
+  liveDebounceMs = 40,
   showThumb = true,
   onLiveChange,
   onChange,
@@ -314,6 +315,8 @@ export function FlyoutSlider({
   label: string
   accent?: "teal" | "amber" | "sapphire"
   live?: boolean
+  /** Debounce for `onLiveChange` while dragging (0 = every pointer move). */
+  liveDebounceMs?: number
   showThumb?: boolean
   /** Debounced updates while dragging when `live` is set. Falls back to `onChange`. */
   onLiveChange?: (value: number) => void
@@ -362,11 +365,15 @@ export function FlyoutSlider({
   const scheduleLive = (v: number) => {
     if (!live) return
     const liveHandler = onLiveChange ?? onChange
+    if (liveDebounceMs <= 0) {
+      liveHandler(v)
+      return
+    }
     if (liveTimerRef.current != null) clearTimeout(liveTimerRef.current)
     liveTimerRef.current = setTimeout(() => {
       liveTimerRef.current = null
       liveHandler(v)
-    }, 40)
+    }, liveDebounceMs)
   }
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {

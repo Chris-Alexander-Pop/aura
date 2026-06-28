@@ -2,7 +2,7 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
 import { parseHyprActiveWindow, parseHyprActiveWorkspace, parseHyprClients, type HyprClient } from "@/lib/api-types"
-import { pickVisibleOccupiedWorkspaces } from "@/lib/workspace-visible-range"
+import { pickVisibleWorkspaces } from "@/lib/workspace-visible-range"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
 import {
   FlyoutList,
@@ -17,9 +17,9 @@ import { cn } from "@/lib/utils"
 import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
 import { hyprlandQueryDefaults, useHyprlandSync } from "@/lib/useHyprlandSync"
 
-function wsKey(c: HyprClient): number {
+function wsKey(c: HyprClient): number | null {
   const id = c.workspace?.id
-  return typeof id === "number" && Number.isFinite(id) ? id : -1
+  return typeof id === "number" && Number.isFinite(id) && id > 0 ? id : null
 }
 
 export default function WindowsFlyout() {
@@ -53,12 +53,12 @@ export default function WindowsFlyout() {
     const byWs = new Map<number, HyprClient[]>()
     for (const c of clients) {
       const k = wsKey(c)
-      if (k < 0) continue
+      if (k == null) continue
       if (!byWs.has(k)) byWs.set(k, [])
       byWs.get(k)!.push(c)
     }
     const occupiedIds = [...byWs.keys()]
-    const visibleIds = pickVisibleOccupiedWorkspaces(occupiedIds, activeWsId)
+    const visibleIds = pickVisibleWorkspaces(occupiedIds, activeWsId).filter((id) => byWs.has(id))
     return visibleIds.map((id) => ({
       wsId: id,
       label: String(id),

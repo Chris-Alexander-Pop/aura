@@ -27,7 +27,7 @@ import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
 import { cn } from "@/lib/utils"
 import { hyprlandQueryDefaults, useHyprlandSync } from "@/lib/useHyprlandSync"
 import { onHyprlandWorkspaceActive } from "@/lib/hyprland-bar-cache"
-import { pickVisibleOccupiedWorkspaces } from "@/lib/workspace-visible-range"
+import { pickVisibleWorkspaces } from "@/lib/workspace-visible-range"
 
 /** Post a message to the AGS-registered WebKit message handler. */
 function postFlyoutMessage(payload: { open: boolean; panel?: string; y?: number }) {
@@ -39,7 +39,7 @@ function postFlyoutMessage(payload: { open: boolean; panel?: string; y?: number 
 
 function clientWorkspaceId(client: HyprClient): number | null {
   const id = client.workspace?.id
-  return typeof id === "number" && Number.isFinite(id) ? id : null
+  return typeof id === "number" && Number.isFinite(id) && id > 0 ? id : null
 }
 
 function WorkspacesBlock() {
@@ -74,11 +74,14 @@ function WorkspacesBlock() {
     return byWs
   }, [clients])
 
-  const ids = useMemo(() => {
+  const visibleWorkspaces = useMemo(() => {
     const occupiedIds = [...clientsByWs.entries()]
       .filter(([, wsClients]) => wsClients.length > 0)
       .map(([id]) => id)
-    return pickVisibleOccupiedWorkspaces(occupiedIds, activeId)
+    return pickVisibleWorkspaces(occupiedIds, activeId).map((id) => ({
+      id,
+      wsClients: clientsByWs.get(id) ?? [],
+    }))
   }, [clientsByWs, activeId])
 
   const workspacesLoading =
@@ -88,45 +91,56 @@ function WorkspacesBlock() {
   if (workspacesLoading) {
     return (
       <div className="flex flex-col items-center gap-0.5 py-0.5" aria-busy="true" aria-label="Loading workspaces">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-8 w-8 animate-pulse rounded-full bg-surface1/35" />
-        ))}
+        <div className="h-8 w-8 animate-pulse rounded-full bg-surface1/35" />
       </div>
     )
   }
 
-  if (ids.length === 0) return null
+  if (visibleWorkspaces.length === 0) return null
 
   return (
     <div className="flex flex-col items-center gap-0.5 py-0.5">
-      {ids.map((id) => {
-        const wsClients = clientsByWs.get(id) ?? []
+      {visibleWorkspaces.map(({ id, wsClients }) => {
         const windowCount = wsClients.length
+        const occupied = windowCount > 0
         const icons = wsClients.slice(0, 2).map((client) => iconFromHyprClass(client.class))
+        const isActive = activeId === id
         return (
           <button
             key={id}
             type="button"
-            title={`Workspace ${id} (${windowCount} window${windowCount === 1 ? "" : "s"})`}
+            title={
+              occupied
+                ? `Workspace ${id} (${windowCount} window${windowCount === 1 ? "" : "s"})`
+                : `Workspace ${id}`
+            }
             onClick={() => {
               onHyprlandWorkspaceActive(qc, id)
               void api.hyprlandDispatch(`workspace ${id}`)
             }}
             className={cn(
               "group flex h-8 w-8 shrink-0 flex-col items-center justify-center gap-px rounded-full border transition-colors",
-              activeId === id
+              isActive
                 ? "border-teal bg-teal text-crust"
-                : "border-surface2 bg-surface0 text-subtext1 hover:bg-surface1",
+                : occupied
+                  ? "border-surface2 bg-surface0 text-subtext1 hover:bg-surface1"
+                  : "border-transparent text-overlay0 hover:bg-surface0/70 hover:text-subtext0",
             )}
           >
-            <span className="text-[8px] font-semibold leading-none">{id}</span>
-            <span className="flex items-center justify-center gap-px leading-none">
-              {icons.map((icon, index) => (
-                <span key={`${icon}-${index}`} className="icon text-[10px] leading-none">
-                  {icon}
+            {occupied ? (
+              <>
+                <span className="text-[8px] font-semibold leading-none">{id}</span>
+                <span className="flex items-center justify-center gap-px leading-none">
+                  {icons.map((icon, index) => (
+                    <span key={`${icon}-${index}`} className="icon text-[10px] leading-none">
+                      {icon}
+                    </span>
+                  ))}
                 </span>
-              ))}
-            </span>
+              </>
+            ) : (
+              <span className="text-[11px] font-semibold leading-none">{id}</span>
+            )}
           </button>
         )
       })}

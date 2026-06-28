@@ -1,6 +1,6 @@
 /** Single-flight brightness RPC coalescing + WS stale-event guard. */
 
-const LIVE_DEBOUNCE_MS = 120
+const LIVE_DEBOUNCE_MS = 50
 
 export type BrightnessSetResult = {
   brightness: number
@@ -41,22 +41,34 @@ export function createBrightnessSession(
     }
   }
 
-  const pump = () => {
+  const pump = (waitForResponse: boolean) => {
     if (inFlight || pending == null) return
     const next = pending
     pending = null
     inFlight = true
-    void send(next)
-      .then((result) => {
-        onSuccess?.(result)
-      })
-      .catch((err) => {
-        onError?.(err)
-      })
-      .finally(() => {
-        inFlight = false
-        pump()
-      })
+    const task = send(next)
+    if (waitForResponse) {
+      void task
+        .then((result) => {
+          onSuccess?.(result)
+        })
+        .catch((err) => {
+          onError?.(err)
+        })
+        .finally(() => {
+          inFlight = false
+          pump(false)
+        })
+    } else {
+      void task
+        .catch((err) => {
+          onError?.(err)
+        })
+        .finally(() => {
+          inFlight = false
+          pump(false)
+        })
+    }
   }
 
   const schedule = (frac: number) => {
@@ -64,14 +76,14 @@ export function createBrightnessSession(
     clearDebounce()
     debounceTimer = setTimeout(() => {
       debounceTimer = null
-      pump()
+      pump(false)
     }, LIVE_DEBOUNCE_MS)
   }
 
   const flush = (frac: number) => {
     pending = frac
     clearDebounce()
-    pump()
+    pump(true)
   }
 
   return {

@@ -84,7 +84,7 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
         } catch { /* ignore */ }
         return true
     })
-    flyoutWv.load_uri(`http://localhost:9080/#/bar-flyout`)
+    flyoutWv.load_uri(`http://localhost:9080/?v=${Date.now()}#/bar-flyout`)
     flyoutWv.set_size_request(FLYOUT_W, height)
     const flyoutSettings = flyoutWv.get_settings()
     flyoutSettings["enable_developer_extras"] = true

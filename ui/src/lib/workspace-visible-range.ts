@@ -1,33 +1,44 @@
 /** Max workspace tab buttons shown in the bar strip at once. */
-export const WORKSPACE_VISIBLE_WINDOW = 5
+export const WORKSPACE_MAX_VISIBLE = 10
 
 /**
- * Pick occupied workspace IDs to show in the bar strip.
+ * Pick workspace IDs to show in the bar strip.
  *
- * Scans contiguous windows of {@link WORKSPACE_VISIBLE_WINDOW} slots, keeps the
- * window with the most occupied tabs, and breaks ties toward lower-numbered
- * workspaces. When the active workspace has windows, only windows that include
- * it are considered so the current workspace stays reachable.
+ * Always includes the active workspace (even when empty). Other tabs are
+ * occupied workspaces only. When the total fits in {@link WORKSPACE_MAX_VISIBLE},
+ * every occupied workspace is shown. Otherwise a sliding ID window (size =
+ * max visible) that includes the active workspace is chosen to maximize how
+ * many occupied tabs appear, with ties broken toward lower-numbered workspaces.
  */
-export function pickVisibleOccupiedWorkspaces(
+export function pickVisibleWorkspaces(
   occupiedIds: Iterable<number>,
   activeId: number | null,
-  windowSize = WORKSPACE_VISIBLE_WINDOW,
+  maxVisible = WORKSPACE_MAX_VISIBLE,
 ): number[] {
-  const occupied = [...occupiedIds].sort((a, b) => a - b)
-  if (occupied.length === 0) return []
-
-  const occupiedSet = new Set(occupied)
+  const occupied = [...occupiedIds]
+    .filter((id) => id > 0)
+    .sort((a, b) => a - b)
   const safeActive = activeId && activeId > 0 ? activeId : null
-  const activeIsOccupied = safeActive != null && occupiedSet.has(safeActive)
 
-  const maxId = Math.max(occupied[occupied.length - 1]!, safeActive ?? 1, windowSize)
+  if (occupied.length === 0) {
+    return safeActive ? [safeActive] : []
+  }
+
+  const activeIsOccupied = safeActive != null && occupied.includes(safeActive)
+  const totalTabs = occupied.length + (safeActive && !activeIsOccupied ? 1 : 0)
+  if (totalTabs <= maxVisible) {
+    const ids = new Set(occupied)
+    if (safeActive) ids.add(safeActive)
+    return [...ids].sort((a, b) => a - b)
+  }
+
+  const windowSize = maxVisible
+  const maxId = Math.max(occupied[occupied.length - 1]!, safeActive ?? 1)
   const minStart = 1
   const maxStart = Math.max(1, maxId - windowSize + 1)
 
-  // Empty active workspace: pick the globally best window (don't anchor to it).
-  const startMin = activeIsOccupied ? Math.max(1, safeActive! - windowSize + 1) : minStart
-  const startMax = activeIsOccupied ? safeActive! : maxStart
+  const startMin = safeActive ? Math.max(1, safeActive - windowSize + 1) : minStart
+  const startMax = safeActive ? safeActive : maxStart
 
   let bestStart = startMin
   let bestCount = -1
@@ -42,5 +53,10 @@ export function pickVisibleOccupiedWorkspaces(
   }
 
   const end = bestStart + windowSize - 1
-  return occupied.filter((id) => id >= bestStart && id <= end)
+  const ids = new Set(occupied.filter((id) => id >= bestStart && id <= end))
+  if (safeActive) ids.add(safeActive)
+  return [...ids].sort((a, b) => a - b)
 }
+
+/** @deprecated Use {@link pickVisibleWorkspaces}. */
+export const pickVisibleOccupiedWorkspaces = pickVisibleWorkspaces
