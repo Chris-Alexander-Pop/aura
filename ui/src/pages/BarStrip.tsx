@@ -27,6 +27,7 @@ import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
 import { cn } from "@/lib/utils"
 import { hyprlandQueryDefaults, useHyprlandSync } from "@/lib/useHyprlandSync"
 import { onHyprlandWorkspaceActive } from "@/lib/hyprland-bar-cache"
+import { pickVisibleOccupiedWorkspaces } from "@/lib/workspace-visible-range"
 
 /** Post a message to the AGS-registered WebKit message handler. */
 function postFlyoutMessage(payload: { open: boolean; panel?: string; y?: number }) {
@@ -61,7 +62,6 @@ function WorkspacesBlock() {
 
   const list = useMemo(() => parseHyprWorkspaces(wsRaw), [wsRaw])
   const activeId = useMemo(() => parseHyprActiveWorkspace(activeRaw)?.id ?? null, [activeRaw])
-  const wsById = useMemo(() => new Map(list.map((w) => [w.id, w])), [list])
   const clients = useMemo(() => parseHyprClients(clientsRaw), [clientsRaw])
   const clientsByWs = useMemo(() => {
     const byWs = new Map<number, HyprClient[]>()
@@ -75,13 +75,15 @@ function WorkspacesBlock() {
   }, [clients])
 
   const ids = useMemo(() => {
-    const safeActive = activeId && activeId > 0 ? activeId : 1
-    const offset = Math.floor((safeActive - 1) / 5) * 5
-    return Array.from({ length: 5 }, (_, i) => offset + i + 1)
-  }, [activeId])
+    const occupiedIds = [...clientsByWs.entries()]
+      .filter(([, wsClients]) => wsClients.length > 0)
+      .map(([id]) => id)
+    return pickVisibleOccupiedWorkspaces(occupiedIds, activeId)
+  }, [clientsByWs, activeId])
 
   const workspacesLoading =
-    (wsPending || activePending || clientsPending) && list.length === 0 && clients.length === 0
+    (wsPending || activePending || clientsPending) &&
+    (list.length === 0 || clientsRaw === undefined)
 
   if (workspacesLoading) {
     return (
@@ -93,18 +95,19 @@ function WorkspacesBlock() {
     )
   }
 
+  if (ids.length === 0) return null
+
   return (
     <div className="flex flex-col items-center gap-0.5 py-0.5">
       {ids.map((id) => {
-        const w = wsById.get(id)
         const wsClients = clientsByWs.get(id) ?? []
-        const occupied = wsClients.length > 0 || (w?.windows ?? 0) > 0
+        const windowCount = wsClients.length
         const icons = wsClients.slice(0, 2).map((client) => iconFromHyprClass(client.class))
         return (
           <button
             key={id}
             type="button"
-            title={`Workspace ${id}${occupied ? ` (${w?.windows} windows)` : ""}`}
+            title={`Workspace ${id} (${windowCount} window${windowCount === 1 ? "" : "s"})`}
             onClick={() => {
               onHyprlandWorkspaceActive(qc, id)
               void api.hyprlandDispatch(`workspace ${id}`)
@@ -113,25 +116,17 @@ function WorkspacesBlock() {
               "group flex h-8 w-8 shrink-0 flex-col items-center justify-center gap-px rounded-full border transition-colors",
               activeId === id
                 ? "border-teal bg-teal text-crust"
-                : occupied
-                  ? "border-surface2 bg-surface0 text-subtext1 hover:bg-surface1"
-                  : "border-transparent text-overlay0 hover:bg-surface0/70 hover:text-subtext0"
+                : "border-surface2 bg-surface0 text-subtext1 hover:bg-surface1",
             )}
           >
-            {icons.length > 0 ? (
-              <>
-                <span className="text-[8px] font-semibold leading-none">{id}</span>
-                <span className="flex items-center justify-center gap-px leading-none">
-                  {icons.map((icon, index) => (
-                    <span key={`${icon}-${index}`} className="icon text-[10px] leading-none">
-                      {icon}
-                    </span>
-                  ))}
+            <span className="text-[8px] font-semibold leading-none">{id}</span>
+            <span className="flex items-center justify-center gap-px leading-none">
+              {icons.map((icon, index) => (
+                <span key={`${icon}-${index}`} className="icon text-[10px] leading-none">
+                  {icon}
                 </span>
-              </>
-            ) : (
-              <span className="text-[11px] font-semibold leading-none">{id}</span>
-            )}
+              ))}
+            </span>
           </button>
         )
       })}

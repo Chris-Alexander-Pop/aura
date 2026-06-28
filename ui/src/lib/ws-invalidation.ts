@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query"
+import { shouldApplyBrightnessWsEvent } from "./brightness-session"
 import { connectWs, useWsStore } from "./ws"
 import { DROPDOWN_TILE_IDS } from "./dropdown-tiles"
 import { scheduleHyprlandSnapshotRefresh } from "./hyprland-bar-cache"
@@ -87,8 +88,22 @@ export function registerSidecarInvalidations(qc: QueryClient): () => void {
     useWsStore.getState().on("Productivity.TimerTick", () => {
       invalidateModuleTiles(qc, "productivity")
     }),
-    useWsStore.getState().on("Brightness.StateChanged", () => {
-      invalidate(qc, ["brightness"])
+    useWsStore.getState().on("Brightness.StateChanged", (raw) => {
+      if (!shouldApplyBrightnessWsEvent()) return
+      if (!raw || typeof raw !== "object") return
+      const p = raw as { monitor?: string; brightness?: number }
+      if (typeof p.brightness !== "number" || typeof p.monitor !== "string") return
+      const row = { brightness: p.brightness, monitor: p.monitor }
+      qc.setQueryData(["brightness", p.monitor], row)
+      const monitors = qc.getQueryData<{ monitors?: Array<{ monitor: string }> }>([
+        "brightness-monitors",
+      ])?.monitors
+      const soleDisplay = !monitors?.length || monitors.length === 1
+      const activeRow = qc.getQueryData<{ monitor?: string }>(["brightness", "active"])
+      const activeTarget = activeRow?.monitor ?? monitors?.[0]?.monitor
+      if (soleDisplay || p.monitor === activeTarget || activeTarget == null) {
+        qc.setQueryData(["brightness", "active"], row)
+      }
     }),
     useWsStore.getState().on("Appearance.NightLightChanged", () => {
       invalidate(qc, ["night-light"])

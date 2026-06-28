@@ -302,6 +302,8 @@ export function FlyoutSlider({
   label,
   accent = "teal",
   live = false,
+  showThumb = true,
+  onLiveChange,
   onChange,
 }: {
   value: number
@@ -312,6 +314,9 @@ export function FlyoutSlider({
   label: string
   accent?: "teal" | "amber" | "sapphire"
   live?: boolean
+  showThumb?: boolean
+  /** Debounced updates while dragging when `live` is set. Falls back to `onChange`. */
+  onLiveChange?: (value: number) => void
   onChange: (value: number) => void
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
@@ -356,10 +361,11 @@ export function FlyoutSlider({
 
   const scheduleLive = (v: number) => {
     if (!live) return
+    const liveHandler = onLiveChange ?? onChange
     if (liveTimerRef.current != null) clearTimeout(liveTimerRef.current)
     liveTimerRef.current = setTimeout(() => {
       liveTimerRef.current = null
-      onChange(v)
+      liveHandler(v)
     }, 40)
   }
 
@@ -429,16 +435,22 @@ export function FlyoutSlider({
         onKeyDown={onKeyDown}
       >
         <div
-          className={cn("pointer-events-none absolute inset-y-0 left-0 rounded-full opacity-75", accentFill)}
-          style={{ width: `${fillPct}%` }}
-        />
-        <div
           className={cn(
-            "pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-mantle shadow-md",
+            "pointer-events-none absolute inset-y-0 left-0 rounded-full",
+            showThumb ? "opacity-75" : "opacity-100",
             accentFill,
           )}
-          style={{ left: `calc(${fillPct}% - 7px)` }}
+          style={{ width: `${fillPct}%` }}
         />
+        {showThumb ? (
+          <div
+            className={cn(
+              "pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full shadow-sm ring-2 ring-mantle/80",
+              accentFill,
+            )}
+            style={{ left: `calc(${fillPct}% - 6px)` }}
+          />
+        ) : null}
       </div>
     </div>
   )

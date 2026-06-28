@@ -5,7 +5,13 @@ use crate::utils::process;
 use anyhow::{anyhow, Result};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use tokio::sync::RwLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
+use tokio::sync::{mpsc, RwLock};
+use tokio::time::{sleep, Duration, Instant};
+
+const BRIGHTNESS_SET_DEBOUNCE_MS: u64 = 70;
+const BRIGHTNESS_EMIT_DEBOUNCE_MS: u64 = 300;
 
 #[derive(Debug, Clone)]
 enum MonitorType {
@@ -27,6 +33,160 @@ lazy_static::lazy_static! {
     static ref ACTIVE_BACKLIGHT: RwLock<Option<String>> = RwLock::new(None);
 }
 
+static BRIGHTNESS_EMIT_GEN: AtomicU64 = AtomicU64::new(0);
+static BRIGHTNESS_APPLY_COUNT: AtomicU64 = AtomicU64::new(0);
+
+struct SetRequest {
+    monitor: Monitor,
+    brightness: f64,
+    reply: tokio::sync::oneshot::Sender<Result<f64>>,
+}
+
+struct SetBatch {
+    monitor: Monitor,
+    brightness: f64,
+    waiters: Vec<tokio::sync::oneshot::Sender<Result<f64>>>,
+}
+
+enum CoalescerMsg {
+    Enqueue(SetRequest),
+}
+
+static SET_COALESCER_TX: OnceLock<mpsc::Sender<CoalescerMsg>> = OnceLock::new();
+
+fn spawn_brightness_coalescer_worker() {
+    SET_COALESCER_TX.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<CoalescerMsg>(64);
+        tokio::spawn(brightness_coalescer_loop(rx));
+        tx
+    });
+}
+
+fn coalescer_sender() -> &'static mpsc::Sender<CoalescerMsg> {
+    spawn_brightness_coalescer_worker();
+    SET_COALESCER_TX.get().expect("brightness coalescer tx")
+}
+
+async fn brightness_coalescer_loop(mut rx: mpsc::Receiver<CoalescerMsg>) {
+    let mut batch: Option<SetBatch> = None;
+    let mut flush_at: Option<Instant> = None;
+
+    loop {
+        let sleep_fut = async {
+            match flush_at {
+                Some(deadline) => {
+                    let now = Instant::now();
+                    if deadline > now {
+                        sleep(deadline - now).await;
+                    }
+                }
+                None => std::future::pending::<()>().await,
+            }
+        };
+
+        tokio::select! {
+            msg = rx.recv() => {
+                let Some(CoalescerMsg::Enqueue(req)) = msg else {
+                    break;
+                };
+                match &mut batch {
+                    Some(existing) if existing.monitor.name == req.monitor.name => {
+                        existing.brightness = req.brightness;
+                        existing.waiters.push(req.reply);
+                    }
+                    _ => {
+                        if let Some(pending) = batch.take() {
+                            flush_brightness_batch(pending).await;
+                        }
+                        batch = Some(SetBatch {
+                            monitor: req.monitor,
+                            brightness: req.brightness,
+                            waiters: vec![req.reply],
+                        });
+                    }
+                }
+                flush_at = Some(Instant::now() + Duration::from_millis(BRIGHTNESS_SET_DEBOUNCE_MS));
+            }
+            _ = sleep_fut, if flush_at.is_some() => {
+                if let Some(pending) = batch.take() {
+                    flush_brightness_batch(pending).await;
+                }
+                flush_at = None;
+            }
+        }
+    }
+}
+
+async fn flush_brightness_batch(batch: SetBatch) {
+    let SetBatch {
+        monitor,
+        brightness,
+        waiters,
+    } = batch;
+    let result = apply_brightness_and_cache(&monitor, brightness).await;
+    for waiter in waiters {
+        let reply = match &result {
+            Ok(v) => Ok(*v),
+            Err(e) => Err(anyhow!(e.to_string())),
+        };
+        let _ = waiter.send(reply);
+    }
+}
+
+/// Latest-wins debounced `set_brightness` — collapses rapid slider RPCs into one `brightnessctl` call.
+async fn coalesced_brightness_set(monitor: Monitor, target_brightness: f64) -> Result<f64> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    coalescer_sender()
+        .send(CoalescerMsg::Enqueue(SetRequest {
+            monitor,
+            brightness: target_brightness,
+            reply: tx,
+        }))
+        .await
+        .map_err(|_| anyhow!("Brightness coalescer unavailable"))?;
+    rx.await.map_err(|_| anyhow!("Brightness set cancelled"))?
+}
+
+async fn apply_brightness_and_cache(monitor: &Monitor, target_brightness: f64) -> Result<f64> {
+    set_brightness(monitor, target_brightness).await?;
+
+    let mut monitors = MONITORS.write().await;
+    if let Some(m) = monitors.get_mut(&monitor.name) {
+        m.brightness = target_brightness;
+    }
+
+    schedule_brightness_state_emit(monitor.name.clone(), target_brightness);
+    Ok(target_brightness)
+}
+
+fn schedule_brightness_state_emit(monitor: String, brightness: f64) {
+    let gen = BRIGHTNESS_EMIT_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    tokio::spawn(async move {
+        sleep(Duration::from_millis(BRIGHTNESS_EMIT_DEBOUNCE_MS)).await;
+        if BRIGHTNESS_EMIT_GEN.load(Ordering::SeqCst) != gen {
+            return;
+        }
+        osd::emit_brightness(brightness);
+        notify::emit(
+            "Brightness.StateChanged",
+            json!({
+                "monitor": monitor,
+                "brightness": brightness,
+            }),
+        );
+    });
+}
+
+/// Test hook: number of times `set_brightness` reached the apply path (including dry-run).
+pub fn brightness_apply_count_for_tests() -> u64 {
+    BRIGHTNESS_APPLY_COUNT.load(Ordering::SeqCst)
+}
+
+/// Test hook: reset apply counter (integration/unit tests).
+pub fn reset_brightness_apply_count_for_tests() {
+    BRIGHTNESS_APPLY_COUNT.store(0, Ordering::SeqCst);
+}
+
 async fn ensure_monitors() {
     if MONITORS.read().await.is_empty() {
         detect_monitors().await.ok();
@@ -34,9 +194,7 @@ async fn ensure_monitors() {
 }
 
 pub fn register(registry: &mut ServiceRegistry) {
-    tokio::spawn(async {
-        detect_monitors().await.ok();
-    });
+    spawn_brightness_coalescer_worker();
 
     registry.register("Brightness.Get", |params| async move {
         ensure_monitors().await;
@@ -112,26 +270,12 @@ pub fn register(registry: &mut ServiceRegistry) {
             .clone();
 
         let target_brightness = parse_brightness_value(&value, monitor.brightness)?;
-        set_brightness(&monitor, target_brightness).await?;
-
-        let mut monitors = MONITORS.write().await;
-        if let Some(m) = monitors.get_mut(&monitor.name) {
-            m.brightness = target_brightness;
-        }
-
-        osd::emit_brightness(target_brightness);
-        notify::emit(
-            "Brightness.StateChanged",
-            json!({
-                "monitor": monitor.name,
-                "brightness": target_brightness,
-            }),
-        );
+        let applied = coalesced_brightness_set(monitor.clone(), target_brightness).await?;
 
         Ok(json!({
             "success": true,
             "monitor": monitor.name,
-            "brightness": target_brightness
+            "brightness": applied
         }))
     });
 }
@@ -263,6 +407,7 @@ pub fn parse_brightnessctl_list(output: &str) -> Vec<(String, f64)> {
 }
 
 async fn set_brightness(monitor: &Monitor, brightness: f64) -> Result<()> {
+    BRIGHTNESS_APPLY_COUNT.fetch_add(1, Ordering::SeqCst);
     if std::env::var("AURA_BRIGHTNESS_DRY_RUN").ok().as_deref() == Some("1") {
         return Ok(());
     }
@@ -526,6 +671,46 @@ mod tests {
             super::brightness_set_value_from_params(&map).unwrap(),
             "50%"
         );
+    }
+
+    #[tokio::test]
+    async fn coalescer_keeps_latest_only() {
+        std::env::set_var("AURA_BRIGHTNESS_DRY_RUN", "1");
+        super::reset_brightness_apply_count_for_tests();
+
+        let monitor = super::Monitor {
+            name: "coalesce-test".to_string(),
+            monitor_type: super::MonitorType::Default {
+                device: "intel_backlight".to_string(),
+            },
+            brightness: 0.5,
+        };
+        {
+            let mut monitors = super::MONITORS.write().await;
+            monitors.insert(monitor.name.clone(), monitor.clone());
+        }
+
+        let mut handles = Vec::new();
+        for i in 1..=10 {
+            let m = monitor.clone();
+            let frac = i as f64 / 10.0;
+            handles.push(tokio::spawn(async move {
+                super::coalesced_brightness_set(m, frac).await
+            }));
+        }
+
+        let mut last = 0.0;
+        for handle in handles {
+            last = handle.await.expect("join").expect("set");
+        }
+        assert!((last - 1.0).abs() < f64::EPSILON);
+        assert_eq!(super::brightness_apply_count_for_tests(), 1);
+
+        let cached = super::MONITORS.read().await;
+        let stored = cached.get("coalesce-test").expect("cached");
+        assert!((stored.brightness - 1.0).abs() < f64::EPSILON);
+
+        std::env::remove_var("AURA_BRIGHTNESS_DRY_RUN");
     }
 }
 

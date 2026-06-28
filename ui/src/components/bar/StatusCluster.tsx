@@ -24,7 +24,7 @@ export default function StatusCluster({ onSegmentEnter, onSegmentLeave }: Props)
   const { data: brightness } = useQuery({
     queryKey: ["brightness", "active"],
     queryFn: () => api.getBrightness("active"),
-    refetchInterval: 8000,
+    staleTime: 30_000,
   })
   const { data: adapters } = useQuery({ queryKey: ["bt-ad"], queryFn: api.getBluetoothAdapters, refetchInterval: 8000 })
   const { data: devices } = useQuery({ queryKey: ["bt-dev"], queryFn: api.getBluetoothDevices, refetchInterval: 8000 })

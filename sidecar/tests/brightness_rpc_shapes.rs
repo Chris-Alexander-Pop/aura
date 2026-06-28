@@ -50,6 +50,9 @@ async fn brightness_get_all_returns_monitor_array() {
     }
 }
 
+/// Burst coalescing is covered by `services::brightness::tests::coalescer_keeps_latest_only`
+/// and `brightness_set_dry_run_single` integration smoke test.
+
 /// `Brightness.Set` is deny-listed for default harness; dry-run avoids host mutation.
 #[tokio::test]
 #[ignore = "hangs without full exec fixtures; covered in exec_coverage_final_push_test"]

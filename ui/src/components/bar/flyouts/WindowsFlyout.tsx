@@ -1,7 +1,8 @@
 import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import api from "@/lib/api"
-import { parseHyprActiveWindow, parseHyprClients, type HyprClient } from "@/lib/api-types"
+import { parseHyprActiveWindow, parseHyprActiveWorkspace, parseHyprClients, type HyprClient } from "@/lib/api-types"
+import { pickVisibleOccupiedWorkspaces } from "@/lib/workspace-visible-range"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
 import {
   FlyoutList,
@@ -38,26 +39,34 @@ export default function WindowsFlyout() {
     queryFn: api.hyprlandGetActiveWindow,
     ...hyprlandQueryDefaults,
   })
+  const { data: rawActiveWs, isPending: activeWsPending } = useQuery({
+    queryKey: ["hypr-active-ws"],
+    queryFn: api.hyprlandGetActiveWorkspace,
+    ...hyprlandQueryDefaults,
+  })
 
   const activeAddr = parseHyprActiveWindow(rawActive)?.address ?? ""
+  const activeWsId = parseHyprActiveWorkspace(rawActiveWs)?.id ?? null
   const clients = useMemo(() => parseHyprClients(rawClients), [rawClients])
 
   const grouped = useMemo(() => {
     const byWs = new Map<number, HyprClient[]>()
     for (const c of clients) {
       const k = wsKey(c)
+      if (k < 0) continue
       if (!byWs.has(k)) byWs.set(k, [])
       byWs.get(k)!.push(c)
     }
-    const sortedKeys = [...byWs.keys()].sort((a, b) => a - b)
-    return sortedKeys.map((id) => ({
+    const occupiedIds = [...byWs.keys()]
+    const visibleIds = pickVisibleOccupiedWorkspaces(occupiedIds, activeWsId)
+    return visibleIds.map((id) => ({
       wsId: id,
-      label: id < 0 ? "?" : String(id),
+      label: String(id),
       items: byWs.get(id)!.sort((a, b) =>
         (a.title ?? "").localeCompare(b.title ?? "", undefined, { sensitivity: "base" })
       ),
     }))
-  }, [clients])
+  }, [clients, activeWsId])
 
   const activeClient = useMemo(
     () => clients.find((c) => c.address === activeAddr) ?? null,
@@ -88,6 +97,8 @@ export default function WindowsFlyout() {
         />
       ) : activePending && rawActive === undefined ? (
         <FlyoutLoading label="Resolving focused window…" />
+      ) : activeWsPending && rawActiveWs === undefined ? (
+        <FlyoutLoading label="Resolving workspace…" />
       ) : activeClient ? (
         <button
           type="button"

@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import api from "@/lib/api"
+import {
+  createBrightnessSession,
+  registerBrightnessSession,
+  type BrightnessSetResult,
+} from "@/lib/brightness-session"
 import { FlyoutEmpty, FlyoutLoading } from "@/components/bar/flyouts/FlyoutStates"
 import {
   FlyoutBanner,
@@ -11,6 +16,8 @@ import {
   FlyoutTitle,
 } from "@/components/bar/flyouts/FlyoutPrimitives"
 
+type BrightnessRow = { brightness: number; monitor?: string }
+
 function monitorLabel(name: string): string {
   if (name === "active") return "Active display"
   return name.replace(/_/g, " ")
@@ -19,15 +26,17 @@ function monitorLabel(name: string): string {
 function brightnessForMonitor(
   monitorList: { monitors?: Array<{ monitor: string; brightness: number }> } | undefined,
   name: string,
-): { brightness: number } | undefined {
+): BrightnessRow | undefined {
   const hit = monitorList?.monitors?.find((m) => m.monitor === name)
-  return hit ? { brightness: hit.brightness } : undefined
+  return hit ? { brightness: hit.brightness, monitor: hit.monitor } : undefined
 }
 
 export default function BrightnessFlyout() {
   const qc = useQueryClient()
   const [monitor, setMonitor] = useState<string>("active")
   const [setError, setSetError] = useState<string | null>(null)
+  const monitorRef = useRef(monitor)
+  monitorRef.current = monitor
 
   const { data: monitorList, isLoading: monitorsLoading } = useQuery({
     queryKey: ["brightness-monitors"],
@@ -51,47 +60,89 @@ export default function BrightnessFlyout() {
     }
   }, [monitor, monitorNames])
 
-  const { data: level, isLoading: levelLoading, isError } = useQuery({
+  const { data: level, isLoading: levelLoading, isError } = useQuery<BrightnessRow>({
     queryKey: ["brightness", monitor],
     queryFn: () => api.getBrightness(monitor),
     staleTime: 30_000,
     placeholderData: () =>
       brightnessForMonitor(monitorList, monitor) ??
-      qc.getQueryData<{ brightness: number }>(["brightness", monitor]),
+      qc.getQueryData<BrightnessRow>(["brightness", monitor]),
   })
 
-  const { mutate: setBrightness } = useMutation({
-    mutationFn: ({ mon, percent }: { mon: string; percent: number }) =>
-      api.setBrightness(mon, percent),
-    onSuccess: (data) => {
+  const writeOptimistic = useCallback(
+    (frac: number, monitorName?: string) => {
       setSetError(null)
-      const row = data as { brightness?: number; monitor?: string }
-      if (typeof row.brightness !== "number") return
-      const key = row.monitor ?? monitor
-      qc.setQueryData(["brightness", key], { brightness: row.brightness })
-      if (key !== monitor) {
-        qc.setQueryData(["brightness", monitor], { brightness: row.brightness })
-      }
-      if (monitor === "active") {
-        qc.setQueryData(["brightness", "active"], { brightness: row.brightness })
+      const row: BrightnessRow = { brightness: frac, monitor: monitorName }
+      const key = monitorRef.current
+      qc.setQueryData(["brightness", key], row)
+      if (key === "active") {
+        qc.setQueryData(["brightness", "active"], row)
       }
     },
-    onError: (err) => {
-      setSetError(err instanceof Error ? err.message : "Could not set brightness")
+    [qc],
+  )
+
+  const applyBrightnessSuccess = useCallback(
+    (data: BrightnessSetResult) => {
+      setSetError(null)
+      if (typeof data.brightness !== "number") return
+      const key = monitorRef.current
+      const resolvedMonitor = data.monitor ?? key
+      const cached: BrightnessRow = { brightness: data.brightness, monitor: resolvedMonitor }
+      qc.setQueryData(["brightness", resolvedMonitor], cached)
+      if (resolvedMonitor !== key) {
+        qc.setQueryData(["brightness", key], cached)
+      }
+      if (key === "active") {
+        qc.setQueryData(["brightness", "active"], cached)
+      }
     },
+    [qc],
+  )
+
+  const { mutateAsync: setBrightnessAsync } = useMutation({
+    mutationFn: ({ mon, percent }: { mon: string; percent: number }) =>
+      api.setBrightness(mon, percent) as Promise<BrightnessSetResult>,
   })
 
-  const applyBrightness = useCallback(
+  const onSuccessRef = useRef(applyBrightnessSuccess)
+  onSuccessRef.current = applyBrightnessSuccess
+
+  const sessionRef = useRef<ReturnType<typeof createBrightnessSession> | null>(null)
+
+  useEffect(() => {
+    const session = createBrightnessSession(
+      (frac) => setBrightnessAsync({ mon: monitorRef.current, percent: frac }),
+      (data) => onSuccessRef.current(data),
+      (err) => {
+        setSetError(err instanceof Error ? err.message : "Could not set brightness")
+      },
+    )
+    sessionRef.current = session
+    registerBrightnessSession(session)
+    return () => {
+      session.dispose()
+      registerBrightnessSession(null)
+      sessionRef.current = null
+    }
+  }, [setBrightnessAsync])
+
+  const applyLiveBrightness = useCallback(
     (v: number) => {
       const frac = v / 100
-      setSetError(null)
-      qc.setQueryData(["brightness", monitor], { brightness: frac })
-      if (monitor === "active") {
-        qc.setQueryData(["brightness", "active"], { brightness: frac })
-      }
-      setBrightness({ mon: monitor, percent: frac })
+      writeOptimistic(frac, level?.monitor)
+      sessionRef.current?.setTarget(frac)
     },
-    [monitor, qc, setBrightness],
+    [level?.monitor, writeOptimistic],
+  )
+
+  const applyFinalBrightness = useCallback(
+    (v: number) => {
+      const frac = v / 100
+      writeOptimistic(frac, level?.monitor)
+      sessionRef.current?.setTarget(frac, { flush: true })
+    },
+    [level?.monitor, writeOptimistic],
   )
 
   const pct = Math.round((level?.brightness ?? 0.5) * 100)
@@ -148,7 +199,9 @@ export default function BrightnessFlyout() {
         max={100}
         live
         accent="amber"
-        onChange={applyBrightness}
+        showThumb={false}
+        onLiveChange={applyLiveBrightness}
+        onChange={applyFinalBrightness}
       />
     </FlyoutShell>
   )
