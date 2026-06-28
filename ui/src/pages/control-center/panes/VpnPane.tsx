@@ -118,24 +118,50 @@ export function VpnPane() {
             Profile
           </label>
           {(profiles?.length ?? 0) > 0 ? (
-            <select
+            <ul
               id="vpn-profile-id"
-              className="input"
-              value={profileDraft}
-              disabled={busy || status?.state === "connected" || status?.state === "connecting"}
-              onChange={(e) => {
-                setProfileDraft(e.target.value)
-                setAttemptedSubmit(false)
-              }}
+              role="listbox"
+              aria-label="VPN profiles"
+              className={cn(
+                "flex max-h-52 flex-col gap-1 overflow-y-auto rounded-lg",
+                highlightEmptyProfile && "ring-1 ring-peach/25"
+              )}
             >
-              <option value="">Select profile…</option>
-              {profiles!.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name || p.id}
-                  {p.type ? ` (${p.type})` : ""}
-                </option>
-              ))}
-            </select>
+              {profiles!.map((p) => {
+                const selected = profileDraft === p.id
+                const pickerDisabled =
+                  busy || status?.state === "connected" || status?.state === "connecting"
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      disabled={pickerDisabled}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-xs text-left transition-colors",
+                        selected
+                          ? "bg-teal/10 text-teal ring-1 ring-teal/25"
+                          : "text-subtext0 hover:bg-surface0/50",
+                        pickerDisabled && "cursor-not-allowed opacity-60"
+                      )}
+                      onClick={() => {
+                        setProfileDraft(p.id)
+                        setAttemptedSubmit(false)
+                      }}
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        {p.icon ? <span className="icon shrink-0 text-sm">{p.icon}</span> : null}
+                        <span className="truncate font-medium">{p.name || p.id}</span>
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] uppercase text-subtext0">
+                        {p.interface ?? "vpn"}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
           ) : (
             <input
               id="vpn-profile-id"
@@ -215,26 +241,6 @@ export function VpnPane() {
               : "Request failed"}
         </p>
       )}
-
-      {(profiles?.length ?? 0) > 0 ? (
-        <section className="glass-card p-4 flex flex-col gap-2">
-          <h3 className="text-sm font-medium text-subtext1">Configured profiles</h3>
-          <ul className="flex flex-col gap-1.5">
-            {profiles!.map((p) => (
-              <li
-                key={p.id}
-                className={cn(
-                  "flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-xs",
-                  status?.profile_id === p.id ? "bg-teal/10 text-teal" : "text-subtext0"
-                )}
-              >
-                <span className="min-w-0 truncate font-medium">{p.name || p.id}</span>
-                <span className="shrink-0 font-mono text-[10px] uppercase">{p.type ?? "vpn"}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
       <p className="text-xs text-subtext1 max-w-prose">
         Status refreshes every few seconds. Credentials may be prompted or read from the keyring by the sidecar for

@@ -224,7 +224,16 @@ export const api = {
   getVpnStatus: () =>
     call<{ state: string; message: string; profile_id?: string }>("Vpn.GetStatus"),
   getVpnProfiles: () =>
-    call<Array<{ id: string; name: string; type?: string }>>("Vpn.GetProfiles"),
+    call<
+      Array<{
+        id: string
+        name: string
+        icon?: string
+        display_name?: string
+        interface?: string
+        requires_credentials?: boolean
+      }>
+    >("Vpn.GetProfiles"),
   connectVpn: (profileId: string) => call("Vpn.Connect", { profileId }),
   disconnectVpn: () => call("Vpn.Disconnect"),
 
