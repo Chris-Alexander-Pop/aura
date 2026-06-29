@@ -4,7 +4,12 @@ import Astal from "gi://Astal?version=4.0"
 import Gdk from "gi://Gdk?version=4.0"
 import app from "ags/gtk4/app"
 import { cancelHoverClose, scheduleHoverClose, showHoverPanel } from "../../lib/panel-hover"
-import { moduleHubLayout, verticalCenterMargins, monitorSize } from "../../lib/monitor"
+import {
+    BAR_STRIP_WIDTH_PX,
+    moduleHubLayout,
+    verticalCenterMargins,
+    monitorSize,
+} from "../../lib/monitor"
 
 export type ModuleHubTriggerMode = "left_edge" | "top_third" | "none"
 
@@ -127,15 +132,15 @@ function mountModuleHubTrigger(
 
     if (mode === "left_edge") {
         const { height } = monitorSize(gdkmonitor)
+        // Sit just right of the exclusive bar strip — a 2px strip at x=0 is under the bar.
         return createEdgeTrigger(gdkmonitor, {
             name: `module-hub-trigger-left-${tag}`,
             targetWindow: "module-hub",
             anchor: Astal.WindowAnchor.LEFT | Astal.WindowAnchor.TOP,
-            marginLeft: 0,
+            marginLeft: BAR_STRIP_WIDTH_PX,
             marginTop: 0,
             width: TRIGGER_SIZE,
             height,
-            layer: Astal.Layer.TOP,
         })
     }
 
@@ -148,7 +153,6 @@ function mountModuleHubTrigger(
         marginTop: 0,
         width: cardWidth,
         height: TOP_HUB_TRIGGER_H,
-        layer: Astal.Layer.TOP,
     })
 }
 

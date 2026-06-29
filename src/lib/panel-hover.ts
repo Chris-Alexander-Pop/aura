@@ -14,8 +14,8 @@ const DEFAULT_CLOSE_MS = 450
 const SIDEBAR_HEIGHT = 400
 const DROPDOWN_WIDTH = 400
 const DROPDOWN_HEIGHT = 280
-const MEDIA_WIDTH = 320
-const MEDIA_HEIGHT = 380
+const MEDIA_WIDTH = 72
+const MEDIA_HEIGHT = 168
 
 const HOVER_PANEL_NAMES = new Set(["module-hub", "dropdown", "media-popup"])
 
@@ -112,12 +112,12 @@ function applyPanelLayout(
             break
         }
         case "media-popup": {
-            const { marginTop, marginBottom } = verticalCenterMargins(monitor, MEDIA_HEIGHT)
-            win.set_anchor?.(Astal.WindowAnchor.RIGHT | Astal.WindowAnchor.TOP | Astal.WindowAnchor.BOTTOM)
+            const { marginTop } = verticalCenterMargins(monitor, MEDIA_HEIGHT)
+            win.set_anchor?.(Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT)
             win.set_margin_left?.(0)
             win.set_margin_right?.(8)
             win.set_margin_top?.(marginTop)
-            win.set_margin_bottom?.(marginBottom)
+            win.set_margin_bottom?.(0)
             resizeWebViewChild(win, MEDIA_WIDTH, MEDIA_HEIGHT)
             break
         }
