@@ -169,9 +169,20 @@ async fn call_service(state: AppState, method: String, params: Option<Value>) ->
         id: Some(Value::Number(0.into())),
     };
 
-    let result = {
+    let handler = {
         let registry = state.registry.lock().await;
-        registry.handle_request(request).await
+        registry.handler_for(&method)
+    };
+
+    let result = match handler {
+        Some(handler) => {
+            let started = std::time::Instant::now();
+            let params = request.params.clone();
+            let out = handler(params.clone()).await;
+            crate::utils::rpc_log::log_rpc_completed(&method, params.as_ref(), started.elapsed());
+            out
+        }
+        None => Err(anyhow::Error::new(MethodNotFound(method.clone()))),
     };
 
     match result {

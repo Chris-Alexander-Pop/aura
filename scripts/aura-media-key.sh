@@ -16,7 +16,7 @@ api_get() {
 
 api_post() {
   local method="$1"
-  local body="${2:-{}}"
+  local body="${2:-"{}"}"
   curl -sf -X POST "${BASE}/api/${method}" \
     -H "Content-Type: application/json" \
     -d "$body" 2>/dev/null || echo '{"ok":false}'
@@ -178,7 +178,7 @@ case "$ACTION" in
     ;;
   brightness-down)
     b="$(brightness_active)"
-    new="$(python3 -c "print(max(0.05, float('$b')-0.05))")"
+    new="$(python3 -c "print(max(0.01, float('$b')-0.05))")"
     if api_post "Brightness.Set" "{\"monitor\":\"active\",\"percent\":$new}" | api_ok; then
       show_osd brightness
     else

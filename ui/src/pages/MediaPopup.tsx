@@ -17,6 +17,10 @@ function clampPct(n: number) {
   return Math.min(100, Math.max(0, Math.round(n)))
 }
 
+function clampBrightnessPct(n: number) {
+  return Math.min(100, Math.max(1, Math.round(n)))
+}
+
 function VerticalSlider({
   value,
   accent,
@@ -168,7 +172,7 @@ export default function MediaPopup() {
 
   useEffect(() => {
     if (typeof brightness?.brightness === "number") {
-      setBrightnessPct(clampPct(brightness.brightness * 100))
+      setBrightnessPct(clampBrightnessPct(brightness.brightness * 100))
     }
   }, [brightness?.brightness])
 
@@ -209,13 +213,15 @@ export default function MediaPopup() {
   }
 
   const onBrightnessChange = (pct: number) => {
-    setBrightnessPct(pct)
-    sessionRef.current?.setTarget(pct / 100)
+    const next = clampBrightnessPct(pct)
+    setBrightnessPct(next)
+    sessionRef.current?.setTarget(next / 100)
   }
 
   const onBrightnessCommit = (pct: number) => {
-    setBrightnessPct(pct)
-    sessionRef.current?.setTarget(pct / 100, { flush: true })
+    const next = clampBrightnessPct(pct)
+    setBrightnessPct(next)
+    sessionRef.current?.setTarget(next / 100, { flush: true })
   }
 
   return (

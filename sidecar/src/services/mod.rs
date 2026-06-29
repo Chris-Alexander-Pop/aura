@@ -85,6 +85,11 @@ impl ServiceRegistry {
         self.handlers.insert(method.to_string(), handler);
     }
 
+    /// Clone handler for `method` so callers can release registry locks before awaiting.
+    pub fn handler_for(&self, method: &str) -> Option<AsyncHandler> {
+        self.handlers.get(method).cloned()
+    }
+
     pub async fn handle_request(&self, request: JsonRpcRequest) -> Result<serde_json::Value> {
         let method = request.method.clone();
         let params = request.params.clone();
@@ -98,7 +103,7 @@ impl ServiceRegistry {
             }
         }
 
-        let result = if let Some(handler) = self.handlers.get(&method) {
+        let result = if let Some(handler) = self.handler_for(&method) {
             handler(params.clone()).await
         } else {
             Err(anyhow::Error::new(MethodNotFound(method.clone())))

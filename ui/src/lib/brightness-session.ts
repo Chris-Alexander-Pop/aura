@@ -1,6 +1,9 @@
-/** Single-flight brightness RPC coalescing + WS stale-event guard. */
+/** Throttled live brightness RPC + WS stale-event guard. */
 
-const LIVE_DEBOUNCE_MS = 50
+const LIVE_THROTTLE_MS = 16
+const WS_SUPPRESS_MS = 300
+/** Match sidecar `BRIGHTNESS_MIN` — 0% turns some backlights off. */
+const BRIGHTNESS_MIN_FRAC = 0.01
 
 export type BrightnessSetResult = {
   brightness: number
@@ -30,76 +33,92 @@ export function createBrightnessSession(
   onSuccess?: (result: BrightnessSetResult) => void,
   onError?: (err: unknown) => void,
 ): BrightnessSession {
-  let inFlight = false
-  let pending: number | null = null
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null
+  let lastLiveSendAt = -LIVE_THROTTLE_MS
+  let pendingLive: number | null = null
+  let throttleTimer: ReturnType<typeof setTimeout> | null = null
+  let flushInFlight = false
+  let suppressWsUntil = 0
 
-  const clearDebounce = () => {
-    if (debounceTimer != null) {
-      clearTimeout(debounceTimer)
-      debounceTimer = null
+  const touchWsSuppress = () => {
+    suppressWsUntil = Date.now() + WS_SUPPRESS_MS
+  }
+
+  const clearThrottle = () => {
+    if (throttleTimer != null) {
+      clearTimeout(throttleTimer)
+      throttleTimer = null
     }
   }
 
-  const pump = (waitForResponse: boolean) => {
-    if (inFlight || pending == null) return
-    const next = pending
-    pending = null
-    inFlight = true
-    const task = send(next)
-    if (waitForResponse) {
-      void task
-        .then((result) => {
-          onSuccess?.(result)
-        })
-        .catch((err) => {
-          onError?.(err)
-        })
-        .finally(() => {
-          inFlight = false
-          pump(false)
-        })
-    } else {
-      void task
-        .catch((err) => {
-          onError?.(err)
-        })
-        .finally(() => {
-          inFlight = false
-          pump(false)
-        })
-    }
+  const sendLive = (frac: number) => {
+    lastLiveSendAt = Date.now()
+    pendingLive = null
+    void send(frac).catch((err) => {
+      onError?.(err)
+    })
   }
 
-  const schedule = (frac: number) => {
-    pending = frac
-    clearDebounce()
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null
-      pump(false)
-    }, LIVE_DEBOUNCE_MS)
+  const scheduleLive = (frac: number) => {
+    pendingLive = frac
+    touchWsSuppress()
+
+    const elapsed = Date.now() - lastLiveSendAt
+    if (elapsed >= LIVE_THROTTLE_MS) {
+      clearThrottle()
+      sendLive(frac)
+      return
+    }
+
+    if (throttleTimer != null) return
+
+    throttleTimer = setTimeout(() => {
+      throttleTimer = null
+      if (pendingLive != null) {
+        sendLive(pendingLive)
+      }
+    }, LIVE_THROTTLE_MS - elapsed)
   }
 
   const flush = (frac: number) => {
-    pending = frac
-    clearDebounce()
-    pump(true)
+    clearThrottle()
+    pendingLive = null
+    touchWsSuppress()
+
+    flushInFlight = true
+    void send(frac)
+      .then((result) => {
+        onSuccess?.(result)
+      })
+      .catch((err) => {
+        onError?.(err)
+      })
+      .finally(() => {
+        flushInFlight = false
+        touchWsSuppress()
+      })
   }
 
   return {
     setTarget(frac, opts) {
-      if (opts?.flush) flush(frac)
-      else schedule(frac)
+      const clamped = Math.min(1, Math.max(BRIGHTNESS_MIN_FRAC, frac))
+      if (opts?.flush) flush(clamped)
+      else scheduleLive(clamped)
     },
     isBusy() {
-      return inFlight || pending != null || debounceTimer != null
+      return (
+        flushInFlight ||
+        throttleTimer != null ||
+        pendingLive != null ||
+        Date.now() < suppressWsUntil
+      )
     },
     shouldApplyWsEvent() {
-      return !this.isBusy()
+      return Date.now() >= suppressWsUntil
     },
     dispose() {
-      clearDebounce()
-      pending = null
+      clearThrottle()
+      pendingLive = null
+      suppressWsUntil = 0
     },
   }
 }

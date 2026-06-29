@@ -39,8 +39,27 @@ async fn run_server() -> Result<()> {
     tokio::spawn(async move {
         while let Some((request, response_tx)) = request_rx.recv().await {
             let request_id = request.id.clone();
-            let registry = registry_rpc.lock().await;
-            let result = registry.handle_request(request).await;
+            let method = request.method.clone();
+            let params = request.params.clone();
+            let handler = {
+                let registry = registry_rpc.lock().await;
+                registry.handler_for(&method)
+            };
+            let result = match handler {
+                Some(handler) => {
+                    let started = std::time::Instant::now();
+                    let out = handler(params).await;
+                    ags_sidecar::utils::rpc_log::log_rpc_completed(
+                        &method,
+                        request.params.as_ref(),
+                        started.elapsed(),
+                    );
+                    out
+                }
+                None => Err(anyhow::Error::new(
+                    ags_sidecar::services::MethodNotFound(method),
+                )),
+            };
             let response = match result {
                 Ok(value) => create_success_response(request_id, value),
                 Err(e) => error_response_for_registry_err(request_id, &e),

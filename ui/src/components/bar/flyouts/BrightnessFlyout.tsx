@@ -195,7 +195,7 @@ export default function BrightnessFlyout() {
       <FlyoutSlider
         label="Brightness"
         value={pct}
-        min={0}
+        min={1}
         max={100}
         live
         liveDebounceMs={0}

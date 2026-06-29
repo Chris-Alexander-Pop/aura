@@ -16,38 +16,44 @@ describe("createBrightnessSession", () => {
     registerBrightnessSession(null)
   })
 
-  it("single_flight_coalesces rapid setTarget into one in-flight send", async () => {
-    let inFlight = 0
-    let resolveSend: ((v: { brightness: number }) => void) | undefined
-
-    const session = createBrightnessSession(() => {
-      inFlight += 1
-      return new Promise<{ brightness: number }>((resolve) => {
-        resolveSend = resolve
-      })
+  it("throttle_coalesces rapid setTarget into latest value", async () => {
+    const sent: number[] = []
+    const session = createBrightnessSession(async (frac) => {
+      sent.push(frac)
+      return { brightness: frac }
     })
 
     session.setTarget(0.2)
+    expect(sent).toEqual([0.2])
+
     session.setTarget(0.4)
     session.setTarget(0.6)
     session.setTarget(0.8)
+    expect(sent).toEqual([0.2])
 
-    expect(inFlight).toBe(0)
+    await vi.advanceTimersByTimeAsync(16)
+    await Promise.resolve()
+
+    expect(sent).toEqual([0.2, 0.8])
     expect(session.isBusy()).toBe(true)
-
-    await vi.advanceTimersByTimeAsync(50)
-
-    expect(inFlight).toBe(1)
-    expect(session.isBusy()).toBe(true)
-    resolveSend?.({ brightness: 0.8 })
-
-    await vi.runAllTimersAsync()
-    for (let i = 0; i < 5; i++) await Promise.resolve()
-
-    expect(session.isBusy()).toBe(false)
   })
 
-  it("flush_sends_immediately without waiting for debounce", async () => {
+  it("throttle_sends_again after window elapses", async () => {
+    const sent: number[] = []
+    const session = createBrightnessSession(async (frac) => {
+      sent.push(frac)
+      return { brightness: frac }
+    })
+
+    session.setTarget(0.2)
+    await vi.advanceTimersByTimeAsync(16)
+    await Promise.resolve()
+
+    session.setTarget(0.5)
+    expect(sent).toEqual([0.2, 0.5])
+  })
+
+  it("flush_sends_immediately without waiting for throttle", async () => {
     const order: number[] = []
     const session = createBrightnessSession(async (frac) => {
       order.push(frac)
@@ -62,11 +68,14 @@ describe("createBrightnessSession", () => {
   })
 
   it("ws_suppressed_while_busy via registerBrightnessSession", async () => {
-    const session = createBrightnessSession(() => new Promise(() => {}))
+    const session = createBrightnessSession(async (frac) => ({ brightness: frac }))
     registerBrightnessSession(session)
 
     session.setTarget(0.4)
     expect(shouldApplyBrightnessWsEvent()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(400)
+    expect(shouldApplyBrightnessWsEvent()).toBe(true)
 
     session.dispose()
     registerBrightnessSession(null)

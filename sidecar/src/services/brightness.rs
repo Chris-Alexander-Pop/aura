@@ -10,8 +10,14 @@ use std::sync::OnceLock;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time::{sleep, Duration, Instant};
 
-const BRIGHTNESS_SET_DEBOUNCE_MS: u64 = 40;
+const BRIGHTNESS_SET_DEBOUNCE_MS: u64 = 8;
 const BRIGHTNESS_EMIT_DEBOUNCE_MS: u64 = 300;
+/// Backlight below 1% turns off the panel on some machines — never go to 0%.
+pub const BRIGHTNESS_MIN: f64 = 0.01;
+
+pub fn clamp_brightness(frac: f64) -> f64 {
+    frac.clamp(BRIGHTNESS_MIN, 1.0)
+}
 
 #[derive(Debug, Clone)]
 enum MonitorType {
@@ -39,7 +45,7 @@ static BRIGHTNESS_APPLY_COUNT: AtomicU64 = AtomicU64::new(0);
 struct SetRequest {
     monitor: Monitor,
     brightness: f64,
-    reply: tokio::sync::oneshot::Sender<Result<f64>>,
+    reply: Option<tokio::sync::oneshot::Sender<Result<f64>>>,
 }
 
 struct SetBatch {
@@ -52,22 +58,33 @@ enum CoalescerMsg {
     Enqueue(SetRequest),
 }
 
-static SET_COALESCER_TX: OnceLock<mpsc::Sender<CoalescerMsg>> = OnceLock::new();
+static SET_COALESCER: OnceLock<std::sync::Mutex<Option<mpsc::UnboundedSender<CoalescerMsg>>>> =
+    OnceLock::new();
+
+fn coalescer_slot() -> &'static std::sync::Mutex<Option<mpsc::UnboundedSender<CoalescerMsg>>> {
+    SET_COALESCER.get_or_init(|| std::sync::Mutex::new(None))
+}
 
 fn spawn_brightness_coalescer_worker() {
-    SET_COALESCER_TX.get_or_init(|| {
-        let (tx, rx) = mpsc::channel::<CoalescerMsg>(64);
+    let mut guard = coalescer_slot().lock().expect("coalescer mutex");
+    let needs_spawn = guard.as_ref().map(|tx| tx.is_closed()).unwrap_or(true);
+    if needs_spawn {
+        let (tx, rx) = mpsc::unbounded_channel::<CoalescerMsg>();
         tokio::spawn(brightness_coalescer_loop(rx));
-        tx
-    });
+        *guard = Some(tx);
+    }
 }
 
-fn coalescer_sender() -> &'static mpsc::Sender<CoalescerMsg> {
+fn coalescer_sender() -> Result<mpsc::UnboundedSender<CoalescerMsg>> {
     spawn_brightness_coalescer_worker();
-    SET_COALESCER_TX.get().expect("brightness coalescer tx")
+    coalescer_slot()
+        .lock()
+        .expect("coalescer mutex")
+        .clone()
+        .ok_or_else(|| anyhow!("Brightness coalescer unavailable"))
 }
 
-async fn brightness_coalescer_loop(mut rx: mpsc::Receiver<CoalescerMsg>) {
+async fn brightness_coalescer_loop(mut rx: mpsc::UnboundedReceiver<CoalescerMsg>) {
     let mut batch: Option<SetBatch> = None;
     let mut flush_at: Option<Instant> = None;
 
@@ -92,7 +109,9 @@ async fn brightness_coalescer_loop(mut rx: mpsc::Receiver<CoalescerMsg>) {
                 match &mut batch {
                     Some(existing) if existing.monitor.name == req.monitor.name => {
                         existing.brightness = req.brightness;
-                        existing.waiters.push(req.reply);
+                        if let Some(reply) = req.reply {
+                            existing.waiters.push(reply);
+                        }
                     }
                     _ => {
                         if let Some(pending) = batch.take() {
@@ -101,10 +120,14 @@ async fn brightness_coalescer_loop(mut rx: mpsc::Receiver<CoalescerMsg>) {
                                 flush_brightness_batch(batch).await;
                             });
                         }
+                        let waiters = match req.reply {
+                            Some(reply) => vec![reply],
+                            None => Vec::new(),
+                        };
                         batch = Some(SetBatch {
                             monitor: req.monitor,
                             brightness: req.brightness,
-                            waiters: vec![req.reply],
+                            waiters,
                         });
                     }
                 }
@@ -141,28 +164,26 @@ async fn flush_brightness_batch(batch: SetBatch) {
 /// Await the coalesced hardware apply (unit tests).
 async fn coalesced_brightness_set(monitor: Monitor, target_brightness: f64) -> Result<f64> {
     let (tx, rx) = tokio::sync::oneshot::channel();
-    coalescer_sender()
+    coalescer_sender()?
         .send(CoalescerMsg::Enqueue(SetRequest {
             monitor,
             brightness: target_brightness,
-            reply: tx,
+            reply: Some(tx),
         }))
-        .await
         .map_err(|_| anyhow!("Brightness coalescer unavailable"))?;
     rx.await.map_err(|_| anyhow!("Brightness set cancelled"))?
 }
 
 /// Enqueue a set and return immediately — HTTP must not wait on `brightnessctl`.
 async fn enqueue_brightness_set(monitor: Monitor, target_brightness: f64) -> Result<f64> {
+    let target_brightness = clamp_brightness(target_brightness);
     let monitor_name = monitor.name.clone();
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    coalescer_sender()
+    coalescer_sender()?
         .send(CoalescerMsg::Enqueue(SetRequest {
             monitor,
             brightness: target_brightness,
-            reply: tx,
+            reply: None,
         }))
-        .await
         .map_err(|_| anyhow!("Brightness coalescer unavailable"))?;
 
     {
@@ -171,19 +192,6 @@ async fn enqueue_brightness_set(monitor: Monitor, target_brightness: f64) -> Res
             m.brightness = target_brightness;
         }
     }
-
-    tokio::spawn(async move {
-        match rx.await {
-            Ok(Ok(applied)) => {
-                let mut monitors = MONITORS.write().await;
-                if let Some(m) = monitors.get_mut(&monitor_name) {
-                    m.brightness = applied;
-                }
-            }
-            Ok(Err(e)) => tracing::warn!("brightness set failed: {}", e),
-            Err(_) => tracing::debug!("brightness set waiter dropped"),
-        }
-    });
 
     Ok(target_brightness)
 }
@@ -231,11 +239,32 @@ pub fn reset_brightness_apply_count_for_tests() {
 async fn ensure_monitors() {
     if MONITORS.read().await.is_empty() {
         detect_monitors().await.ok();
+        ensure_brightness_floor().await;
+    }
+}
+
+/// Raise any backlight at 0% to the safe minimum (login / resume guard).
+async fn ensure_brightness_floor() {
+    let low: Vec<Monitor> = {
+        let monitors = MONITORS.read().await;
+        monitors
+            .values()
+            .filter(|m| m.brightness < BRIGHTNESS_MIN)
+            .cloned()
+            .collect()
+    };
+    for monitor in low {
+        let _ = enqueue_brightness_set(monitor, BRIGHTNESS_MIN).await;
     }
 }
 
 pub fn register(registry: &mut ServiceRegistry) {
     spawn_brightness_coalescer_worker();
+
+    tokio::spawn(async {
+        ensure_monitors().await;
+        ensure_brightness_floor().await;
+    });
 
     registry.register("Brightness.Get", |params| async move {
         ensure_monitors().await;
@@ -305,10 +334,12 @@ pub fn register(registry: &mut ServiceRegistry) {
         let value = brightness_set_value_from_params(p)?;
 
         let active = ACTIVE_BACKLIGHT.read().await.clone();
-        let monitors = MONITORS.read().await;
-        let monitor = find_monitor(&monitors, &monitor_query, active.as_deref())
-            .ok_or_else(|| anyhow!("Monitor not found: {}", monitor_query))?
-            .clone();
+        let monitor = {
+            let monitors = MONITORS.read().await;
+            find_monitor(&monitors, &monitor_query, active.as_deref())
+                .ok_or_else(|| anyhow!("Monitor not found: {}", monitor_query))?
+                .clone()
+        };
 
         let target_brightness = parse_brightness_value(&value, monitor.brightness)?;
         let applied = enqueue_brightness_set(monitor.clone(), target_brightness).await?;
@@ -365,19 +396,19 @@ pub fn parse_brightness_value(value: &str, current: f64) -> Result<f64> {
 
     if value.ends_with("%-") {
         let percent = value[..value.len() - 2].parse::<f64>()? / 100.0;
-        Ok((current - percent).max(0.0).min(1.0))
+        Ok(clamp_brightness(current - percent))
     } else if value.starts_with('+') && value.ends_with('%') {
         let percent = value[1..value.len() - 1].parse::<f64>()? / 100.0;
-        Ok((current + percent).max(0.0).min(1.0))
+        Ok(clamp_brightness(current + percent))
     } else if value.ends_with('%') {
         let percent = value[..value.len() - 1].parse::<f64>()? / 100.0;
-        Ok(percent.max(0.0).min(1.0))
+        Ok(clamp_brightness(percent))
     } else if value.starts_with('+') {
         let increment = value[1..].parse::<f64>()?;
-        Ok((current + increment).max(0.0).min(1.0))
+        Ok(clamp_brightness(current + increment))
     } else if value.ends_with('-') {
         let decrement = value[..value.len() - 1].parse::<f64>()?;
-        Ok((current - decrement).max(0.0).min(1.0))
+        Ok(clamp_brightness(current - decrement))
     } else {
         let absolute = value.parse::<f64>()?;
         let frac = if absolute > 1.0 {
@@ -385,7 +416,7 @@ pub fn parse_brightness_value(value: &str, current: f64) -> Result<f64> {
         } else {
             absolute
         };
-        Ok(frac.max(0.0).min(1.0))
+        Ok(clamp_brightness(frac))
     }
 }
 
@@ -453,7 +484,8 @@ async fn set_brightness(monitor: &Monitor, brightness: f64) -> Result<()> {
         return Ok(());
     }
 
-    let rounded = (brightness * 100.0).round() as u32;
+    let brightness = clamp_brightness(brightness);
+    let rounded = (brightness * 100.0).round().max(1.0) as u32;
 
     match &monitor.monitor_type {
         MonitorType::AppleDisplay => {
@@ -552,22 +584,25 @@ async fn detect_monitors() -> Result<()> {
     }
 
     if backlight_devices.is_empty() {
-        let ddc_output = process::exec_command(&["ddcutil", "detect", "--brief"]).await.ok();
-        let ddc_monitors = ddc_output
-            .as_deref()
-            .map(parse_ddc_monitors)
-            .unwrap_or_default();
+        let dry_run = std::env::var("AURA_BRIGHTNESS_DRY_RUN").ok().as_deref() == Some("1");
+        if !dry_run {
+            let ddc_output = process::exec_command(&["ddcutil", "detect", "--brief"]).await.ok();
+            let ddc_monitors = ddc_output
+                .as_deref()
+                .map(parse_ddc_monitors)
+                .unwrap_or_default();
 
-        for (name, bus_num) in ddc_monitors {
-            let brightness = get_ddc_brightness(&bus_num).await.unwrap_or(0.5);
-            monitors.insert(
-                name.clone(),
-                Monitor {
-                    name,
-                    monitor_type: MonitorType::DDC { bus_num },
-                    brightness,
-                },
-            );
+            for (name, bus_num) in ddc_monitors {
+                let brightness = get_ddc_brightness(&bus_num).await.unwrap_or(0.5);
+                monitors.insert(
+                    name.clone(),
+                    Monitor {
+                        name,
+                        monitor_type: MonitorType::DDC { bus_num },
+                        brightness,
+                    },
+                );
+            }
         }
     }
 
@@ -645,6 +680,14 @@ fn parse_ddc_monitors(output: &str) -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::parse_brightness_value;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn brightness_test_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
 
     #[test]
     fn parse_brightness_relative_and_absolute() {
@@ -680,6 +723,8 @@ mod tests {
     #[test]
     fn parse_brightness_value_clamps() {
         assert_eq!(parse_brightness_value("150%", 0.5).unwrap(), 1.0);
+        assert_eq!(parse_brightness_value("0%", 0.5).unwrap(), super::BRIGHTNESS_MIN);
+        assert_eq!(parse_brightness_value("0", 0.5).unwrap(), super::BRIGHTNESS_MIN);
         assert!(parse_brightness_value("not-a-number", 0.5).is_err());
     }
 
@@ -717,8 +762,51 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn coalescer_keeps_latest_only() {
+    async fn enqueue_returns_immediately_without_waiting_on_hardware() {
+        let _guard = brightness_test_lock();
+        use std::time::{Duration, Instant};
+        use tokio::time::sleep;
+
         std::env::set_var("AURA_BRIGHTNESS_DRY_RUN", "1");
+        super::reset_brightness_apply_count_for_tests();
+        sleep(Duration::from_millis(64)).await;
+        super::reset_brightness_apply_count_for_tests();
+
+        let monitor = super::Monitor {
+            name: "enqueue-test".to_string(),
+            monitor_type: super::MonitorType::Default {
+                device: "intel_backlight".to_string(),
+            },
+            brightness: 0.5,
+        };
+        {
+            let mut monitors = super::MONITORS.write().await;
+            monitors.insert(monitor.name.clone(), monitor.clone());
+        }
+
+        let started = Instant::now();
+        super::enqueue_brightness_set(monitor, 0.7)
+            .await
+            .expect("enqueue");
+        assert!(
+            started.elapsed() < Duration::from_millis(50),
+            "enqueue blocked for {:?}",
+            started.elapsed()
+        );
+
+        sleep(Duration::from_millis(48)).await;
+        assert_eq!(super::brightness_apply_count_for_tests(), 1);
+
+        super::reset_brightness_apply_count_for_tests();
+        std::env::remove_var("AURA_BRIGHTNESS_DRY_RUN");
+    }
+
+    #[tokio::test]
+    async fn coalescer_keeps_latest_only() {
+        let _guard = brightness_test_lock();
+        std::env::set_var("AURA_BRIGHTNESS_DRY_RUN", "1");
+        super::reset_brightness_apply_count_for_tests();
+        tokio::time::sleep(std::time::Duration::from_millis(64)).await;
         super::reset_brightness_apply_count_for_tests();
 
         let monitor = super::Monitor {
