@@ -1,0 +1,12 @@
+#%PAM-1.0
+# Aura session login — password only (no pam_fprintd).
+# Used by login + SDDM; polkit/sudo/hyprlock keep fingerprint via their own stacks.
+# Install: ./scripts/aura-pam-install.sh
+
+auth       required                    pam_faillock.so      preauth
+-auth      [success=2 default=ignore]  pam_systemd_home.so
+auth       sufficient                  pam_unix.so          try_first_pass nullok
+auth       [default=die]               pam_faillock.so      authfail
+auth       optional                    pam_permit.so
+auth       required                    pam_env.so
+auth       required                    pam_faillock.so      authsucc

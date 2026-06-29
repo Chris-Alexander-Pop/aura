@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
-# Install Aura polkit PAM stack (password before fingerprint).
+# Install Aura PAM stacks:
+#   polkit-1     — password before fingerprint (privilege prompts)
+#   login-auth   — password-only auth snippet (shared)
+#   login        — TTY/console session login (password only)
+#   sddm         — graphical greeter login (password only)
+#   hyprlock     — lock screen (password or fingerprint)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+PAM_FILES=(
+  login-auth
+  login
+  sddm
+  hyprlock
+  polkit-1
+)
 
 resolve_aura_dir() {
   if [[ -n "${AURA_DIR:-}" && -f "${AURA_DIR}/hypr/pam/polkit-1" ]]; then
@@ -29,31 +42,52 @@ resolve_aura_dir() {
   return 1
 }
 
+install_pam_file() {
+  local name="$1"
+  local src="$AURA_DIR/hypr/pam/$name"
+  local dest="/etc/pam.d/$name"
+
+  if [[ "$name" == "login-auth" ]]; then
+    dest="/etc/pam.d/aura-login-auth"
+  fi
+
+  if [[ ! -f "$src" ]]; then
+    echo "error: missing $src" >&2
+    exit 1
+  fi
+
+  if [[ -f "$dest" && ! -L "$dest" ]]; then
+    local backup="${dest}.bak.$(date +%Y%m%d%H%M%S)"
+    cp -a "$dest" "$backup"
+    echo "Backed up $dest -> $backup"
+  fi
+
+  install -Dm644 "$src" "$dest"
+  echo "Installed $dest"
+}
+
 AURA_DIR="$(resolve_aura_dir)" || {
-  echo "error: could not find hypr/pam/polkit-1 (set AURA_DIR to your ags config root)" >&2
+  echo "error: could not find hypr/pam/ (set AURA_DIR to your ags config root)" >&2
   exit 1
 }
 
-SRC="$AURA_DIR/hypr/pam/polkit-1"
-DEST="/etc/pam.d/polkit-1"
-
-if [[ ! -f "$SRC" ]]; then
-  echo "error: missing $SRC" >&2
-  exit 1
-fi
-
 if [[ "$(id -u)" -ne 0 ]]; then
-  echo "Installing $DEST requires root:" >&2
+  echo "Installing /etc/pam.d/* requires root:" >&2
   echo "  sudo AURA_DIR=\"$AURA_DIR\" $0" >&2
   exec sudo AURA_DIR="$AURA_DIR" "$0" "$@"
 fi
 
-if [[ -f "$DEST" && ! -L "$DEST" ]]; then
-  backup="${DEST}.bak.$(date +%Y%m%d%H%M%S)"
-  cp -a "$DEST" "$backup"
-  echo "Backed up existing config to $backup"
-fi
+for name in "${PAM_FILES[@]}"; do
+  install_pam_file "$name"
+done
 
-install -Dm644 "$SRC" "$DEST"
-echo "Installed $DEST from $SRC (pam_unix before pam_fprintd)"
-echo "Test: pkexec true — password should authenticate immediately."
+cat <<'EOF'
+
+Aura PAM installed:
+  aura-login-auth + login/sddm — password only at session login
+  polkit-1 + hyprlock          — password or fingerprint
+
+Test polkit:  pkexec true
+Test lock:    hyprlock (fingerprint should still work)
+Next login:   password required (TTY or SDDM); sudo still accepts fingerprint via system-auth
+EOF

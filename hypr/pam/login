@@ -1,0 +1,11 @@
+#%PAM-1.0
+# Aura TTY / console login — password only at session start.
+# Install: ./scripts/aura-pam-install.sh
+
+auth       requisite    pam_nologin.so
+auth       optional     pam_gnome_keyring.so
+auth       include      aura-login-auth
+account    include      system-local-login
+session    include      system-local-login
+password   include      system-local-login
+session    optional     pam_gnome_keyring.so auto_start

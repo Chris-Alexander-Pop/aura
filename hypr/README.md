@@ -15,7 +15,11 @@ hypr/
     execs-aura.conf
     aura-keybinds.conf
   pam/
-    polkit-1                      # password-before-fingerprint PAM stack
+    login-auth                    # password-only auth snippet (session login)
+    login                         # TTY/console login (password only)
+    sddm                          # SDDM greeter login (password only)
+    hyprlock                      # lock screen (password or fingerprint)
+    polkit-1                      # polkit prompts (password or fingerprint)
 ```
 
 ## Fresh install
@@ -66,14 +70,25 @@ Theming (hyprtoolkit build reads these):
 
 `application-style.conf` is only for the old Qt package; ignore once the Aura build is active.
 
-## Polkit password vs fingerprint
+## PAM: login vs fingerprint auth
 
-Arch’s default `/etc/pam.d/polkit-1` runs **fprintd before unix**, so the agent cannot use your password until fingerprint times out (~30s). Aura ships a password-first stack:
+Arch’s default `/etc/pam.d/system-auth` enables **fingerprint before password** everywhere it is included — including TTY `login` and SDDM. Aura splits this:
+
+| Service | Fingerprint | Notes |
+|---------|-------------|--------|
+| `login` / `sddm` | **No** | Session start requires password |
+| `polkit-1` | Yes | Password tried first (no 30s wait) |
+| `hyprlock` | Yes | Unlock with password or fingerprint |
+| `sudo` | Yes | Still uses stock `system-auth` |
+
+Install (backs up existing files under `/etc/pam.d/`):
 
 ```bash
-sudo ./scripts/aura-pam-install.sh   # backs up existing polkit-1
-pkexec true                          # password prompt should work on Enter
+sudo ./scripts/aura-pam-install.sh
+pkexec true                          # polkit: password works immediately
 ```
+
+Next TTY or SDDM login will require your password; `sudo` and polkit prompts still accept fingerprint.
 
 ## uwsm / systemd
 
