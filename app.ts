@@ -1,8 +1,7 @@
 import app from "ags/gtk4/app"
 import GLib from "gi://GLib"
-import Bar from "./src/widget/bar/Bar"
 import sidecar from "./src/lib/sidecar"
-import OSD, { refreshOsdFromSidecar } from "./src/widget/osd/OSD"
+import { refreshOsdFromSidecar } from "./src/widget/osd/OSD"
 import LauncherWindow from "./src/widget/webview/LauncherWindow"
 import ModuleHubWindow from "./src/widget/webview/ModuleHubWindow"
 
@@ -12,13 +11,10 @@ import DropdownWindow from "./src/widget/webview/DropdownWindow"
 import CalendarWindow from "./src/widget/webview/CalendarWindow"
 import MediaPopupWindow from "./src/widget/webview/MediaPopupWindow"
 
-import { initAuraSettingsShell, mountEdgeTriggersForMonitor } from "./src/lib/aura-settings-shell"
+import { initAuraSettingsShell } from "./src/lib/aura-settings-shell"
+import { initMonitorShell } from "./src/lib/monitor-shell"
 import { initShellVisibility } from "./src/lib/shell-visibility"
 import { isHoverPanel, toggleHoverPanel } from "./src/lib/panel-hover"
-import BarWebViewWindow from "./src/widget/webview/BarWebViewWindow"
-
-/** Legacy GTK vertical bar — set `AURA_GTK_BAR=1` to restore it instead of the React/WebKit strip */
-const USE_GTK_BAR = GLib.getenv("AURA_GTK_BAR") === "1"
 
 const DEBUG_EDGE = GLib.getenv("AURA_DEBUG_EDGE_TRIGGERS") === "1"
 
@@ -35,28 +31,12 @@ app.start({
         }
 
         for (const monitor of monitors) {
-            try {
-                if (USE_GTK_BAR) {
-                    Bar(monitor)
-                } else {
-                    BarWebViewWindow(monitor)
-                }
-            } catch (e) {
-                console.error("Failed to create bar for monitor:", e)
-            }
-
-            try {
-                mountEdgeTriggersForMonitor(monitor)
-            } catch (e) {
-                console.error("Failed to create edge triggers for monitor:", e)
-            }
-
-            try {
-                OSD(monitor)
-            } catch (e) {
-                console.error("Failed to create OSD for monitor:", e)
+            if (DEBUG_EDGE) {
+                console.error(`[aura] monitor: ${String(monitor.model ?? "unknown")}`)
             }
         }
+
+        initMonitorShell()
 
         // Singleton windows
         try {

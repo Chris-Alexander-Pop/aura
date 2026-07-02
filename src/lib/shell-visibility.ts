@@ -2,9 +2,9 @@ import Gdk from "gi://Gdk?version=4.0"
 import Gtk from "gi://Gtk?version=4.0"
 import app from "ags/gtk4/app"
 import sidecar from "./sidecar"
-import { monitorSize } from "./monitor"
+import { gdkMonitorGeometry, monitorTag } from "./monitor"
 import { getHideShellOnFullscreen, hideHoverPanel } from "./panel-hover"
-import { edgeTriggerNamesForTag, monitorTag } from "../widget/triggers/PanelEdgeTriggers"
+import { edgeTriggerNamesForTag } from "../widget/triggers/PanelEdgeTriggers"
 
 type AuraWindow = Gtk.Window & {
     visible?: boolean
@@ -56,25 +56,6 @@ function parseHyprMonitors(raw: unknown): HyprMonitorGeom[] {
             }
         })
         .filter((m): m is HyprMonitorGeom => m != null)
-}
-
-function gdkMonitorGeometry(monitor: Gdk.Monitor): { x: number; y: number; width: number; height: number } {
-    try {
-        const m = monitor as Gdk.Monitor & {
-            get_geometry?: () => { x: number; y: number; width: number; height: number }
-            geometry?: { x: number; y: number; width: number; height: number }
-        }
-        const g = m.get_geometry?.() ?? m.geometry
-        return {
-            x: g?.x ?? 0,
-            y: g?.y ?? 0,
-            width: g?.width ?? monitorSize(monitor).width,
-            height: g?.height ?? monitorSize(monitor).height,
-        }
-    } catch {
-        const { width, height } = monitorSize(monitor)
-        return { x: 0, y: 0, width, height }
-    }
 }
 
 function geometriesMatch(

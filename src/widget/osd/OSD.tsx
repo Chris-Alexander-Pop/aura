@@ -5,6 +5,7 @@ import GLib from "gi://GLib"
 import sidecar from "../../lib/sidecar"
 import { colors, fonts } from "../../lib/theme"
 import { registerOsdHandler, showOsd, type OsdKind } from "../../lib/osdController"
+import { monitorTag } from "../../lib/monitor"
 
 const HIDE_MS = 2000
 
@@ -117,7 +118,7 @@ export default function OSD(gdkmonitor: Gdk.Monitor) {
 
     return (
         <window
-            name={`osd-${gdkmonitor.model}`}
+            name={`osd-${monitorTag(gdkmonitor)}`}
             class="osd-window"
             gdkmonitor={gdkmonitor}
             visible={visible()}

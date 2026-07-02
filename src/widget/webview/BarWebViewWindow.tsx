@@ -14,7 +14,7 @@ import App from "ags/gtk4/app"
 import { createWebViewWindow } from "./WebViewWindow"
 import hyprland from "../../lib/hyprland"
 
-import { BAR_STRIP_WIDTH_PX } from "../../lib/monitor"
+import { BAR_STRIP_WIDTH_PX, monitorTag } from "../../lib/monitor"
 
 const STRIP_W = BAR_STRIP_WIDTH_PX
 const FLYOUT_W = 320 // max popout width; individual panels use narrower content inside
@@ -47,7 +47,7 @@ function monitorHeight(monitor: Gdk.Monitor): number {
 
 export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
     const height = Math.max(480, monitorHeight(gdkmonitor))
-    const safeId = String(gdkmonitor.model ?? "monitor").replace(/[^a-zA-Z0-9_-]/g, "-")
+    const safeId = monitorTag(gdkmonitor)
     const flyoutName = `bar-flyout-${safeId}`
 
     // ── Close timer (shared between strip-leave and flyout-leave) ─────────────

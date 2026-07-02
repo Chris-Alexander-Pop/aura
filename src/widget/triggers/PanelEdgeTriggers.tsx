@@ -9,6 +9,7 @@ import {
     moduleHubLayout,
     verticalCenterMargins,
     monitorSize,
+    monitorTag,
 } from "../../lib/monitor"
 
 export type ModuleHubTriggerMode = "left_edge" | "top_third" | "none"
@@ -29,9 +30,7 @@ const DEBUG_TRIGGERS = GLib.getenv("AURA_DEBUG_EDGE_TRIGGERS") === "1"
 const HIT_RGBA = DEBUG_TRIGGERS ? "rgba(255, 34, 34, 0.92)" : "rgba(255, 255, 255, 0.01)"
 const WIN_RGBA = DEBUG_TRIGGERS ? "rgba(255, 0, 0, 0.25)" : "transparent"
 
-export function monitorTag(monitor: Gdk.Monitor): string {
-    return String(monitor.model ?? "monitor").replace(/[^a-zA-Z0-9_-]/g, "-")
-}
+export { monitorTag }
 
 function applyCss(widget: Gtk.Widget, css: string) {
     const provider = new Gtk.CssProvider()
@@ -191,15 +190,19 @@ function mountDropdownCornerTriggers(gdkmonitor: Gdk.Monitor, tag: string): Gtk.
     return out
 }
 
-/** Remove all edge triggers for a monitor (dropdown, media, module-hub). */
-export function unmountPanelEdgeTriggers(gdkmonitor: Gdk.Monitor) {
-    const tag = monitorTag(gdkmonitor)
+/** Remove all edge triggers for a monitor tag (dropdown, media, module-hub). */
+export function unmountPanelEdgeTriggersByTag(tag: string) {
     const wins = triggersByMonitor.get(tag)
     if (!wins) return
     for (const win of wins) {
         destroyTriggerWindow(win)
     }
     triggersByMonitor.delete(tag)
+}
+
+/** Remove all edge triggers for a monitor (dropdown, media, module-hub). */
+export function unmountPanelEdgeTriggers(gdkmonitor: Gdk.Monitor) {
+    unmountPanelEdgeTriggersByTag(monitorTag(gdkmonitor))
 }
 
 /** Imperative layer-shell strips — must call app.add_window (JSX alone was not showing). */

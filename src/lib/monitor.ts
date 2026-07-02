@@ -2,6 +2,48 @@ import Gdk from "gi://Gdk?version=4.0"
 
 export type MonitorSize = { width: number; height: number }
 
+export type MonitorGeometry = { x: number; y: number; width: number; height: number }
+
+function sanitizeMonitorTag(raw: string): string {
+    return raw.replace(/[^a-zA-Z0-9_-]/g, "-")
+}
+
+/** Logical pixel geometry of a Gdk monitor (fallback 0,0 @ 1920×1080). */
+export function gdkMonitorGeometry(monitor: Gdk.Monitor): MonitorGeometry {
+    try {
+        const m = monitor as Gdk.Monitor & {
+            get_geometry?: () => MonitorGeometry
+            geometry?: MonitorGeometry
+        }
+        const g = m.get_geometry?.() ?? m.geometry
+        return {
+            x: g?.x ?? 0,
+            y: g?.y ?? 0,
+            width: g?.width ?? 1920,
+            height: g?.height ?? 1080,
+        }
+    } catch {
+        return { x: 0, y: 0, width: 1920, height: 1080 }
+    }
+}
+
+/**
+ * Stable id for per-monitor shell windows. Prefer DRM connector (unique per port);
+ * fall back to geometry so replugged outputs still get distinct tags when needed.
+ */
+export function monitorTag(monitor: Gdk.Monitor): string {
+    try {
+        const connector = (monitor as Gdk.Monitor & { connector?: string }).connector
+        if (connector && connector.length > 0) {
+            return sanitizeMonitorTag(connector)
+        }
+    } catch {
+        /* older Gdk */
+    }
+    const g = gdkMonitorGeometry(monitor)
+    return sanitizeMonitorTag(`${g.x}-${g.y}-${g.width}x${g.height}`)
+}
+
 /** Logical pixel size of a Gdk monitor (fallback 1920×1080). */
 export function monitorSize(monitor: Gdk.Monitor): MonitorSize {
     try {
