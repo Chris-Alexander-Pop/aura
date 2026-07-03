@@ -609,23 +609,6 @@ pub fn parse_action_string_pairs(pairs: &[String]) -> Vec<NotificationAction> {
     out
 }
 
-fn parse_actions(v: Option<&zbus::zvariant::Value<'_>>) -> Vec<NotificationAction> {
-    let Some(zbus::zvariant::Value::Array(arr)) = v else {
-        return Vec::new();
-    };
-    let pairs: Vec<String> = arr
-        .iter()
-        .filter_map(|x| {
-            if let zbus::zvariant::Value::Str(s) = x {
-                Some(s.as_str().to_string())
-            } else {
-                None
-            }
-        })
-        .collect();
-    parse_action_string_pairs(&pairs)
-}
-
 async fn close_on_daemon(server_id: u32) -> Result<()> {
     use zbus::{Connection, Proxy};
     let conn = Connection::session().await?;

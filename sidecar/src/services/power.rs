@@ -63,7 +63,7 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         let profile = parse_profile_str(&profile_str);
         set_profile(profile).await?;
-        emit_profile_if_changed().await;
+        let _ = emit_profile_if_changed().await;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -267,7 +267,7 @@ async fn sync_profile_from_system() -> Result<()> {
     if state.active_profile != profile {
         state.active_profile = profile;
         drop(state);
-        emit_profile_if_changed().await;
+        let _ = emit_profile_if_changed().await;
     }
     Ok(())
 }

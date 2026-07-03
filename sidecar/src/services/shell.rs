@@ -142,7 +142,31 @@ async fn invoke_login1(method: &str, interactive: bool) -> Result<()> {
     Ok(())
 }
 
+fn external_display_script_argv(teardown: bool) -> Option<Vec<String>> {
+    let home = std::env::var("HOME").ok()?;
+    let script = format!("{home}/.config/hypr/scripts/graceful-external-displays-off.sh");
+    if !std::path::Path::new(&script).exists() {
+        return None;
+    }
+    let mode = if teardown { "--teardown" } else { "--dpms" };
+    Some(vec![script, mode.into()])
+}
+
+async fn blank_external_displays(teardown: bool) {
+    let Some(argv) = external_display_script_argv(teardown) else {
+        return;
+    };
+    let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+    let _ = process::exec_command(&refs).await;
+}
+
 async fn run_session_action(action: SessionAction) -> Result<serde_json::Value> {
+    let teardown = matches!(
+        action,
+        SessionAction::Logout | SessionAction::Reboot | SessionAction::PowerOff
+    );
+    blank_external_displays(teardown).await;
+
     let session_id = std::env::var("XDG_SESSION_ID").ok();
     let user = std::env::var("USER")
         .ok()
@@ -229,6 +253,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 }
 
+#[cfg(test)]
 pub(crate) fn app_launch_argv(app_id: &str) -> Option<Vec<&'static str>> {
     APP_MAP.get(app_id).cloned()
 }
@@ -250,9 +275,9 @@ pub fn resolve_lock_command() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        app_launch_argv, aura_window_allowed, classify_session_stderr, format_session_error,
-        resolve_lock_command, resolve_logout_argv, resolve_session_command, SessionAction,
-        SessionCommand,
+        app_launch_argv, aura_window_allowed, classify_session_stderr, external_display_script_argv,
+        format_session_error, resolve_lock_command, resolve_logout_argv, resolve_session_command,
+        SessionAction, SessionCommand,
     };
 
     #[test]
@@ -277,6 +302,19 @@ mod tests {
         assert_eq!(app_launch_argv("discord"), Some(vec!["discord"]));
         assert_eq!(app_launch_argv("firefox"), Some(vec!["firefox"]));
         assert!(app_launch_argv("unknown-app").is_none());
+    }
+
+    #[test]
+    fn external_display_script_argv_modes() {
+        let dpms = external_display_script_argv(false);
+        let teardown = external_display_script_argv(true);
+        if let Some(argv) = dpms {
+            assert!(argv[0].ends_with("graceful-external-displays-off.sh"));
+            assert_eq!(argv[1], "--dpms");
+        }
+        if let Some(argv) = teardown {
+            assert_eq!(argv[1], "--teardown");
+        }
     }
 
     #[test]

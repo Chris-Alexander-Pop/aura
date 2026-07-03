@@ -3,7 +3,7 @@
 # Install: ./scripts/aura-pam-install.sh
 
 auth       requisite    pam_nologin.so
-auth       include      aura-login-auth
+auth       substack     aura-login-auth
 auth       optional     pam_gnome_keyring.so
 account    include      system-local-login
 session    include      system-local-login

@@ -124,6 +124,7 @@ fn recorder_state_dir() -> Result<PathBuf> {
     Ok(base.join("ags-sidecar"))
 }
 
+#[cfg(test)]
 pub(crate) fn recorder_state_dir_for_tests() -> Result<PathBuf> {
     recorder_state_dir()
 }
@@ -132,6 +133,7 @@ fn pid_file_path() -> Result<PathBuf> {
     Ok(recorder_state_dir()?.join(RECORDER_PID_FILE))
 }
 
+#[cfg(test)]
 pub(crate) fn pid_file_path_for_tests() -> Result<PathBuf> {
     pid_file_path()
 }

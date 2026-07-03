@@ -78,10 +78,8 @@ struct PipeWireState {
     sources: Vec<AudioDevice>,
     streams: Vec<AudioStream>,
     nodes: Vec<serde_json::Value>,
-    links: Vec<serde_json::Value>,
     pulse_id_map: HashMap<i32, i32>,
     ee_sink_id: i32,
-    active_hardware_sink_id: i32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -405,7 +403,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         refresh_devices().await?;
         refresh_streams().await?;
         refresh_nodes().await?;
-        emit_audio_state_now().await;
+        let _ = emit_audio_state_now().await;
         Ok(serde_json::json!({ "success": true }))
     });
 

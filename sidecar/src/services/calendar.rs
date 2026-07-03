@@ -307,6 +307,7 @@ async fn check_calendar_reminders() -> Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 fn calendar_emit_should_fire(current_gen: u64, scheduled_gen: u64) -> bool {
     current_gen == scheduled_gen
 }

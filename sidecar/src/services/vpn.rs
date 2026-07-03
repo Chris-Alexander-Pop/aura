@@ -29,7 +29,7 @@ impl Default for VpnProtocol {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct VpnProfileDef {
+pub(crate) struct VpnProfileDef {
     id: String,
     name: String,
     icon: String,

@@ -80,7 +80,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         process::exec_command(&["nmcli", "radio", "wifi", cmd]).await?;
 
         update_network_state().await?;
-        emit_network_state().await;
+        let _ = emit_network_state().await;
         Ok(serde_json::json!({ "success": true, "wifi_enabled": enabled }))
     });
 
@@ -151,7 +151,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         match result {
             Ok(()) => {
                 update_network_state().await.ok();
-                emit_network_state().await;
+                let _ = emit_network_state().await;
                 Ok(serde_json::json!({ "success": true }))
             }
             Err(e) => Ok(serde_json::json!({
@@ -170,7 +170,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             process::exec_command(&["nmcli", "connection", "down", c]).await?;
         }
         update_network_state().await?;
-        emit_network_state().await;
+        let _ = emit_network_state().await;
         Ok(serde_json::json!({ "success": true }))
     });
 
@@ -303,7 +303,6 @@ async fn connect_wifi_with_password(ssid: &str, pass: &str) -> Result<()> {
         return connect_open_or_saved(ssid).await;
     }
 
-    let mut last_err = String::new();
     let primary = [
         "nmcli",
         "dev",
@@ -316,33 +315,35 @@ async fn connect_wifi_with_password(ssid: &str, pass: &str) -> Result<()> {
     match process::exec_command(&primary).await {
         Ok(out) if nmcli_connect_output_success(&out) || out.is_empty() => return Ok(()),
         Ok(_) => return Ok(()),
-        Err(e) => last_err = e.to_string(),
-    }
+        Err(primary_err) => {
+            let mut last_err = primary_err.to_string();
 
-    if security.as_ref().is_some_and(|s| is_wpa3_security(s)) {
-        let fallback = [
-            "nmcli",
-            "dev",
-            "wifi",
-            "connect",
-            ssid,
-            "password",
-            pass,
-            "key-mgmt",
-            "wpa-psk",
-        ];
-        match process::exec_command(&fallback).await {
-            Ok(out) if nmcli_connect_output_success(&out) || out.is_empty() => return Ok(()),
-            Ok(_) => return Ok(()),
-            Err(e) => last_err = e.to_string(),
+            if security.as_ref().is_some_and(|s| is_wpa3_security(s)) {
+                let fallback = [
+                    "nmcli",
+                    "dev",
+                    "wifi",
+                    "connect",
+                    ssid,
+                    "password",
+                    pass,
+                    "key-mgmt",
+                    "wpa-psk",
+                ];
+                match process::exec_command(&fallback).await {
+                    Ok(out) if nmcli_connect_output_success(&out) || out.is_empty() => return Ok(()),
+                    Ok(_) => return Ok(()),
+                    Err(e) => last_err = e.to_string(),
+                }
+            }
+
+            if connect_open_or_saved(ssid).await.is_ok() {
+                return Ok(());
+            }
+
+            bail!(map_nmcli_connect_error(&last_err))
         }
     }
-
-    if connect_open_or_saved(ssid).await.is_ok() {
-        return Ok(());
-    }
-
-    bail!(map_nmcli_connect_error(&last_err))
 }
 
 async fn connect_open_or_saved(ssid: &str) -> Result<()> {

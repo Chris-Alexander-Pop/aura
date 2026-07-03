@@ -162,6 +162,7 @@ async fn flush_brightness_batch(batch: SetBatch) {
 }
 
 /// Await the coalesced hardware apply (unit tests).
+#[cfg(test)]
 async fn coalesced_brightness_set(monitor: Monitor, target_brightness: f64) -> Result<f64> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     coalescer_sender()?

@@ -10,11 +10,13 @@ struct WttrResponse {
     weather: Vec<serde_json::Value>,
 }
 
+#[allow(non_snake_case)]
 #[derive(Debug, Clone, serde::Deserialize)]
-struct CurrentCondition {
+pub(crate) struct CurrentCondition {
     temp_C: String,
     temp_F: String,
     FeelsLikeC: String,
+    #[allow(dead_code)]
     FeelsLikeF: String,
     humidity: String,
     weatherDesc: Vec<WeatherDesc>,
@@ -232,6 +234,7 @@ fn weather_rate_limit_secs() -> u64 {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn weather_cache_ttl_secs() -> u64 {
     WEATHER_CACHE_TTL_SECS
 }
