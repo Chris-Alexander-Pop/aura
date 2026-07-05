@@ -85,7 +85,7 @@ cat <<'EOF'
 
 Aura PAM installed:
   aura-login-auth + login/sddm — password only at session login
-  polkit-1 + hyprlock          — password or fingerprint
+  polkit-1 + hyprlock          — password or fingerprint (hyprlock: PAM password + native fprintd)
 
 Test polkit:  pkexec true
 Test lock:    hyprlock (fingerprint should still work)

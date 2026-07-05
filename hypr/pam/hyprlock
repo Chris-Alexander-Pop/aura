@@ -1,10 +1,10 @@
 #%PAM-1.0
-# Aura hyprlock — password or fingerprint (not tied to password-only login stack).
+# Aura hyprlock — password via PAM; fingerprint via hyprlock's native dbus auth.
+# Do not add pam_fprintd here — it contends with hyprlock's parallel fingerprint reader.
 # Install: ./scripts/aura-pam-install.sh
 
 auth       optional                    pam_gnome_keyring.so
 auth       sufficient                  pam_unix.so          nullok try_first_pass
-auth       sufficient                  pam_fprintd.so       max_tries=3 timeout=10
 auth       required                    pam_deny.so
 
 account    required                    pam_unix.so

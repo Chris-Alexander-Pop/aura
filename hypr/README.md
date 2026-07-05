@@ -78,7 +78,7 @@ Arch’s default `/etc/pam.d/system-auth` enables **fingerprint before password*
 |---------|-------------|--------|
 | `login` / `sddm` | **No** | Session start requires password |
 | `polkit-1` | Yes | Password tried first (no 30s wait) |
-| `hyprlock` | Yes | Unlock with password or fingerprint |
+| `hyprlock` | Yes | Unlock: password (PAM) + fingerprint (hyprlock native dbus, parallel) |
 | `sudo` | Yes | Still uses stock `system-auth` |
 
 Install (backs up existing files under `/etc/pam.d/`):
