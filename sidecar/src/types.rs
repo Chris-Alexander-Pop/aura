@@ -167,6 +167,10 @@ pub struct HyprMonitor {
     #[serde(default)]
     pub active_workspace: HyprWorkspaceRef,
     #[serde(default)]
+    pub special_workspace: HyprWorkspaceRef,
+    #[serde(default)]
+    pub focused: bool,
+    #[serde(default)]
     pub x: i64,
     #[serde(default)]
     pub y: i64,

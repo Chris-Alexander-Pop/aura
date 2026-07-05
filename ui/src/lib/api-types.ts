@@ -304,12 +304,15 @@ export interface HyprBarSnapshot {
   active_workspace: HyprActiveWorkspace | null
   clients: HyprClient[]
   active_window: HyprActiveWindow | null
+  monitors?: HyprMonitor[]
 }
 
 export interface HyprMonitor {
   name: string
   id: number
   active_workspace: HyprWorkspaceRef
+  special_workspace?: HyprWorkspaceRef
+  focused?: boolean
 }
 
 export interface MediaNowPlaying {
@@ -367,6 +370,33 @@ export function parseHyprActiveWorkspace(raw: unknown): HyprActiveWorkspace | nu
     id,
     name: typeof raw.name === "string" ? raw.name : String(id),
   }
+}
+
+function parseHyprWorkspaceRef(raw: unknown): HyprWorkspaceRef {
+  if (!isRecord(raw)) return { id: -1 }
+  const id = Number(raw.id)
+  return {
+    id: Number.isFinite(id) ? id : -1,
+    name: typeof raw.name === "string" ? raw.name : undefined,
+  }
+}
+
+export function parseHyprMonitors(raw: unknown): HyprMonitor[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((x): x is Record<string, unknown> => isRecord(x))
+    .map((x) => {
+      const activeRaw = x.activeWorkspace ?? x.active_workspace
+      const specialRaw = x.specialWorkspace ?? x.special_workspace
+      return {
+        name: typeof x.name === "string" ? x.name : "",
+        id: Number(x.id),
+        active_workspace: parseHyprWorkspaceRef(activeRaw),
+        special_workspace: parseHyprWorkspaceRef(specialRaw),
+        focused: x.focused === true,
+      }
+    })
+    .filter((x) => x.name.length > 0 && Number.isFinite(x.id))
 }
 
 export function parseHyprActiveWindow(raw: unknown): HyprActiveWindow | null {

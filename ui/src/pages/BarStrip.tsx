@@ -2,12 +2,14 @@
  * Always-on vertical strip (#/bar) — replaces GTK Bar.tsx when AURA_GTK_BAR is unset.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { LayoutGroup, motion } from "framer-motion"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
 import {
   parseHyprActiveWindow,
   parseHyprActiveWorkspace,
   parseHyprClients,
+  parseHyprMonitors,
   parseHyprWorkspaces,
   type HyprClient,
 } from "@/lib/api-types"
@@ -26,8 +28,17 @@ import { type StatusFlyoutId } from "@/components/bar/useFlyoutHover"
 import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
 import { cn } from "@/lib/utils"
 import { hyprlandQueryDefaults, useHyprlandSync } from "@/lib/useHyprlandSync"
-import { onHyprlandWorkspaceActive } from "@/lib/hyprland-bar-cache"
+import { onHyprlandWorkspaceActive, scheduleHyprlandSnapshotRefresh } from "@/lib/hyprland-bar-cache"
 import { pickVisibleWorkspaces } from "@/lib/workspace-visible-range"
+import { useBarMonitorName } from "@/lib/useBarMonitor"
+import {
+  iconFromSpecialWorkspace,
+  specialCoverByWorkspaceId,
+  specialWorkspaceCovers,
+  specialWorkspaceLabel,
+  specialWorkspaceToggleArg,
+  type SpecialWorkspaceCover,
+} from "@/lib/special-workspace"
 
 /** Post a message to the AGS-registered WebKit message handler. */
 function postFlyoutMessage(payload: { open: boolean; panel?: string; y?: number }) {
@@ -42,8 +53,11 @@ function clientWorkspaceId(client: HyprClient): number | null {
   return typeof id === "number" && Number.isFinite(id) && id > 0 ? id : null
 }
 
+const WS_PILL_SPRING = { type: "spring" as const, stiffness: 520, damping: 38, mass: 0.65 }
+
 function WorkspacesBlock() {
   const qc = useQueryClient()
+  const barMonitorName = useBarMonitorName()
   const { data: wsRaw, isPending: wsPending } = useQuery({
     queryKey: ["hypr-ws"],
     queryFn: api.hyprlandGetWorkspaces,
@@ -59,9 +73,24 @@ function WorkspacesBlock() {
     queryFn: api.hyprlandGetClients,
     ...hyprlandQueryDefaults,
   })
+  const { data: monitorsRaw, isPending: monitorsPending } = useQuery({
+    queryKey: ["hypr-monitors"],
+    queryFn: api.hyprlandGetMonitors,
+    ...hyprlandQueryDefaults,
+  })
 
   const list = useMemo(() => parseHyprWorkspaces(wsRaw), [wsRaw])
-  const activeId = useMemo(() => parseHyprActiveWorkspace(activeRaw)?.id ?? null, [activeRaw])
+  const globalActiveId = useMemo(() => parseHyprActiveWorkspace(activeRaw)?.id ?? null, [activeRaw])
+  const monitors = useMemo(() => parseHyprMonitors(monitorsRaw), [monitorsRaw])
+  const barMonitor = useMemo(
+    () => (barMonitorName ? monitors.find((m) => m.name === barMonitorName) ?? null : null),
+    [barMonitorName, monitors],
+  )
+  const monitorActiveId = useMemo(() => {
+    const id = barMonitor?.active_workspace?.id
+    return typeof id === "number" && id > 0 ? id : globalActiveId
+  }, [barMonitor, globalActiveId])
+  const specialCovers = useMemo(() => specialCoverByWorkspaceId(specialWorkspaceCovers(monitors)), [monitors])
   const clients = useMemo(() => parseHyprClients(clientsRaw), [clientsRaw])
   const clientsByWs = useMemo(() => {
     const byWs = new Map<number, HyprClient[]>()
@@ -78,19 +107,26 @@ function WorkspacesBlock() {
     const occupiedIds = [...clientsByWs.entries()]
       .filter(([, wsClients]) => wsClients.length > 0)
       .map(([id]) => id)
-    return pickVisibleWorkspaces(occupiedIds, activeId).map((id) => ({
+    const visible = pickVisibleWorkspaces(occupiedIds, monitorActiveId).map((id) => ({
       id,
       wsClients: clientsByWs.get(id) ?? [],
     }))
-  }, [clientsByWs, activeId])
+    for (const wsId of specialCovers.keys()) {
+      if (!visible.some((row) => row.id === wsId)) {
+        visible.push({ id: wsId, wsClients: clientsByWs.get(wsId) ?? [] })
+      }
+    }
+    visible.sort((a, b) => a.id - b.id)
+    return visible
+  }, [clientsByWs, monitorActiveId, specialCovers])
 
   const workspacesLoading =
-    (wsPending || activePending || clientsPending) &&
-    (list.length === 0 || clientsRaw === undefined)
+    (wsPending || activePending || clientsPending || monitorsPending) &&
+    (list.length === 0 || clientsRaw === undefined || monitorsRaw === undefined)
 
   if (workspacesLoading) {
     return (
-      <div className="flex flex-col items-center gap-0.5 py-0.5" aria-busy="true" aria-label="Loading workspaces">
+      <div className="flex flex-col items-center gap-2.5 py-1" aria-busy="true" aria-label="Loading workspaces">
         <div className="h-8 w-8 animate-pulse rounded-full bg-surface1/35" />
       </div>
     )
@@ -99,52 +135,114 @@ function WorkspacesBlock() {
   if (visibleWorkspaces.length === 0) return null
 
   return (
-    <div className="flex flex-col items-center gap-0.5 py-0.5">
-      {visibleWorkspaces.map(({ id, wsClients }) => {
-        const windowCount = wsClients.length
-        const occupied = windowCount > 0
-        const icons = wsClients.slice(0, 2).map((client) => iconFromHyprClass(client.class))
-        const isActive = activeId === id
-        return (
-          <button
-            key={id}
-            type="button"
-            title={
-              occupied
-                ? `Workspace ${id} (${windowCount} window${windowCount === 1 ? "" : "s"})`
-                : `Workspace ${id}`
-            }
-            onClick={() => {
-              onHyprlandWorkspaceActive(qc, id)
-              void api.hyprlandDispatch(`workspace ${id}`)
-            }}
-            className={cn(
-              "group flex h-8 w-8 shrink-0 flex-col items-center justify-center gap-px rounded-full border transition-colors",
-              isActive
-                ? "border-teal bg-teal text-crust"
-                : occupied
-                  ? "border-surface2 bg-surface0 text-subtext1 hover:bg-surface1"
-                  : "border-transparent text-overlay0 hover:bg-surface0/70 hover:text-subtext0",
-            )}
-          >
-            {occupied ? (
-              <>
-                <span className="text-[8px] font-semibold leading-none">{id}</span>
-                <span className="flex items-center justify-center gap-px leading-none">
-                  {icons.map((icon, index) => (
-                    <span key={`${icon}-${index}`} className="icon text-[10px] leading-none">
-                      {icon}
+    <LayoutGroup id="bar-workspaces">
+      <div className="flex flex-col items-center gap-2.5 py-1">
+        {visibleWorkspaces.map(({ id, wsClients }) => {
+          const windowCount = wsClients.length
+          const occupied = windowCount > 0
+          const icons = wsClients.slice(0, 2).map((client) => iconFromHyprClass(client.class))
+          const isActive = monitorActiveId === id
+          const specialCover: SpecialWorkspaceCover | undefined = specialCovers.get(id)
+          const isCovered = specialCover != null
+          const openSpecial = specialCover?.special
+          const specialLabel = openSpecial ? specialWorkspaceLabel(openSpecial.name ?? "") : ""
+          const specialIcon = openSpecial ? iconFromSpecialWorkspace(openSpecial.name ?? "") : "layers"
+          const specialTitle = openSpecial?.name ?? specialLabel
+          const coverMonitor = specialCover?.monitorName
+          const isRemoteCover =
+            isCovered && coverMonitor != null && barMonitorName != null && coverMonitor !== barMonitorName
+          return (
+            <motion.button
+              key={id}
+              layout
+              type="button"
+              title={
+                isCovered
+                  ? `Special workspace “${specialLabel}” covering workspace ${id}${coverMonitor ? ` on ${coverMonitor}` : ""} — click to close`
+                  : occupied
+                    ? `Workspace ${id} (${windowCount} window${windowCount === 1 ? "" : "s"})`
+                    : `Workspace ${id}`
+              }
+              onClick={() => {
+                if (isCovered && openSpecial) {
+                  void api.hyprlandDispatch(
+                    `togglespecialworkspace ${specialWorkspaceToggleArg(openSpecial.name ?? specialLabel)}`,
+                  )
+                  void scheduleHyprlandSnapshotRefresh(qc)
+                  return
+                }
+                onHyprlandWorkspaceActive(qc, id)
+                void api.hyprlandDispatch(`workspace ${id}`)
+              }}
+              whileTap={{ scale: 0.9 }}
+              transition={WS_PILL_SPRING}
+              className={cn(
+                "relative group flex h-8 w-8 shrink-0 flex-col items-center justify-center gap-px rounded-full border",
+                isActive || isCovered
+                  ? "border-transparent bg-transparent"
+                  : occupied
+                    ? "border-surface2 bg-surface0 text-subtext1 hover:bg-surface1"
+                    : "border-transparent text-overlay0 hover:bg-surface0/70 hover:text-subtext0",
+                isActive && !isCovered && "text-crust",
+              )}
+            >
+              {isActive ? (
+                <motion.span
+                  layoutId="bar-ws-active-pill"
+                  className={cn(
+                    "absolute inset-0 rounded-full border border-teal bg-teal shadow-[0_0_14px_rgb(var(--c-teal)/0.45)]",
+                    isCovered ? "z-[15]" : "z-0",
+                  )}
+                  transition={WS_PILL_SPRING}
+                />
+              ) : null}
+              {isCovered ? (
+                <motion.span
+                  layoutId={barMonitorName ? `bar-ws-special-${barMonitorName}` : "bar-ws-special"}
+                  className={cn(
+                    "absolute inset-0 z-20 overflow-hidden rounded-full text-crust shadow-[0_0_14px_rgb(var(--c-mauve)/0.35)]",
+                    isRemoteCover
+                      ? "border-2 border-teal bg-mauve shadow-[0_0_16px_rgb(var(--c-teal)/0.5)]"
+                      : "border-2 border-mauve bg-mauve",
+                  )}
+                  transition={WS_PILL_SPRING}
+                  aria-label={`Special workspace ${specialTitle} covering workspace ${id}`}
+                >
+                  <span className="absolute left-0.5 top-0.5 text-[7px] font-bold leading-none text-crust/70">
+                    {id}
+                  </span>
+                  <span className="flex h-full w-full items-center justify-center">
+                    <span className="icon text-[15px] leading-none">{specialIcon}</span>
+                  </span>
+                </motion.span>
+              ) : null}
+              <span
+                className={cn(
+                  "relative z-10 flex flex-col items-center justify-center gap-px",
+                  isCovered && "opacity-0",
+                  isActive && !isCovered && "text-crust",
+                )}
+              >
+                {occupied ? (
+                  <>
+                    <span className="text-[8px] font-semibold leading-none">{id}</span>
+                    <span className="flex items-center justify-center gap-px leading-none">
+                      {icons.map((icon, index) => (
+                        <span key={`${icon}-${index}`} className="icon text-[10px] leading-none">
+                          {icon}
+                        </span>
+                      ))}
                     </span>
-                  ))}
-                </span>
-              </>
-            ) : (
-              <span className="text-[11px] font-semibold leading-none">{id}</span>
-            )}
-          </button>
-        )
-      })}
-    </div>
+                  </>
+                ) : (
+                  <span className="text-[11px] font-semibold leading-none">{id}</span>
+                )}
+              </span>
+            </motion.button>
+          )
+        })}
+      </div>
+    </LayoutGroup>
   )
 }
 

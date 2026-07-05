@@ -14,7 +14,7 @@ import App from "ags/gtk4/app"
 import { createWebViewWindow } from "./WebViewWindow"
 import hyprland from "../../lib/hyprland"
 
-import { BAR_STRIP_WIDTH_PX, monitorTag } from "../../lib/monitor"
+import { BAR_STRIP_WIDTH_PX, gdkMonitorConnector, monitorTag } from "../../lib/monitor"
 
 const STRIP_W = BAR_STRIP_WIDTH_PX
 const FLYOUT_W = 320 // max popout width; individual panels use narrower content inside
@@ -48,6 +48,7 @@ function monitorHeight(monitor: Gdk.Monitor): number {
 export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
     const height = Math.max(480, monitorHeight(gdkmonitor))
     const safeId = monitorTag(gdkmonitor)
+    const hyprMonitorName = gdkMonitorConnector(gdkmonitor) ?? safeId
     const flyoutName = `bar-flyout-${safeId}`
 
     // ── Close timer (shared between strip-leave and flyout-leave) ─────────────
@@ -163,7 +164,7 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
     // ── Strip window — EXCLUSIVE + OVERLAY so flyouts stay underneath ───────
     return createWebViewWindow({
         name: `bar-wv-${safeId}`,
-        page: "#/bar",
+        page: `#/bar?monitor=${encodeURIComponent(hyprMonitorName)}`,
         gdkmonitor,
         anchor:
             Astal.WindowAnchor.LEFT |
@@ -179,6 +180,16 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
         onSetup: (wv) => {
             try {
                 const webview = wv as AnyWv
+
+                const pushMonitorToBar = () => {
+                    const script =
+                        `(function(){var n=${JSON.stringify(hyprMonitorName)};window.__AURA_BAR_MONITOR__=n;window.dispatchEvent(new CustomEvent('aura-bar-monitor',{detail:{name:n}}))})()`
+                    webview.evaluate_javascript?.(script, -1, null, null, null, null)
+                }
+                pushMonitorToBar()
+                webview.connect("load-changed", (_wv: unknown, event: unknown) => {
+                    if (event === 3 /* WebKit.LoadEvent.FINISHED */) pushMonitorToBar()
+                })
 
                 const pushWorkspaceToBar = (id: number) => {
                     if (!Number.isFinite(id) || id <= 0) return

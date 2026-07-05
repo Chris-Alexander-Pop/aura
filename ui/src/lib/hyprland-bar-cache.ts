@@ -25,6 +25,9 @@ export function applyHyprlandSnapshot(qc: QueryClient, snap: HyprBarSnapshot) {
   }
   qc.setQueryData(["clients"], snap.clients)
   qc.setQueryData(["hypr-active"], snap.active_window)
+  if (snap.monitors) {
+    qc.setQueryData(["hypr-monitors"], snap.monitors)
+  }
 }
 
 let snapshotInflight: Promise<void> | null = null

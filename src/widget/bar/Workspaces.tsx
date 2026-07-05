@@ -108,7 +108,7 @@ export default function Workspaces() {
     return <box
         orientation={Gtk.Orientation.VERTICAL}
         halign={Gtk.Align.CENTER}
-        spacing={0}
+        spacing={6}
     >
         {wsStates().map(ws => (
             <button

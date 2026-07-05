@@ -27,18 +27,27 @@ export function gdkMonitorGeometry(monitor: Gdk.Monitor): MonitorGeometry {
     }
 }
 
+/** DRM connector name when available (matches Hyprland monitor `name` on most setups). */
+export function gdkMonitorConnector(monitor: Gdk.Monitor): string | null {
+    try {
+        const connector = (monitor as Gdk.Monitor & { connector?: string }).connector
+        if (connector && connector.length > 0) {
+            return connector
+        }
+    } catch {
+        /* older Gdk */
+    }
+    return null
+}
+
 /**
  * Stable id for per-monitor shell windows. Prefer DRM connector (unique per port);
  * fall back to geometry so replugged outputs still get distinct tags when needed.
  */
 export function monitorTag(monitor: Gdk.Monitor): string {
-    try {
-        const connector = (monitor as Gdk.Monitor & { connector?: string }).connector
-        if (connector && connector.length > 0) {
-            return sanitizeMonitorTag(connector)
-        }
-    } catch {
-        /* older Gdk */
+    const connector = gdkMonitorConnector(monitor)
+    if (connector) {
+        return sanitizeMonitorTag(connector)
     }
     const g = gdkMonitorGeometry(monitor)
     return sanitizeMonitorTag(`${g.x}-${g.y}-${g.width}x${g.height}`)

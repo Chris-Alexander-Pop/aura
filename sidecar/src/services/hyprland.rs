@@ -237,6 +237,18 @@ pub fn parse_monitors(raw: &Value) -> Vec<HyprMonitor> {
                 id: -1,
                 name: None,
             });
+        let special_workspace = item
+            .get("specialWorkspace")
+            .or_else(|| item.get("special_workspace"))
+            .and_then(parse_workspace_ref)
+            .unwrap_or(HyprWorkspaceRef {
+                id: 0,
+                name: None,
+            });
+        let focused = item
+            .get("focused")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let x = item.get("x").and_then(|v| v.as_i64()).unwrap_or(0);
         let y = item.get("y").and_then(|v| v.as_i64()).unwrap_or(0);
         let width = item.get("width").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -245,6 +257,8 @@ pub fn parse_monitors(raw: &Value) -> Vec<HyprMonitor> {
             name: name.to_string(),
             id,
             active_workspace,
+            special_workspace,
+            focused,
             x,
             y,
             width,
@@ -292,6 +306,12 @@ pub fn validate_dispatch(command: &str) -> Result<Vec<String>> {
                 bail!("dispatch_denied: {verb} takes no arguments");
             }
         }
+        "togglespecialworkspace" => {
+            if parts.len() != 2 {
+                bail!("dispatch_denied: togglespecialworkspace requires one argument");
+            }
+            validate_special_workspace_arg(parts[1])?;
+        }
         "movefocus" | "swapwindow" => {
             if parts.len() != 2 || !matches!(parts[1], "l" | "r" | "u" | "d") {
                 bail!("dispatch_denied: {verb} requires direction l|r|u|d");
@@ -303,6 +323,19 @@ pub fn validate_dispatch(command: &str) -> Result<Vec<String>> {
         _ => bail!("dispatch_denied: verb not allowlisted: {verb}"),
     }
     Ok(parts.iter().map(|s| s.to_string()).collect())
+}
+
+fn validate_special_workspace_arg(arg: &str) -> Result<()> {
+    if arg.is_empty() || arg.len() > 64 {
+        bail!("dispatch_denied: invalid special workspace argument");
+    }
+    if arg
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    {
+        return Ok(());
+    }
+    bail!("dispatch_denied: invalid special workspace argument")
 }
 
 fn validate_workspace_arg(arg: &str) -> Result<()> {
@@ -443,11 +476,12 @@ pub fn spawn_event_listener() {
 }
 
 async fn bar_snapshot() -> Value {
-    let (ws_raw, active_raw, clients_raw, win_raw) = tokio::join!(
+    let (ws_raw, active_raw, clients_raw, win_raw, mon_raw) = tokio::join!(
         hyprctl_json_or_null(&["workspaces"]),
         hyprctl_json_or_null(&["activeworkspace"]),
         hyprctl_json_or_null(&["clients"]),
         hyprctl_json_or_null(&["activewindow"]),
+        hyprctl_json_or_null(&["monitors"]),
     );
     let clients = parse_clients(&clients_raw);
     let fullscreen_monitor_ids = fullscreen_monitor_ids(&clients);
@@ -456,6 +490,7 @@ async fn bar_snapshot() -> Value {
         "active_workspace": parse_active_workspace(&active_raw),
         "clients": clients,
         "active_window": parse_active_window(&win_raw),
+        "monitors": parse_monitors(&mon_raw),
         "fullscreen_monitor_ids": fullscreen_monitor_ids,
     })
 }

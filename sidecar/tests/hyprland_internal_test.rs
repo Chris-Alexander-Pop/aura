@@ -18,6 +18,8 @@ fn dispatch_validator_unit_matrix() {
     assert!(validate_dispatch("killactive").is_ok());
     assert!(validate_dispatch("movefocus r").is_ok());
     assert!(validate_dispatch("swapwindow d").is_ok());
+    assert!(validate_dispatch("togglespecialworkspace communication").is_ok());
+    assert!(validate_dispatch("togglespecialworkspace special").is_ok());
 
     assert!(validate_dispatch("exec kitty")
         .unwrap_err()
