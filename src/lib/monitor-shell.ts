@@ -9,6 +9,7 @@ import { mountEdgeTriggersForMonitor } from "./aura-settings-shell"
 import { monitorTag } from "./monitor"
 import {
     edgeTriggerNamesForTag,
+    rebindPanelEdgeTriggersByTag,
     unmountPanelEdgeTriggersByTag,
 } from "../widget/triggers/PanelEdgeTriggers"
 
@@ -37,16 +38,42 @@ function shellWindowNamesForTag(tag: string): string[] {
 function destroyWindow(name: string) {
     const win = app.get_window(name) as AuraWindow | null
     if (!win) return
+    // Hide + remove first so layer-shell unmaps the GdkSurface before destroy.
+    // Sync destroy of a still-mapped Wayland toplevel → SIGSEGV in
+    // gdk_wayland_toplevel_remove_from_session (libgtk).
+    try {
+        ;(win as AuraWindow & { visible?: boolean }).visible = false
+    } catch {
+        /* ignore */
+    }
     try {
         app.remove_window(win)
     } catch {
         /* ignore */
     }
-    try {
-        win.destroy?.()
-    } catch {
-        /* ignore */
+    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+        try {
+            win.destroy?.()
+        } catch {
+            /* ignore */
+        }
+        return GLib.SOURCE_REMOVE
+    })
+}
+
+function rebindMonitorShell(tag: string, monitor: Gdk.Monitor) {
+    if (DEBUG) console.error(`[monitor-shell] rebind ${tag}`)
+    for (const name of shellWindowNamesForTag(tag)) {
+        const win = app.get_window(name) as AuraWindow | null
+        if (!win) continue
+        try {
+            win.set_gdkmonitor?.(monitor)
+        } catch (e) {
+            console.error(`monitor-shell: rebind failed for ${name}:`, e)
+        }
     }
+    rebindPanelEdgeTriggersByTag(tag, monitor)
+    mountedMonitors.set(tag, monitor)
 }
 
 function unmountMonitorShell(tag: string) {
@@ -111,8 +138,12 @@ export function syncMonitorShells() {
         const prev = mountedMonitors.get(tag)
         if (mountedTags.has(tag) && prev === monitor) continue
 
+        // Gdk often replaces Monitor object identity without a real disconnect.
+        // Rebind instead of destroy+recreate — remount churn left orphan layer
+        // surfaces and crashed in gdk_wayland_toplevel_remove_from_session.
         if (mountedTags.has(tag)) {
-            unmountMonitorShell(tag)
+            rebindMonitorShell(tag, monitor)
+            continue
         }
         mountMonitorShell(monitor)
     }

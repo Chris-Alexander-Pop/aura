@@ -58,16 +58,26 @@ function removeFromEdgeRefs(win: Gtk.Window) {
 
 function destroyTriggerWindow(win: Gtk.Window) {
     removeFromEdgeRefs(win)
+    // Unmap before destroy — sync destroy of mapped layer surfaces SIGSEGVs
+    // in gdk_wayland_toplevel_remove_from_session.
+    try {
+        win.visible = false
+    } catch {
+        /* ignore */
+    }
     try {
         app.remove_window(win)
     } catch {
         /* ignore */
     }
-    try {
-        win.destroy()
-    } catch {
-        /* ignore */
-    }
+    GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+        try {
+            win.destroy()
+        } catch {
+            /* ignore */
+        }
+        return GLib.SOURCE_REMOVE
+    })
 }
 
 function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
@@ -203,6 +213,20 @@ export function unmountPanelEdgeTriggersByTag(tag: string) {
 /** Remove all edge triggers for a monitor (dropdown, media, module-hub). */
 export function unmountPanelEdgeTriggers(gdkmonitor: Gdk.Monitor) {
     unmountPanelEdgeTriggersByTag(monitorTag(gdkmonitor))
+}
+
+/** Re-point existing edge triggers at a new Gdk.Monitor instance (hotplug identity churn). */
+export function rebindPanelEdgeTriggersByTag(tag: string, gdkmonitor: Gdk.Monitor) {
+    const wins = triggersByMonitor.get(tag)
+    if (!wins) return
+    for (const win of wins) {
+        try {
+            const w = win as Gtk.Window & { set_gdkmonitor?: (m: Gdk.Monitor) => void }
+            w.set_gdkmonitor?.(gdkmonitor)
+        } catch {
+            /* ignore */
+        }
+    }
 }
 
 /** Imperative layer-shell strips — must call app.add_window (JSX alone was not showing). */

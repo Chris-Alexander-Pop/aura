@@ -12,7 +12,6 @@ import WebKit from "gi://WebKit?version=6.0"
 import { Astal, Gdk } from "ags/gtk4"
 import App from "ags/gtk4/app"
 import { createWebViewWindow } from "./WebViewWindow"
-import hyprland from "../../lib/hyprland"
 
 import { BAR_STRIP_WIDTH_PX, gdkMonitorConnector, monitorTag } from "../../lib/monitor"
 
@@ -191,15 +190,10 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
                     if (event === 3 /* WebKit.LoadEvent.FINISHED */) pushMonitorToBar()
                 })
 
-                const pushWorkspaceToBar = (id: number) => {
-                    if (!Number.isFinite(id) || id <= 0) return
-                    const script =
-                        `window.dispatchEvent(new CustomEvent('aura-hypr-workspace',{detail:{id:${id}}}))`
-                    webview.evaluate_javascript?.(script, -1, null, null, null, null)
-                }
-                hyprland.connect("focused-workspace-changed", (_svc: unknown, id: number) => {
-                    pushWorkspaceToBar(id)
-                })
+                // Workspace updates come from the sidecar WebSocket (Hyprland.WorkspaceActive).
+                // Do NOT connect the GJS hyprland singleton here — handlers never disconnect on
+                // monitor remount and end up calling evaluate_javascript on destroyed WebViews
+                // (GTK GdkSurface use-after-free → SIGSEGV).
 
                 const mgr = webview.get_user_content_manager()
                 mgr.register_script_message_handler('barFlyout', null)

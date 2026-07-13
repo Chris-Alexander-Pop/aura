@@ -27,7 +27,13 @@ function getWindow(name: string): AuraWindow | null {
 function setWindowVisible(name: string, visible: boolean) {
     const win = getWindow(name)
     if (!win) return
-    win.visible = visible
+    try {
+        // Skip no-ops — flipping visible on a torn-down layer surface crashes GTK.
+        if (win.visible === visible) return
+        win.visible = visible
+    } catch (e) {
+        console.error(`shell-visibility: set visible=${visible} failed for ${name}:`, e)
+    }
 }
 
 function shellWindowNamesForTag(tag: string): string[] {
@@ -99,9 +105,13 @@ function buildHyprIdToTagMap(hyprMonitors: HyprMonitorGeom[]): Map<number, strin
 function hideWindowIfNeeded(name: string) {
     const win = getWindow(name)
     if (!win) return
-    if (win.visible) {
-        savedVisible.set(name, true)
-        win.visible = false
+    try {
+        if (win.visible) {
+            savedVisible.set(name, true)
+            win.visible = false
+        }
+    } catch (e) {
+        console.error(`shell-visibility: hide failed for ${name}:`, e)
     }
 }
 

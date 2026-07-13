@@ -188,7 +188,7 @@ function WorkspacesBlock() {
             >
               {isActive ? (
                 <motion.span
-                  layoutId="bar-ws-active-pill"
+                  layoutId={barMonitorName ? `bar-ws-active-pill-${barMonitorName}` : "bar-ws-active-pill"}
                   className={cn(
                     "absolute inset-0 rounded-full border border-teal bg-teal shadow-[0_0_14px_rgb(var(--c-teal)/0.45)]",
                     isCovered ? "z-[15]" : "z-0",

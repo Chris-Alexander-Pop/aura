@@ -4,5 +4,7 @@ module.exports = {
   theme: {
     extend: {},
   },
+  // GTK4 CSS rejects these; Tailwind still emits the utilities unless blocked.
+  blocklist: ["visible", "invisible", "static", "fixed", "absolute", "relative", "sticky", "block", "inline", "inline-block", "flex", "inline-flex", "grid", "hidden"],
   plugins: [],
 }

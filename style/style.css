@@ -2,18 +2,6 @@
 
 /* GTK4 CSS rules: no shorthand margin/padding, :hover only in classes, no transition/display/position */
 
-.visible {
-  visibility: visible;
-}
-
-.static {
-  position: static;
-}
-
-.inline {
-  display: inline;
-}
-
 .rounded {
   border-radius: 0.25rem;
 }

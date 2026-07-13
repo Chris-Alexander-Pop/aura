@@ -44,6 +44,7 @@ export const colors = {
     m3onError: '#11111b',
     m3surface: '#1e1e2e',          // base
     m3surfaceContainer: '#181825',  // mantle
+    m3surfaceContainerHigh: '#313244', // surface0 — OSD / elevated chrome
     m3surfaceContainerLow: '#11111b', // crust
     m3onSurface: '#cdd6f4',        // text
     m3onSurfaceVariant: '#a6adc8', // subtext0
