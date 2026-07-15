@@ -3,7 +3,7 @@
   "info": {
     "title": "Aura Sidecar API",
     "version": "0.1.0",
-    "description": "HTTP bridge for ags-sidecar JSON-RPC methods (286 registered). GET for parameterless calls; POST with a JSON object body for params. Path example: `/api/Power.GetBatteryState`. Push: WebSocket `/ws`. Interactive docs: `/docs`."
+    "description": "HTTP bridge for ags-sidecar JSON-RPC methods (296 registered). GET for parameterless calls; POST with a JSON object body for params. Path example: `/api/Power.GetBatteryState`. Push: WebSocket `/ws`. Interactive docs: `/docs`."
   },
   "servers": [
     {
@@ -17,6 +17,9 @@
     },
     {
       "name": "RPC"
+    },
+    {
+      "name": "Appearance"
     },
     {
       "name": "Apps"
@@ -124,7 +127,13 @@
       "name": "Todos"
     },
     {
+      "name": "Tray"
+    },
+    {
       "name": "Vault"
+    },
+    {
+      "name": "Vicinae"
     },
     {
       "name": "Vpn"
@@ -180,6 +189,10 @@
             "schema": {
               "type": "string",
               "enum": [
+                "Appearance.GetNightLight",
+                "Appearance.GetTheme",
+                "Appearance.SetNightLight",
+                "Appearance.SetTheme",
                 "Apps.Launch",
                 "Audio.CreateLoopback",
                 "Audio.CreateNullSink",
@@ -266,6 +279,7 @@
                 "Communication.GetMessages",
                 "Communication.GetNotificationSettings",
                 "Communication.GetUnread",
+                "Communication.ImportUnread",
                 "Communication.LaunchApp",
                 "Communication.MarkRead",
                 "Communication.MuteNotifications",
@@ -306,6 +320,7 @@
                 "Hyprland.Dispatch",
                 "Hyprland.GetActiveWindow",
                 "Hyprland.GetActiveWorkspace",
+                "Hyprland.GetBarSnapshot",
                 "Hyprland.GetClients",
                 "Hyprland.GetMonitors",
                 "Hyprland.GetWorkspaces",
@@ -449,10 +464,14 @@
                 "Todos.ListProjects",
                 "Todos.ParseDueDate",
                 "Todos.Update",
+                "Tray.Activate",
+                "Tray.List",
+                "Tray.SecondaryActivate",
                 "Vault.Backup.Status",
                 "Vault.GetEntry",
                 "Vault.List",
                 "Vault.SetEntry",
+                "Vicinae.Exec",
                 "Vpn.Connect",
                 "Vpn.Disconnect",
                 "Vpn.GetProfiles",
@@ -591,6 +610,10 @@
             "schema": {
               "type": "string",
               "enum": [
+                "Appearance.GetNightLight",
+                "Appearance.GetTheme",
+                "Appearance.SetNightLight",
+                "Appearance.SetTheme",
                 "Apps.Launch",
                 "Audio.CreateLoopback",
                 "Audio.CreateNullSink",
@@ -677,6 +700,7 @@
                 "Communication.GetMessages",
                 "Communication.GetNotificationSettings",
                 "Communication.GetUnread",
+                "Communication.ImportUnread",
                 "Communication.LaunchApp",
                 "Communication.MarkRead",
                 "Communication.MuteNotifications",
@@ -717,6 +741,7 @@
                 "Hyprland.Dispatch",
                 "Hyprland.GetActiveWindow",
                 "Hyprland.GetActiveWorkspace",
+                "Hyprland.GetBarSnapshot",
                 "Hyprland.GetClients",
                 "Hyprland.GetMonitors",
                 "Hyprland.GetWorkspaces",
@@ -860,10 +885,14 @@
                 "Todos.ListProjects",
                 "Todos.ParseDueDate",
                 "Todos.Update",
+                "Tray.Activate",
+                "Tray.List",
+                "Tray.SecondaryActivate",
                 "Vault.Backup.Status",
                 "Vault.GetEntry",
                 "Vault.List",
                 "Vault.SetEntry",
+                "Vicinae.Exec",
                 "Vpn.Connect",
                 "Vpn.Disconnect",
                 "Vpn.GetProfiles",
@@ -1003,6 +1032,10 @@
     }
   },
   "x-rpc-methods": [
+    "Appearance.GetNightLight",
+    "Appearance.GetTheme",
+    "Appearance.SetNightLight",
+    "Appearance.SetTheme",
     "Apps.Launch",
     "Audio.CreateLoopback",
     "Audio.CreateNullSink",
@@ -1089,6 +1122,7 @@
     "Communication.GetMessages",
     "Communication.GetNotificationSettings",
     "Communication.GetUnread",
+    "Communication.ImportUnread",
     "Communication.LaunchApp",
     "Communication.MarkRead",
     "Communication.MuteNotifications",
@@ -1129,6 +1163,7 @@
     "Hyprland.Dispatch",
     "Hyprland.GetActiveWindow",
     "Hyprland.GetActiveWorkspace",
+    "Hyprland.GetBarSnapshot",
     "Hyprland.GetClients",
     "Hyprland.GetMonitors",
     "Hyprland.GetWorkspaces",
@@ -1272,10 +1307,14 @@
     "Todos.ListProjects",
     "Todos.ParseDueDate",
     "Todos.Update",
+    "Tray.Activate",
+    "Tray.List",
+    "Tray.SecondaryActivate",
     "Vault.Backup.Status",
     "Vault.GetEntry",
     "Vault.List",
     "Vault.SetEntry",
+    "Vicinae.Exec",
     "Vpn.Connect",
     "Vpn.Disconnect",
     "Vpn.GetProfiles",

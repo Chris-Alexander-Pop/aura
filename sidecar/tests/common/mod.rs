@@ -250,6 +250,90 @@ pub fn weather_test_lock() -> std::sync::MutexGuard<'static, ()> {
     WEATHER_TEST_LOCK.lock().unwrap()
 }
 
+static KEYRING_TEST_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+
+/// Serialize tests that prepend a mock `secret-tool` onto `PATH`.
+pub async fn keyring_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
+    KEYRING_TEST_LOCK
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await
+}
+
+fn write_mock_secret_tool(dir: &std::path::Path, store_path: &std::path::Path) {
+    let script = format!(
+        r#"#!/bin/sh
+STORE="{store}"
+case "$1" in
+  store)
+    shift
+    key=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --label) shift 2 ;;
+        *) key="${{key}}|$1|$2"; shift 2 ;;
+      esac
+    done
+    secret=$(cat)
+    echo "${{key}}|${{secret}}" >> "$STORE"
+    exit 0
+    ;;
+  lookup)
+    shift
+    key=""
+    while [ $# -gt 0 ]; do
+      key="${{key}}|$1|$2"
+      shift 2
+    done
+    line=$(grep -F "${{key}}|" "$STORE" 2>/dev/null | tail -1)
+    if [ -z "$line" ]; then exit 1; fi
+    echo "${{line##*|}}"
+    exit 0
+    ;;
+esac
+exit 1
+"#,
+        store = store_path.display()
+    );
+    let path = dir.join("secret-tool");
+    std::fs::write(&path, script).expect("script");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+}
+
+/// Prepends a temp-dir mock `secret-tool` onto `PATH` for the lifetime of this guard.
+pub struct MockKeyring {
+    _dir: tempfile::TempDir,
+    prev_path: Option<String>,
+}
+
+impl MockKeyring {
+    pub fn new() -> Self {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = dir.path().join("store.txt");
+        write_mock_secret_tool(dir.path(), &store);
+        let prev_path = std::env::var("PATH").ok();
+        let path = prev_path.clone().unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", dir.path().display(), path));
+        Self {
+            _dir: dir,
+            prev_path,
+        }
+    }
+}
+
+impl Drop for MockKeyring {
+    fn drop(&mut self) {
+        match &self.prev_path {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
+    }
+}
+
 pub struct StorageTestDb {
     _guard: std::sync::MutexGuard<'static, ()>,
     path: std::path::PathBuf,
