@@ -11,17 +11,21 @@ import {
 
 const DEFAULT_CLOSE_MS = 450
 
-const SIDEBAR_HEIGHT = 400
+/** Top module-hub height — room for toggles, dashboard, quickviews, tiles. */
+const MODULE_HUB_HEIGHT = 540
 const DROPDOWN_WIDTH = 400
 const DROPDOWN_HEIGHT = 280
-const MEDIA_WIDTH = 72
-const MEDIA_HEIGHT = 168
+const MEDIA_WIDTH = 96
+const MEDIA_HEIGHT = 188
 
 const HOVER_PANEL_NAMES = new Set(["module-hub", "dropdown", "media-popup"])
 
 export type ModuleHubTriggerMode = "left_edge" | "top_third" | "none"
 
-let moduleHubTriggerMode: ModuleHubTriggerMode = "top_third"
+/** Temporarily off — module hub UI needs another pass. */
+export const MODULE_HUB_ENABLED = false
+
+let moduleHubTriggerMode: ModuleHubTriggerMode = "none"
 let hideShellOnFullscreen = true
 
 export function setModuleHubTriggerMode(mode: ModuleHubTriggerMode): void {
@@ -97,7 +101,7 @@ function applyPanelLayout(
                 win.set_margin_right?.(0)
                 win.set_margin_top?.(10)
                 win.set_margin_bottom?.(0)
-                resizeWebViewChild(win, cardWidth, SIDEBAR_HEIGHT)
+                resizeWebViewChild(win, cardWidth, MODULE_HUB_HEIGHT)
             }
             break
         }

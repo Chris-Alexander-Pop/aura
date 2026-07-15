@@ -162,6 +162,72 @@ pub async fn lookup_caldav_password(username: &str) -> Result<Option<String>> {
     }
 }
 
+/// Store Google OAuth refresh token (never logged).
+pub async fn store_google_oauth_refresh(refresh_token: &str) -> Result<()> {
+    let mut cmd = Command::new("secret-tool");
+    cmd.arg("store")
+        .arg("--label")
+        .arg("Aura Google Calendar OAuth")
+        .arg("application")
+        .arg("aura")
+        .arg("type")
+        .arg("google_oauth_refresh")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    let mut child = cmd.spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(refresh_token.as_bytes()).await?;
+    }
+    let status = child.wait().await?;
+    if !status.success() {
+        anyhow::bail!("secret-tool store failed with status {}", status);
+    }
+    Ok(())
+}
+
+/// Look up Google OAuth refresh token.
+pub async fn lookup_google_oauth_refresh() -> Result<Option<String>> {
+    let output = Command::new("secret-tool")
+        .arg("lookup")
+        .arg("application")
+        .arg("aura")
+        .arg("type")
+        .arg("google_oauth_refresh")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if text.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(text))
+    }
+}
+
+/// Clear stored Google OAuth refresh token.
+pub async fn clear_google_oauth_refresh() -> Result<()> {
+    let status = Command::new("secret-tool")
+        .arg("clear")
+        .arg("application")
+        .arg("aura")
+        .arg("type")
+        .arg("google_oauth_refresh")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .await?;
+    // clear returns non-zero if nothing matched — treat as ok
+    let _ = status;
+    Ok(())
+}
+
 /// Probe whether secret-tool exists and the login keyring is unlocked.
 pub async fn probe_keyring() -> KeyringProbe {
     let available = Command::new("which")

@@ -105,6 +105,21 @@ export function CalendarNavPane() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["todos"] }),
   })
 
+  const { data: googleStatus } = useQuery({
+    queryKey: ["calendar-google-auth"],
+    queryFn: api.getGoogleCalendarAuthStatus,
+    refetchInterval: (q) => (q.state.data?.pending ? 2000 : 30_000),
+  })
+
+  const syncMut = useMutation({
+    mutationFn: () => api.syncCalendars(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["calendar-upcoming"] })
+      void qc.invalidateQueries({ queryKey: ["cal"] })
+      void qc.invalidateQueries({ queryKey: ["calendar-google-auth"] })
+    },
+  })
+
   const events = data ?? []
   const now = Date.now()
   const upcoming = events
@@ -125,9 +140,31 @@ export function CalendarNavPane() {
             <span className="icon text-mauve text-2xl">{icon}</span>
             <h2 className="text-xl font-semibold text-text">{label}</h2>
           </div>
-          <p className="text-xs text-subtext1 mt-1 max-w-prose">Upcoming events from the sidecar calendar store.</p>
+          <p className="text-xs text-subtext1 mt-1 max-w-prose">
+            Upcoming events from the sidecar calendar store
+            {googleStatus?.connected
+              ? googleStatus.email
+                ? ` · Google (${googleStatus.email})`
+                : " · Google connected"
+              : ""}
+            .
+          </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {googleStatus?.connected ? (
+            <button
+              type="button"
+              className="btn-surface text-xs"
+              disabled={syncMut.isPending}
+              onClick={() => syncMut.mutate()}
+              title="Sync from Google"
+            >
+              <span className={cn("icon text-base", syncMut.isPending && "animate-spin")}>
+                {syncMut.isPending ? "progress_activity" : "sync"}
+              </span>
+              Sync
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn-surface text-xs"

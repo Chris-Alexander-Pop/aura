@@ -1,0 +1,9 @@
+# Fingerprint empty-Enter wake lives on the public fork + a local helper.
+#
+# Fork:   https://github.com/Chris-Alexander-Pop/hyprlock  (branch: patched)
+# Docs:   https://github.com/Chris-Alexander-Pop/hyprlock/blob/patched/PATCHES.md
+# Build:  ~/.local/share/pkgbuilds/hyprlock-patched/update.sh
+#
+# Hardware wake (USB reset Validity 06cb:009a):
+#   ~/.local/share/fingerprint-wake/install.sh
+#   systemctl start fingerprint-wake.service

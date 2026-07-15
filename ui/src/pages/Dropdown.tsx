@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type PowerProfile } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { cn, tempToBarPercent, usageToPercent } from "@/lib/utils"
 import DropdownModuleTiles from "@/components/dropdown/DropdownModuleTiles"
 import { filterDropdownModules } from "@/lib/dropdown-tiles"
 import { postPanelHover } from "@/lib/panel-hover"
@@ -102,7 +102,10 @@ function MiniStats() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["system-stats"],
     queryFn: api.getSystemStats,
-    refetchInterval: 4000,
+    // WebKit layer-shell windows often stay document.hidden; keep polling anyway.
+    refetchInterval: 2000,
+    refetchIntervalInBackground: true,
+    staleTime: 0,
   })
 
   if (isLoading && !data) {
@@ -112,10 +115,18 @@ function MiniStats() {
     return <p className="text-[11px] text-red">Resources unavailable</p>
   }
 
+  const cpu = usageToPercent(data?.cpu ?? 0)
+  const ram = usageToPercent(data?.ram ?? 0)
+  const tempC = data?.temp ?? 0
   const stats = [
-    { label: "CPU", value: data?.cpu ?? 0, color: "from-blue to-sapphire" },
-    { label: "RAM", value: data?.ram ?? 0, color: "from-mauve to-pink" },
-    { label: "Temp", value: data?.temp ? data.temp / 100 : 0, color: "from-peach to-maroon" },
+    { label: "CPU", value: cpu, text: `${cpu.toFixed(0)}%`, color: "from-blue to-sapphire" },
+    { label: "RAM", value: ram, text: `${ram.toFixed(0)}%`, color: "from-mauve to-pink" },
+    {
+      label: "Temp",
+      value: tempToBarPercent(tempC),
+      text: Number.isFinite(tempC) && tempC > 0 ? `${tempC.toFixed(0)}°` : "—",
+      color: "from-peach to-maroon",
+    },
   ]
 
   return (
@@ -124,17 +135,13 @@ function MiniStats() {
         <div key={s.label} className="flex flex-col gap-1 flex-1">
           <div className="flex justify-between text-[11px] text-subtext0">
             <span>{s.label}</span>
-            <span>
-              {s.label === "Temp"
-                ? `${data?.temp?.toFixed(0) ?? "—"}°`
-                : `${s.value.toFixed(0)}%`}
-            </span>
+            <span>{s.text}</span>
           </div>
           <div className="progress-bar">
             <motion.div
               className={`progress-fill bg-gradient-to-r ${s.color}`}
               initial={{ width: 0 }}
-              animate={{ width: `${Math.min(s.value, 100)}%` }}
+              animate={{ width: `${s.value}%` }}
               transition={{ duration: 0.5 }}
             />
           </div>

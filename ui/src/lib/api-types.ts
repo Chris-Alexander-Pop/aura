@@ -42,6 +42,42 @@ export interface Calendar {
   id: string
   name: string
   color: string
+  primary?: boolean
+}
+
+export interface GoogleCalendarAuthStatus {
+  connected: boolean
+  configured?: boolean
+  pending?: boolean
+  email?: string
+  error?: string
+  /** Unix seconds of last successful sync */
+  last_sync?: number
+}
+
+export function parseGoogleCalendarAuthStatus(raw: unknown): GoogleCalendarAuthStatus {
+  if (!isRecord(raw)) return { connected: false }
+  return {
+    connected: raw.connected === true,
+    configured: typeof raw.configured === "boolean" ? raw.configured : undefined,
+    pending: raw.pending === true,
+    email: optionalString(raw.email),
+    error: optionalString(raw.error),
+    last_sync: optionalFiniteInt(raw.last_sync) ?? undefined,
+  }
+}
+
+export function parseCalendars(raw: unknown): Calendar[] {
+  if (!Array.isArray(raw)) return []
+  const out: Calendar[] = []
+  for (const item of raw) {
+    const c = parseCalendar(item)
+    if (c) {
+      const primary = isRecord(item) && item.primary === true
+      out.push(primary ? { ...c, primary: true } : c)
+    }
+  }
+  return out
 }
 
 export function parseCalendarEvent(raw: unknown): CalendarEvent | null {
@@ -452,7 +488,7 @@ export function parseAuraSettings(raw: unknown): AuraSettingsView | null {
   const module_hub_trigger =
     typeof triggerRaw === "string" && MODULE_HUB_TRIGGER_MODES.has(triggerRaw as ModuleHubTriggerMode)
       ? (triggerRaw as ModuleHubTriggerMode)
-      : "top_third"
+      : "none"
   const hideRaw = raw.hide_shell_on_fullscreen
   const hide_shell_on_fullscreen = typeof hideRaw === "boolean" ? hideRaw : true
   return {

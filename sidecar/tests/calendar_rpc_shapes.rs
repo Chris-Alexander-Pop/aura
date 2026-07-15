@@ -84,6 +84,12 @@ async fn calendar_empty_namespace_and_event_shape() {
         .expect("GetCalendars");
     assert!(calendars.as_array().map(|a| a.is_empty()).unwrap_or(false));
 
+    let google_status = call_rpc(&registry, "Calendar.GoogleAuthStatus", None)
+        .await
+        .expect("GoogleAuthStatus");
+    assert_eq!(google_status.get("connected"), Some(&json!(false)));
+    assert!(google_status.get("configured").is_some());
+
     let upcoming = call_rpc(
         &registry,
         "Calendar.GetUpcomingEvents",

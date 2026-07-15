@@ -10,7 +10,7 @@ import { onHideShellSettingChanged } from "./shell-visibility"
 
 export type { ModuleHubTriggerMode }
 
-let cachedModuleHubTrigger: ModuleHubTriggerMode = "top_third"
+let cachedModuleHubTrigger: ModuleHubTriggerMode = "none"
 let cachedHideShellOnFullscreen = true
 let settingsListenerAttached = false
 
@@ -24,7 +24,7 @@ export function getHideShellOnFullscreen(): boolean {
 
 function parseModuleHubTrigger(raw: unknown): ModuleHubTriggerMode {
     if (raw === "left_edge" || raw === "top_third" || raw === "none") return raw
-    return "top_third"
+    return "none"
 }
 
 function applyCachedSettings(settings: {

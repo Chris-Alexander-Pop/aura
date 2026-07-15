@@ -73,10 +73,10 @@ export function monitorSize(monitor: Gdk.Monitor): MonitorSize {
 /** Must match `BAR_STRIP_WIDTH_PX` in `ui/src/components/bar/useBarLayoutStore.ts`. */
 export const BAR_STRIP_WIDTH_PX = 44
 
-/** Centered top-third module hub card width and left margin. */
+/** Centered top module hub card width and left margin (~½ monitor). */
 export function moduleHubLayout(monitor: Gdk.Monitor): { cardWidth: number; marginLeft: number } {
     const { width } = monitorSize(monitor)
-    const cardWidth = Math.max(320, Math.floor(width / 3))
+    const cardWidth = Math.max(480, Math.min(Math.floor(width * 0.5), 900))
     const marginLeft = Math.floor((width - cardWidth) / 2)
     return { cardWidth, marginLeft }
 }

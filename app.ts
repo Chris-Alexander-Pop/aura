@@ -14,7 +14,7 @@ import MediaPopupWindow from "./src/widget/webview/MediaPopupWindow"
 import { initAuraSettingsShell } from "./src/lib/aura-settings-shell"
 import { initMonitorShell } from "./src/lib/monitor-shell"
 import { initShellVisibility } from "./src/lib/shell-visibility"
-import { isHoverPanel, toggleHoverPanel } from "./src/lib/panel-hover"
+import { isHoverPanel, toggleHoverPanel, MODULE_HUB_ENABLED } from "./src/lib/panel-hover"
 
 const DEBUG_EDGE = GLib.getenv("AURA_DEBUG_EDGE_TRIGGERS") === "1"
 
@@ -41,7 +41,8 @@ app.start({
         // Singleton windows
         try {
             LauncherWindow()
-            ModuleHubWindow()
+            // Tile hub UI parked — re-enable MODULE_HUB_ENABLED in panel-hover.ts when ready
+            if (MODULE_HUB_ENABLED) ModuleHubWindow()
 
             // WebKit overlay panels
             ControlCenterWindow()
@@ -66,6 +67,10 @@ app.start({
         switch (parts[0]) {
             case "toggle": {
                 const name = parts[1]
+                if (name === "module-hub" && !MODULE_HUB_ENABLED) {
+                    res("module-hub disabled")
+                    break
+                }
                 if (name) {
                     if (isHoverPanel(name)) {
                         const visible = toggleHoverPanel(

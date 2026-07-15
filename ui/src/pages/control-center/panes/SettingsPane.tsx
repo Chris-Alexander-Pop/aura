@@ -2,7 +2,7 @@ import type { ReactNode } from "react"
 import { motion } from "framer-motion"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api, { type AuraSettingsView, type PowerProfile } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { cn, usageToPercent } from "@/lib/utils"
 import { DROPDOWN_TILE_IDS } from "@/lib/dropdown-tiles"
 import {
   SortableIdList,
@@ -248,12 +248,15 @@ export function SettingsPane() {
             </div>
             <div>
               <p className="text-xs text-subtext0 mb-2">Module hub trigger</p>
+              <p className="mb-2 text-[10px] text-peach">
+                Tile hub is temporarily disabled (shell flag). Trigger prefs are saved but inactive.
+              </p>
               <div className="flex flex-wrap gap-2">
                 {(
                   [
                     { id: "left_edge", label: "Left edge" },
                     { id: "top_third", label: "Top third" },
-                    { id: "none", label: "Off (keybind only)" },
+                    { id: "none", label: "Off" },
                   ] as const
                 ).map((opt) => (
                   <button
@@ -262,7 +265,7 @@ export function SettingsPane() {
                     disabled={saveAura.isPending}
                     onClick={() => void saveAura.mutateAsync({ module_hub_trigger: opt.id })}
                     className={cn(
-                      "toggle-chip text-xs",
+                      "toggle-chip text-xs opacity-60",
                       auraSettings.data.settings.module_hub_trigger === opt.id && "active"
                     )}
                   >
@@ -290,7 +293,7 @@ export function SettingsPane() {
               </button>
             </div>
             <div>
-              <p className="text-xs text-subtext0 mb-2">Dropdown modules</p>
+              <p className="text-xs text-subtext0 mb-2">Module hub modules</p>
               <div className="flex flex-wrap gap-2 mb-2">
                 {DROPDOWN_TILE_IDS.map((mod) => {
                   const enabled = auraSettings.data.settings.dropdown_modules.includes(mod)
@@ -457,11 +460,15 @@ export function SettingsPane() {
             <div className="skeleton h-24 rounded-lg" />
           ) : system.data ? (
             <>
-              <Row label="CPU" value={`${system.data.cpu}%`} />
-              <Row label="RAM" value={`${system.data.ram}%`} />
-              <Row label="Temp" value={`${system.data.temp}°C`} />
-              {system.data.gpu != null ? <Row label="GPU" value={`${system.data.gpu}%`} /> : null}
-              {system.data.storage != null ? <Row label="Storage" value={`${system.data.storage}%`} /> : null}
+              <Row label="CPU" value={`${usageToPercent(system.data.cpu).toFixed(0)}%`} />
+              <Row label="RAM" value={`${usageToPercent(system.data.ram).toFixed(0)}%`} />
+              <Row label="Temp" value={`${system.data.temp.toFixed(0)}°C`} />
+              {system.data.gpu != null ? (
+                <Row label="GPU" value={`${usageToPercent(system.data.gpu).toFixed(0)}%`} />
+              ) : null}
+              {system.data.storage != null ? (
+                <Row label="Storage" value={`${usageToPercent(system.data.storage).toFixed(0)}%`} />
+              ) : null}
             </>
           ) : (
             <p className="text-xs text-subtext0">No stats</p>

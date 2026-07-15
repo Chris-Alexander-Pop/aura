@@ -17,6 +17,7 @@ pub mod productivity;
 pub mod calendar;
 pub mod ics;
 pub mod todos;
+pub mod google_calendar;
 pub mod logs;
 pub mod packages;
 pub mod automation;

@@ -49,6 +49,8 @@ Resolution order (see `docs/ARCHITECTURE_DECISIONS.md`):
 
 Today `src/lib/sidecar.ts` only implements (2). Dev: symlink builds into `~/.config/ags/sidecar/target/` or set `AURA_SIDECAR`.
 
+**Google Calendar:** set `AURA_GOOGLE_OAUTH_CLIENT_ID` (Desktop OAuth client, Calendar API enabled). Optional `AURA_GOOGLE_OAUTH_CLIENT_SECRET`. Connect from the calendar panel; refresh tokens go in GNOME Keyring (`secret-tool`).
+
 **Stack defaults (Arch):** NetworkManager, PipeWire+WirePlumber, GNOME Keyring, hyprlock, Podman (not Docker by default), Freedesktop notifications D-Bus.
 
 ## Task tool playbook (subagents)

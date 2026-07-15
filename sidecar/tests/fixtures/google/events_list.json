@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "id": "evt1",
+      "summary": "Standup",
+      "description": "Daily sync",
+      "start": { "dateTime": "2026-07-15T14:00:00Z" },
+      "end": { "dateTime": "2026-07-15T14:30:00Z" }
+    },
+    {
+      "id": "evt2",
+      "summary": "Holiday",
+      "start": { "date": "2026-07-20" },
+      "end": { "date": "2026-07-21" }
+    }
+  ]
+}

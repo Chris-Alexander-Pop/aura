@@ -18,6 +18,8 @@ import {
   adaptSidebarTileData,
   parseAuraSettings,
   parseCalendarEvents,
+  parseCalendars,
+  parseGoogleCalendarAuthStatus,
   type AuraSettingsView,
   type DashboardQuickStatusView,
   type LauncherAppView,
@@ -45,7 +47,11 @@ async function call<T>(method: string, params?: Record<string, unknown>): Promis
   return data as T
 }
 
-async function callData(method: string, params?: Record<string, unknown>): Promise<unknown> {
+async function callData(
+  method: string,
+  params?: Record<string, unknown>,
+  timeoutMs = SIDECAR_TIMEOUT_MS,
+): Promise<unknown> {
   const isGet = !params || Object.keys(params).length === 0
   const url = `${BASE}/${encodeURIComponent(method)}`
 
@@ -55,11 +61,11 @@ async function callData(method: string, params?: Record<string, unknown>): Promi
       method: isGet ? "GET" : "POST",
       headers: { "Content-Type": "application/json" },
       body: isGet ? undefined : JSON.stringify(params),
-      signal: AbortSignal.timeout(SIDECAR_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     })
   } catch (err) {
     if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new Error(`Sidecar timed out after ${SIDECAR_TIMEOUT_MS / 1000}s (${method})`)
+      throw new Error(`Sidecar timed out after ${timeoutMs / 1000}s (${method})`)
     }
     throw err
   }
@@ -244,6 +250,12 @@ export const api = {
   fetchCalendarEvents: () => callData("Calendar.GetEvents").then(parseCalendarEvents),
   getCalendarUpcoming: (limit = 10) =>
     callData("Calendar.GetUpcomingEvents", { limit, days: 14 }).then(parseCalendarEvents),
+  getCalendars: () => callData("Calendar.GetCalendars").then(parseCalendars),
+  syncCalendars: () =>
+    callData("Calendar.SyncCalendars", undefined, 60_000).then(
+      (data) =>
+        data as { success?: boolean; synced?: number; message?: string; provider?: string },
+    ),
   createCalendarEvent: (opts: {
     title: string
     start: number
@@ -251,8 +263,19 @@ export const api = {
     description?: string
     reminder_minutes?: number
   }) => call("Calendar.CreateEvent", opts),
+  updateCalendarEvent: (eventId: string, updates: Record<string, unknown>) =>
+    call("Calendar.UpdateEvent", { event_id: eventId, updates }),
   deleteCalendarEvent: (eventId: string) =>
     call("Calendar.DeleteEvent", { event_id: eventId }),
+  getGoogleCalendarAuthStatus: () =>
+    callData("Calendar.GoogleAuthStatus").then(parseGoogleCalendarAuthStatus),
+  /** Starts browser OAuth in the background; poll `getGoogleCalendarAuthStatus` until connected. */
+  googleCalendarStartAuth: () =>
+    callData("Calendar.GoogleStartAuth").then(
+      (data) => data as { started?: boolean; message?: string },
+    ),
+  googleCalendarDisconnect: () =>
+    call<{ success?: boolean }>("Calendar.GoogleDisconnect"),
 
   // Packages
   getPackageUpdates: () => callData("Packages.GetUpgradable").then(adaptPackageUpdates),

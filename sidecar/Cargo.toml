@@ -41,6 +41,9 @@ quick-xml = { version = "0.31", features = ["serialize"] }
 axum = { version = "0.7", features = ["ws", "macros"] }
 tower-http = { version = "0.5", features = ["fs", "cors"] }
 tokio-tungstenite = "0.21"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
 
 [dev-dependencies]
 regex = "1.10"

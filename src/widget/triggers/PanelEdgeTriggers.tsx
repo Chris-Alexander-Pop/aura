@@ -3,7 +3,7 @@ import Gtk from "gi://Gtk?version=4.0"
 import Astal from "gi://Astal?version=4.0"
 import Gdk from "gi://Gdk?version=4.0"
 import app from "ags/gtk4/app"
-import { cancelHoverClose, scheduleHoverClose, showHoverPanel } from "../../lib/panel-hover"
+import { cancelHoverClose, scheduleHoverClose, showHoverPanel, MODULE_HUB_ENABLED } from "../../lib/panel-hover"
 import {
     BAR_STRIP_WIDTH_PX,
     moduleHubLayout,
@@ -137,7 +137,7 @@ function mountModuleHubTrigger(
     tag: string,
     mode: ModuleHubTriggerMode
 ): Gtk.Window | null {
-    if (mode === "none") return null
+    if (!MODULE_HUB_ENABLED || mode === "none") return null
 
     if (mode === "left_edge") {
         const { height } = monitorSize(gdkmonitor)

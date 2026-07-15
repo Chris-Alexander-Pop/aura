@@ -226,24 +226,26 @@ export default function MediaPopup() {
 
   return (
     <div
-      className="flex h-full items-end justify-center gap-5 px-3 pb-3 pt-2"
+      className="flex h-full w-full items-center justify-center p-1"
       onMouseEnter={() => postPanelHover("mediaPopupHover", true)}
       onMouseLeave={() => postPanelHover("mediaPopupHover", false)}
     >
-      <SliderColumn
-        icon={volumeIcon(volumePct, sinkMuted)}
-        value={volumePct}
-        accent="lavender"
-        onChange={applyVolume}
-        onCommit={applyVolume}
-      />
-      <SliderColumn
-        icon={brightnessIcon(brightnessPct)}
-        value={brightnessPct}
-        accent="peach"
-        onChange={onBrightnessChange}
-        onCommit={onBrightnessCommit}
-      />
+      <div className="flex h-full w-full items-end justify-center gap-4 rounded-2xl border border-surface0/60 bg-mantle/95 px-3 pb-3 pt-2.5 text-text shadow-2xl backdrop-blur-xl">
+        <SliderColumn
+          icon={volumeIcon(volumePct, sinkMuted)}
+          value={volumePct}
+          accent="lavender"
+          onChange={applyVolume}
+          onCommit={applyVolume}
+        />
+        <SliderColumn
+          icon={brightnessIcon(brightnessPct)}
+          value={brightnessPct}
+          accent="peach"
+          onChange={onBrightnessChange}
+          onCommit={onBrightnessCommit}
+        />
+      </div>
     </div>
   )
 }

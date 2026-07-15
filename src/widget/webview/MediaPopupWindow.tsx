@@ -2,8 +2,8 @@ import { Astal } from "ags/gtk4"
 import { registerPanelHoverHandler } from "../../lib/panel-hover"
 import { createWebViewWindow } from "./WebViewWindow"
 
-const MEDIA_WIDTH = 72
-const MEDIA_HEIGHT = 168
+const MEDIA_WIDTH = 96
+const MEDIA_HEIGHT = 188
 
 export default function MediaPopupWindow() {
     return createWebViewWindow({

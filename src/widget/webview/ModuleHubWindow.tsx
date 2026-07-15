@@ -3,7 +3,7 @@ import { Astal } from "ags/gtk4"
 import { registerPanelHoverHandler } from "../../lib/panel-hover"
 import { createWebViewWindow } from "./WebViewWindow"
 
-const MODULE_HUB_HEIGHT = 400
+const MODULE_HUB_HEIGHT = 540
 
 function setPanelWebViewBg(webview: unknown) {
     try {
@@ -25,8 +25,8 @@ export default function ModuleHubWindow() {
         anchor: Astal.WindowAnchor.TOP,
         layer: Astal.Layer.TOP,
         marginTop: 10,
-        marginLeft: 640,
-        width: 640,
+        marginLeft: 720,
+        width: 720,
         height: MODULE_HUB_HEIGHT,
         visible: false,
         onSetup: (wv) => {

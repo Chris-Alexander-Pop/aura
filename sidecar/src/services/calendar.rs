@@ -148,15 +148,28 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Calendar.GetCalendars", |_params| async move {
-        Ok(serde_json::json!([]))
+        let list = crate::services::google_calendar::list_calendars().await?;
+        Ok(serde_json::to_value(list)?)
     });
 
     registry.register("Calendar.SyncCalendars", |_params| async move {
-        crate::services::caldav::sync_caldav_read_only().await
+        crate::services::google_calendar::sync_calendars().await
     });
 
     registry.register("Calendar.SyncCalDav", |_params| async move {
         crate::services::caldav::sync_caldav_read_only().await
+    });
+
+    registry.register("Calendar.GoogleAuthStatus", |_params| async move {
+        crate::services::google_calendar::auth_status().await
+    });
+
+    registry.register("Calendar.GoogleStartAuth", |_params| async move {
+        crate::services::google_calendar::start_auth().await
+    });
+
+    registry.register("Calendar.GoogleDisconnect", |_params| async move {
+        crate::services::google_calendar::disconnect().await
     });
 
     registry.register("Calendar.GetUpcomingEvents", |params| async move {
@@ -328,6 +341,11 @@ fn schedule_calendar_events_emit(reason: &str) {
             json!({ "reason": reason }),
         );
     });
+}
+
+/// Public wrapper for Google sync / disconnect emitters.
+pub fn schedule_calendar_events_emit_public(reason: &str) {
+    schedule_calendar_events_emit(reason);
 }
 
 /// Run one reminder poll (test hook — same path as the 60s tick loop).

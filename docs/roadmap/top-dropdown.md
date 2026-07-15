@@ -2,9 +2,9 @@
 
 ## Summary
 
-A **top-of-screen dropdown** (Caelestia-style “dropdown” region) that acts as a **mission control**: a **configurable main dashboard**, **quickviews** into other roadmap surfaces (calendar, communication, DevOps), and **quick settings / toggles**. Subpanels should be **modular** so users can add, remove, and ideally **reorder** (drag-and-drop) without code changes.
+A **top-of-screen dropdown** that acts as a **mission control**: a **configurable main dashboard**, **quickviews** into other roadmap surfaces (calendar, communication, DevOps), and **quick settings / toggles**. Subpanels should be **modular** so users can add, remove, and ideally **reorder** (drag-and-drop) without code changes.
 
-This maps to the **dropdown** webview pattern in Aura ([`src/widget/webview/`](../../src/widget/webview/)) and `ags msg toggle dropdown` per [AGENTS.md](../../AGENTS.md).
+**Live window:** `module-hub` (`ags msg toggle module-hub`, React `#/module-hub`, GTK [`ModuleHubWindow.tsx`](../../src/widget/webview/ModuleHubWindow.tsx)). Settings key `module_hub_trigger` chooses top vs left-edge hover. The separate **`dropdown`** window is the bottom-right quick-settings card — not this surface.
 
 ## Current baseline
 
@@ -22,7 +22,7 @@ User-chosen **widgets**: time, weather, next calendar block, resource sparkline,
 
 ### Configurable quickviews from control panel subpanels (make subpanels modular so its super easy to configure, drag and drop?)
 
-**Same module system** as the control center: each subpanel (network, audio, …) registers a **small** and **large** card for the dropdown. **Drag-and-drop** ordering in v1 or v2; at minimum **enable/disable** and order list in settings.
+**Same module system** as the control center: each subpanel (network, audio, …) registers a **small** and **large** card for the dropdown. **Drag-and-drop** ordering in v1 or v2; at minimum **enable/disable** and order list in settings (`dropdown_modules` / Settings UI “Module hub modules”).
 
 ### Quick settings / quick toggles
 
