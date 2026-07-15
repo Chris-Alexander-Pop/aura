@@ -6,7 +6,8 @@ mod common;
 
 use ags_sidecar::services::audio::audio_env_test_lock;
 use common::{
-    call_method, call_method_unchecked, ExecFixtureGuard, load_fixture, test_registry,
+    call_method, call_method_unchecked, keyring_test_lock, ExecFixtureGuard, MockKeyring,
+    load_fixture, test_registry,
 };
 use serde_json::json;
 
@@ -134,6 +135,9 @@ async fn network_list_saved_mocked() {
 #[tokio::test]
 async fn network_connect_disconnect_forget_mocked() {
     let _exec = ExecFixtureGuard::activate();
+    // Network.Connect stores the Wi‑Fi password via secret-tool before nmcli.
+    let _keyring = keyring_test_lock().await;
+    let _mock = MockKeyring::new();
     let registry = test_registry();
     call_method(&registry, "Network.ScanNetworks", None)
         .await
