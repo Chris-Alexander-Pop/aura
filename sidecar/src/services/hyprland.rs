@@ -386,9 +386,29 @@ fn hyprland_socket_path() -> Option<PathBuf> {
     }
 }
 
-/// Parse numeric workspace id from Hyprland socket2 `workspace>>` payload.
+/// Parse numeric workspace id from Hyprland socket2 `workspace>>` / `workspacev2>>` payload.
+/// `workspace>>NAME` (name may be numeric); `workspacev2>>ID,NAME`.
 pub fn parse_workspace_event_id(data: &str) -> Option<i64> {
-    data.trim().parse::<i64>().ok().filter(|&id| id > 0)
+    let trimmed = data.trim();
+    let id_part = trimmed.split(',').next().unwrap_or(trimmed).trim();
+    id_part.parse::<i64>().ok().filter(|&id| id > 0)
+}
+
+fn workspace_event_name(event: &str, data: &str, id: i64) -> String {
+    if event == "workspacev2" {
+        if let Some((_, name)) = data.split_once(',') {
+            let name = name.trim();
+            if !name.is_empty() {
+                return name.to_string();
+            }
+        }
+    } else {
+        let name = data.trim();
+        if !name.is_empty() {
+            return name.to_string();
+        }
+    }
+    id.to_string()
 }
 
 /// Hyprland socket2 event names that should invalidate bar state.
@@ -396,6 +416,7 @@ pub fn event_triggers_state_changed(event: &str) -> bool {
     matches!(
         event,
         "workspace"
+            | "workspacev2"
             | "focusedmon"
             | "activewindow"
             | "activewindowv2"
@@ -404,7 +425,9 @@ pub fn event_triggers_state_changed(event: &str) -> bool {
             | "movewindow"
             | "windowtitle"
             | "createworkspace"
+            | "createworkspacev2"
             | "destroyworkspace"
+            | "destroyworkspacev2"
             | "float"
             | "pin"
             | "fullscreen"
@@ -415,11 +438,11 @@ pub fn note_hyprland_event_line(line: &str) {
     let Some((event, data)) = line.split_once(">>") else {
         return;
     };
-    if event == "workspace" {
+    if event == "workspace" || event == "workspacev2" {
         if let Some(id) = parse_workspace_event_id(data) {
             notify::emit(
                 "Hyprland.WorkspaceActive",
-                json!({ "id": id, "name": id.to_string() }),
+                json!({ "id": id, "name": workspace_event_name(event, data, id) }),
             );
         }
     }

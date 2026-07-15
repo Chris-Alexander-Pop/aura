@@ -54,6 +54,7 @@ async fn dispatch_denied_via_rpc_without_hyprctl() {
 #[test]
 fn event_names_cover_bar_invalidation() {
     assert!(event_triggers_state_changed("workspace"));
+    assert!(event_triggers_state_changed("workspacev2"));
     assert!(event_triggers_state_changed("activewindow"));
     assert!(event_triggers_state_changed("closewindow"));
     assert!(event_triggers_state_changed("float"));
@@ -63,6 +64,7 @@ fn event_names_cover_bar_invalidation() {
 #[test]
 fn event_line_parses_socket2_format() {
     note_hyprland_event_line("workspace>>3");
+    note_hyprland_event_line("workspacev2>>7,7");
     note_hyprland_event_line("garbage without delimiter");
 }
 
@@ -70,6 +72,7 @@ fn event_line_parses_socket2_format() {
 fn workspace_event_id_parses_numeric_payload() {
     assert_eq!(parse_workspace_event_id("3"), Some(3));
     assert_eq!(parse_workspace_event_id(" 10 "), Some(10));
+    assert_eq!(parse_workspace_event_id("7,desktop"), Some(7));
     assert_eq!(parse_workspace_event_id("name:special"), None);
     assert_eq!(parse_workspace_event_id("0"), None);
 }

@@ -87,6 +87,9 @@ function WorkspacesBlock() {
     [barMonitorName, monitors],
   )
   const monitorActiveId = useMemo(() => {
+    // Prefer live `hypr-active-ws` on the focused monitor so Super+# updates
+    // the pill from Hyprland.WorkspaceActive before the monitors snapshot.
+    if (barMonitor?.focused && globalActiveId != null) return globalActiveId
     const id = barMonitor?.active_workspace?.id
     return typeof id === "number" && id > 0 ? id : globalActiveId
   }, [barMonitor, globalActiveId])
@@ -171,7 +174,7 @@ function WorkspacesBlock() {
                   void scheduleHyprlandSnapshotRefresh(qc)
                   return
                 }
-                onHyprlandWorkspaceActive(qc, id)
+                onHyprlandWorkspaceActive(qc, id, undefined, barMonitorName)
                 void api.hyprlandDispatch(`workspace ${id}`)
               }}
               whileTap={{ scale: 0.9 }}
