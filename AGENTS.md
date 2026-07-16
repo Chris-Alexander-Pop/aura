@@ -21,6 +21,10 @@ Docs: `docs/MIGRATION_STRATEGY.md`, `docs/COMPONENT_MAPPING.md` (legacy mapping)
 
 Smoke IPC (with AGS running): `ags msg toggle control-center` (also `sidebar`, `dropdown`, `calendar` — window names in `src/widget/webview/*.tsx`).
 
+### Crash dumps (local only)
+
+Sidecar panics, AGS/JS fatals, and unexpected sidecar exits write JSON under `~/.local/share/aura/crashes/` (override with `AURA_CRASH_DIR`). Last 50 dumps are kept. No remote upload.
+
 ## Hypr config (Aura-owned)
 
 Aura keeps polkit, lock screen, keybinds, and session autostart under `hypr/`:

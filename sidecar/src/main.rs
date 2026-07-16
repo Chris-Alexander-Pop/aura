@@ -10,6 +10,8 @@ use tokio::sync::{broadcast, mpsc, Mutex};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    ags_sidecar::utils::crash::install_panic_hook();
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();

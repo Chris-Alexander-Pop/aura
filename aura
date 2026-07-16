@@ -167,6 +167,7 @@ show_usage() {
     echo "  --no-rust-watch Do not auto-watch Rust"
     echo "  --no-ui-build   Skip React UI build (use existing dist)"
     echo "  --bg            Run watch + AGS in background (log: /tmp/aura-dev.log)"
+    echo "                  Crash dumps: ~/.local/share/aura/crashes/ (AURA_CRASH_DIR)"
     echo "  --kill          Stop the current Aura session (no restart)"
     echo "  --help, -h      Show this help"
 }
@@ -258,6 +259,7 @@ if [ "$BACKGROUND" = true ]; then
     echo -e "  Watch PID: ${WATCH_PID}"
     [ -n "$RUST_WATCH_PID" ] && echo -e "  Rust watch PID: ${RUST_WATCH_PID}"
     echo -e "  Log: ${LOG_FILE}"
+    echo -e "  Crash dumps: ${AURA_CRASH_DIR:-$HOME/.local/share/aura/crashes}"
     echo -e "  Stop: ${CYAN}aura --kill${NC}"
     exit 0
 fi

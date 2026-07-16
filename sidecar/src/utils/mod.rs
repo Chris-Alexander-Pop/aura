@@ -1,4 +1,5 @@
 pub mod automation_log;
+pub mod crash;
 pub mod keyring;
 pub mod polkit;
 pub mod process;

@@ -13,6 +13,7 @@ import {
     NetworkStatus,
     AccessPoint
 } from './types'
+import { recordSidecarExit, recordUncaught } from './crash-log'
 
 const DEBUG_NOTIFICATIONS = GLib.getenv('AURA_DEBUG') === '1'
 
@@ -142,7 +143,42 @@ class SidecarService extends GObject.Object {
             this._readLoop()
         } catch (e) {
             console.error('Failed to spawn sidecar:', e)
+            recordUncaught(e, 'sidecar spawn')
         }
+    }
+
+    private _recordSidecarExitIfNeeded() {
+        const proc = this._proc
+        if (!proc) return
+
+        try {
+            // Reap so exit status / signal are available
+            proc.wait(null)
+        } catch {
+            // Process may already be reaped
+        }
+
+        let exit_status: number | undefined
+        let signal: number | undefined
+        let message = 'sidecar process exited unexpectedly'
+
+        try {
+            if (proc.get_if_signaled()) {
+                signal = proc.get_term_sig()
+                message = `sidecar terminated by signal ${signal}`
+            } else if (proc.get_if_exited()) {
+                exit_status = proc.get_exit_status()
+                if (exit_status === 0) {
+                    // Clean exit (e.g. intentional shutdown) — do not dump
+                    return
+                }
+                message = `sidecar exited with status ${exit_status}`
+            }
+        } catch {
+            // Status may still be unavailable; dump with message only
+        }
+
+        recordSidecarExit({ message, exit_status, signal })
     }
 
     private _readLine(stream: Gio.DataInputStream): Promise<[Uint8Array | null, any]> {
@@ -179,6 +215,8 @@ class SidecarService extends GObject.Object {
                 break
             }
         }
+
+        this._recordSidecarExitIfNeeded()
     }
 
     private _handleMessage(text: string) {
