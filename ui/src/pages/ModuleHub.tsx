@@ -47,19 +47,19 @@ export default function ModuleHub() {
       onMouseLeave={() => postPanelHover("moduleHubHover", false)}
     >
       <motion.div
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, x: atLeftEdge ? -12 : 0, y: atLeftEdge ? 0 : -12 }}
+        animate={{ opacity: 1, x: 0, y: 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
         className={cn(
-          "scrollbar-thin flex h-full min-h-0 flex-col gap-3 overflow-y-auto overflow-x-hidden bg-mantle p-3 text-text shadow-2xl",
+          "scrollbar-thin flex h-full min-h-0 flex-col gap-4 overflow-y-auto overflow-x-hidden bg-mantle/95 p-3.5 text-text shadow-2xl backdrop-blur-xl",
           atLeftEdge
-            ? "rounded-r-2xl border border-l-0 border-surface0/60"
-            : "rounded-b-2xl border border-t-0 border-surface0/60"
+            ? "rounded-r-2xl border border-l-0 border-surface0/50"
+            : "rounded-b-2xl border border-t-0 border-surface0/50"
         )}
       >
-        <header className="shrink-0">
-          <h1 className="text-base font-semibold">Tile hub</h1>
-          <p className="text-[11px] text-subtext0">
+        <header className="shrink-0 px-0.5">
+          <h1 className="text-base font-semibold tracking-tight">Tile hub</h1>
+          <p className="mt-0.5 text-[11px] text-subtext0">
             Mission control — modules in Control Center → Settings.
           </p>
         </header>

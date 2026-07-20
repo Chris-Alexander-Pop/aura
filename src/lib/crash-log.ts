@@ -3,8 +3,8 @@ import GLib from "gi://GLib"
 
 const MAX_CRASH_DUMPS = 50
 
-export type CrashComponent = "sidecar" | "ags" | "sidecar-exit"
-export type CrashKind = "panic" | "uncaught" | "exit"
+export type CrashComponent = "sidecar" | "ags" | "sidecar-exit" | "webkit" | "react"
+export type CrashKind = "panic" | "uncaught" | "exit" | "web-process"
 
 export interface CrashDump {
     ts: string
@@ -32,9 +32,9 @@ export function crashDir(): string {
 function hostname(): string {
     try {
         const file = Gio.File.new_for_path("/etc/hostname")
-        const [ok, contents] = file.load_contents(null)
+        const [ok, fileBytes] = file.load_contents(null)
         if (ok) {
-            const text = new TextDecoder().decode(contents).trim()
+            const text = new TextDecoder().decode(fileBytes).trim()
             if (text) return text
         }
     } catch {
@@ -213,5 +213,74 @@ export function installCrashHandlers(): void {
         }
     } catch {
         // ignore — hook not available
+    }
+}
+
+/** WebKit.WebProcessTerminationReason */
+const WK_REASON_CRASHED = 0
+const WK_REASON_OOM = 1
+const WK_REASON_API = 2
+
+function webProcessReasonLabel(reason: unknown): string {
+    const n = typeof reason === "number" ? reason : Number(reason)
+    if (n === WK_REASON_CRASHED) return "CRASHED"
+    if (n === WK_REASON_OOM) return "EXCEEDED_MEMORY_LIMIT"
+    if (n === WK_REASON_API) return "TERMINATED_BY_API"
+    return `reason=${String(reason)}`
+}
+
+type CrashAwareWebView = {
+    connect: (sig: string, cb: (...args: unknown[]) => unknown) => number
+    reload?: () => void
+    get_uri?: () => string | null
+    load_uri?: (uri: string) => void
+}
+
+/**
+ * Record WebKit web-process death and attempt a reload so panels recover.
+ * Native WebKit/AGS heap aborts are otherwise invisible to JS crash handlers.
+ */
+export function attachWebViewCrashHandlers(webview: CrashAwareWebView, label: string): void {
+    try {
+        webview.connect("web-process-terminated", (_wv, reason) => {
+            const reasonLabel = webProcessReasonLabel(reason)
+            const n = typeof reason === "number" ? reason : Number(reason)
+            if (n === WK_REASON_API) return
+
+            console.error(`aura: web process terminated (${label}): ${reasonLabel}`)
+            writeCrashDump({
+                component: "webkit",
+                kind: "web-process",
+                message: `WebKit web-process terminated (${label}): ${reasonLabel}`,
+            })
+
+            try {
+                const uri = webview.get_uri?.()
+                if (uri && webview.load_uri) webview.load_uri(uri)
+                else webview.reload?.()
+            } catch (e) {
+                console.error(`aura: failed to reload webview after crash (${label}):`, e)
+            }
+        })
+    } catch (e) {
+        console.error(`aura: failed to attach web-process-terminated (${label}):`, e)
+    }
+
+    try {
+        webview.connect("load-failed", (_wv, _event, uri, err) => {
+            const msg = errorMessage(err)
+            // Cancelled navigations are common during hide/show — skip those.
+            if (/cancelled|canceled/i.test(msg)) return false
+            console.error(`aura: webview load-failed (${label}):`, uri, msg)
+            writeCrashDump({
+                component: "webkit",
+                kind: "uncaught",
+                message: `load-failed (${label}): ${String(uri)} — ${msg}`,
+                stack: errorStack(err),
+            })
+            return false
+        })
+    } catch {
+        // older WebKit / signal unavailable
     }
 }

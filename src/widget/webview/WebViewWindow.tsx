@@ -5,6 +5,7 @@ import WebKit from "gi://WebKit?version=6.0"
 import Gtk from "gi://Gtk?version=4.0"
 import { Astal, Gdk } from "ags/gtk4"
 import App from "ags/gtk4/app"
+import { attachWebViewCrashHandlers } from "../../lib/crash-log"
 
 const SIDECAR_URL = "http://localhost:9080"
 
@@ -66,9 +67,17 @@ function sidecarPageUri(page: string): string {
     return `${SIDECAR_URL}/?v=${Date.now()}${route}`
 }
 
-function makeWebView(page: string, width: number, height: number, fixedMinSize: boolean, transparent?: boolean) {
+function makeWebView(
+    page: string,
+    width: number,
+    height: number,
+    fixedMinSize: boolean,
+    transparent?: boolean,
+    crashLabel?: string,
+) {
     const webview = new WebKit.WebView()
     suppressWebViewContextMenu(webview)
+    attachWebViewCrashHandlers(webview, crashLabel ?? page)
     webview.load_uri(sidecarPageUri(page))
     if (fixedMinSize) {
         webview.set_size_request(width, height)
@@ -113,7 +122,7 @@ function createHyprlandWebViewWindow(opts: WebViewWindowOptions) {
         visible = false,
     } = opts
 
-    const webview = makeWebView(page, width, height, false, false)
+    const webview = makeWebView(page, width, height, false, false, name)
     opts.onSetup?.(webview)
     const win = new Gtk.ApplicationWindow({ application: App })
     win.name = name
@@ -158,7 +167,7 @@ export function createWebViewWindow(opts: WebViewWindowOptions) {
         transparentWebView = false,
     } = opts
 
-    const webview = makeWebView(page, width, height, true, transparentWebView)
+    const webview = makeWebView(page, width, height, true, transparentWebView, name)
     opts.onSetup?.(webview)
 
     const win = <window

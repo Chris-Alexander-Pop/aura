@@ -311,11 +311,19 @@ pub(crate) async fn set_profile_by_name(profile_str: &str) -> Result<()> {
     set_profile(parse_profile_str(profile_str)).await
 }
 
+/// `powerprofilesctl` may be installed while the daemon is masked/stopped.
+async fn powerprofilesctl_daemon_ok() -> bool {
+    process::exec_command(&["powerprofilesctl", "get"]).await.is_ok()
+}
+
 async fn set_profile(profile: PowerProfile) -> Result<()> {
     if process::exec_command(&["which", "powerprofilesctl"])
         .await
         .is_ok()
     {
+        if !powerprofilesctl_daemon_ok().await {
+            anyhow::bail!("power-profiles-daemon unavailable (not running or masked)");
+        }
         let mode = powerprofilesctl_mode(&profile);
         process::exec_command(&["powerprofilesctl", "set", mode]).await?;
     } else {

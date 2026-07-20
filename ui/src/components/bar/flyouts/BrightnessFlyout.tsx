@@ -170,16 +170,32 @@ export default function BrightnessFlyout() {
     )
   }
 
+  const brightnessIcon =
+    pct <= 25 ? "brightness_low" : pct <= 65 ? "brightness_medium" : "brightness_high"
+
   return (
-    <FlyoutShell>
+    <FlyoutShell className="gap-2">
       <FlyoutTitle>Brightness</FlyoutTitle>
 
       {setError ? <FlyoutBanner tone="error">{setError}</FlyoutBanner> : null}
 
+      <FlyoutSlider
+        label="Brightness"
+        icon={brightnessIcon}
+        value={pct}
+        min={1}
+        max={100}
+        live
+        liveDebounceMs={0}
+        accent="yellow"
+        onLiveChange={applyLiveBrightness}
+        onChange={applyFinalBrightness}
+      />
+
       {monitorNames.length > 1 ? (
         <div>
           <FlyoutSectionLabel>Display</FlyoutSectionLabel>
-          <div className="mt-0.5 flex max-h-28 flex-col gap-0.5 overflow-y-auto">
+          <div className="mt-1 flex max-h-28 flex-col gap-0.5 overflow-y-auto">
             {monitorNames.map((name) => (
               <FlyoutRadioRow
                 key={name}
@@ -191,19 +207,6 @@ export default function BrightnessFlyout() {
           </div>
         </div>
       ) : null}
-
-      <FlyoutSlider
-        label="Brightness"
-        value={pct}
-        min={1}
-        max={100}
-        live
-        liveDebounceMs={0}
-        accent="amber"
-        showThumb={false}
-        onLiveChange={applyLiveBrightness}
-        onChange={applyFinalBrightness}
-      />
     </FlyoutShell>
   )
 }

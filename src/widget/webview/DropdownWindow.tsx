@@ -27,7 +27,7 @@ export default function DropdownWindow() {
         name: "dropdown",
         page: "#/dropdown",
         anchor: Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT,
-        layer: Astal.Layer.TOP,
+        layer: Astal.Layer.OVERLAY,
         marginTop: 1080 - DROPDOWN_HEIGHT - INSET,
         marginRight: INSET,
         width: DROPDOWN_WIDTH,

@@ -4,7 +4,8 @@ export type MonitorSize = { width: number; height: number }
 
 export type MonitorGeometry = { x: number; y: number; width: number; height: number }
 
-function sanitizeMonitorTag(raw: string): string {
+/** Sanitize Hyprland/GDK connector names for window ids (`eDP-1` → `eDP-1`). */
+export function sanitizeMonitorTag(raw: string): string {
     return raw.replace(/[^a-zA-Z0-9_-]/g, "-")
 }
 

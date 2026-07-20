@@ -300,6 +300,8 @@ export function FlyoutSlider({
   step = 1,
   disabled,
   label,
+  icon,
+  trailing,
   accent = "teal",
   live = false,
   liveDebounceMs = 40,
@@ -313,7 +315,11 @@ export function FlyoutSlider({
   step?: number
   disabled?: boolean
   label: string
-  accent?: "teal" | "amber" | "sapphire"
+  /** Optional Material icon shown before the label. */
+  icon?: string
+  /** Optional control (e.g. mute) on the header row. */
+  trailing?: ReactNode
+  accent?: "teal" | "yellow" | "peach" | "sapphire"
   live?: boolean
   /** Debounce for `onLiveChange` while dragging (0 = every pointer move). */
   liveDebounceMs?: number
@@ -324,6 +330,7 @@ export function FlyoutSlider({
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const [local, setLocal] = useState(() => clampStep(value, min, max, step))
+  const [dragging, setDragging] = useState(false)
   const draggingRef = useRef(false)
   const liveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -341,9 +348,33 @@ export function FlyoutSlider({
   )
 
   const fillPct = max === min ? 0 : ((local - min) / (max - min)) * 100
+  const thumbPx = 14
+  const thumbOffset = thumbPx / 2
 
   const accentFill =
-    accent === "amber" ? "bg-amber" : accent === "sapphire" ? "bg-sapphire" : "bg-teal"
+    accent === "yellow"
+      ? "bg-yellow"
+      : accent === "peach"
+        ? "bg-peach"
+        : accent === "sapphire"
+          ? "bg-sapphire"
+          : "bg-teal"
+  const accentGlow =
+    accent === "yellow"
+      ? "shadow-[0_0_12px_rgb(var(--c-yellow)/0.4)]"
+      : accent === "peach"
+        ? "shadow-[0_0_12px_rgb(var(--c-peach)/0.4)]"
+        : accent === "sapphire"
+          ? "shadow-[0_0_12px_rgb(var(--c-sapphire)/0.4)]"
+          : "shadow-[0_0_12px_rgb(var(--c-teal)/0.4)]"
+  const focusRing =
+    accent === "yellow"
+      ? "focus-visible:ring-yellow/40"
+      : accent === "peach"
+        ? "focus-visible:ring-peach/40"
+        : accent === "sapphire"
+          ? "focus-visible:ring-sapphire/40"
+          : "focus-visible:ring-teal/40"
 
   const valueFromClientX = (clientX: number) => {
     const track = trackRef.current
@@ -379,6 +410,7 @@ export function FlyoutSlider({
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (disabled) return
     draggingRef.current = true
+    setDragging(true)
     e.currentTarget.setPointerCapture(e.pointerId)
     const v = valueFromClientX(e.clientX)
     setLocal(v)
@@ -395,6 +427,7 @@ export function FlyoutSlider({
   const endDrag = (e: PointerEvent<HTMLDivElement>) => {
     if (!draggingRef.current) return
     draggingRef.current = false
+    setDragging(false)
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId)
     }
@@ -417,10 +450,30 @@ export function FlyoutSlider({
   }
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-medium text-subtext1">{label}</p>
-        <p className="text-[10px] tabular-nums text-subtext0">{local}%</p>
+    <div className="rounded-xl bg-surface0/35 px-2.5 py-2">
+      <div className="mb-2 flex items-center gap-2">
+        {icon ? (
+          <span
+            className={cn(
+              "icon shrink-0 text-[18px] leading-none",
+              disabled ? "text-overlay0" : "text-subtext0",
+            )}
+            aria-hidden
+          >
+            {icon}
+          </span>
+        ) : null}
+        <p className="min-w-0 flex-1 truncate text-[11px] font-medium text-subtext1">{label}</p>
+        <p
+          className={cn(
+            "shrink-0 text-[12px] font-semibold tabular-nums tracking-tight",
+            disabled ? "text-overlay0" : "text-text",
+          )}
+        >
+          {local}
+          <span className="ml-0.5 text-[10px] font-medium text-subtext0">%</span>
+        </p>
+        {trailing}
       </div>
       <div
         ref={trackRef}
@@ -431,9 +484,10 @@ export function FlyoutSlider({
         aria-valuenow={local}
         aria-label={label}
         className={cn(
-          "relative h-2 w-full touch-none rounded-full border border-surface1/40 bg-base/90 outline-none",
-          "focus-visible:ring-2 focus-visible:ring-teal/40 focus-visible:ring-offset-1 focus-visible:ring-offset-base",
-          disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+          "relative h-3 w-full touch-none rounded-full bg-base/70 outline-none ring-1 ring-inset ring-surface1/50",
+          "focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-mantle",
+          focusRing,
+          disabled ? "cursor-not-allowed opacity-45" : "cursor-pointer",
         )}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -444,18 +498,24 @@ export function FlyoutSlider({
         <div
           className={cn(
             "pointer-events-none absolute inset-y-0 left-0 rounded-full",
-            showThumb ? "opacity-75" : "opacity-100",
             accentFill,
+            dragging && !disabled ? "opacity-100" : "opacity-90",
           )}
           style={{ width: `${fillPct}%` }}
         />
         {showThumb ? (
           <div
             className={cn(
-              "pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full shadow-sm ring-2 ring-mantle/80",
-              accentFill,
+              "pointer-events-none absolute top-1/2 -translate-y-1/2 rounded-full bg-text",
+              "ring-2 ring-mantle",
+              accentGlow,
+              dragging && !disabled && "scale-110",
             )}
-            style={{ left: `calc(${fillPct}% - 6px)` }}
+            style={{
+              width: thumbPx,
+              height: thumbPx,
+              left: `calc(${fillPct}% - ${thumbOffset}px)`,
+            }}
           />
         ) : null}
       </div>

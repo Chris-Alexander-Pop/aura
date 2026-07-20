@@ -15,8 +15,8 @@ const DEFAULT_CLOSE_MS = 450
 const MODULE_HUB_HEIGHT = 540
 const DROPDOWN_WIDTH = 400
 const DROPDOWN_HEIGHT = 280
-const MEDIA_WIDTH = 96
-const MEDIA_HEIGHT = 188
+const MEDIA_WIDTH = 88
+const MEDIA_HEIGHT = 220
 
 const HOVER_PANEL_NAMES = new Set(["module-hub", "dropdown", "media-popup"])
 
@@ -54,6 +54,24 @@ type AuraWindow = Gtk.Window & {
 }
 
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/** Edge-trigger windows keyed by the hover panel they open. */
+const edgeTriggersByPanel = new Map<string, Set<Gtk.Window>>()
+
+export function registerEdgeTriggerForPanel(panelName: string, win: Gtk.Window): void {
+    let set = edgeTriggersByPanel.get(panelName)
+    if (!set) {
+        set = new Set()
+        edgeTriggersByPanel.set(panelName, set)
+    }
+    set.add(win)
+}
+
+export function unregisterEdgeTrigger(win: Gtk.Window): void {
+    for (const set of edgeTriggersByPanel.values()) {
+        set.delete(win)
+    }
+}
 
 function getWindow(name: string): AuraWindow | null {
     return App.get_window(name) as AuraWindow | null
@@ -119,7 +137,8 @@ function applyPanelLayout(
             const { marginTop } = verticalCenterMargins(monitor, MEDIA_HEIGHT)
             win.set_anchor?.(Astal.WindowAnchor.TOP | Astal.WindowAnchor.RIGHT)
             win.set_margin_left?.(0)
-            win.set_margin_right?.(8)
+            // Flush to the screen edge so no gap reveals the hit-strip.
+            win.set_margin_right?.(0)
             win.set_margin_top?.(marginTop)
             win.set_margin_bottom?.(0)
             resizeWebViewChild(win, MEDIA_WIDTH, MEDIA_HEIGHT)

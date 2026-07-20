@@ -36,7 +36,7 @@ function CalendarQuickview() {
   return (
     <button
       type="button"
-      className="glass-card flex min-h-0 min-w-0 flex-col gap-1.5 rounded-xl border border-surface0/60 p-3 text-left transition-colors hover:border-mauve/30"
+      className="flex min-h-0 min-w-0 flex-col gap-1.5 rounded-xl bg-surface0/35 p-3 text-left transition-colors hover:bg-surface0/55"
       title="Open calendar"
       onClick={() => void api.auraToggleWindow("calendar")}
     >
@@ -97,7 +97,7 @@ function DevopsQuickview() {
   return (
     <button
       type="button"
-      className="glass-card flex min-h-0 min-w-0 flex-col gap-1.5 rounded-xl border border-surface0/60 p-3 text-left transition-colors hover:border-mauve/30"
+      className="flex min-h-0 min-w-0 flex-col gap-1.5 rounded-xl bg-surface0/35 p-3 text-left transition-colors hover:bg-surface0/55"
       title="Open DevOps in Control Center"
       onClick={() => void api.openControlCenterPane("devops")}
     >
@@ -122,7 +122,7 @@ function DevopsQuickview() {
 function CommsQuickviewStub() {
   return (
     <div
-      className="glass-card flex min-h-0 min-w-0 flex-col gap-1.5 rounded-xl border border-surface0/40 p-3 opacity-60"
+      className="flex min-h-0 min-w-0 flex-col gap-1.5 rounded-xl bg-surface0/25 p-3 opacity-60"
       title="Communication hub deferred"
     >
       <div className="flex items-center justify-between gap-2">

@@ -38,6 +38,7 @@ pub mod vault;
 pub mod appearance;
 pub mod tray;
 pub mod caldav;
+pub mod crash_report;
 #[cfg(feature = "offensive-security")]
 pub mod offensive_policy;
 

@@ -202,14 +202,50 @@ pub fn parse_active_window(raw: &Value) -> Option<HyprActiveWindow> {
     })
 }
 
-/// Monitor ids with at least one client in fullscreen (or maximized) mode.
-pub fn fullscreen_monitor_ids(clients: &[HyprClient]) -> Vec<i64> {
-    let mut ids: Vec<i64> = clients
-        .iter()
-        .filter(|c| c.fullscreen > 0)
-        .map(|c| c.monitor)
-        .filter(|&id| id >= 0)
-        .collect();
+/// Workspace ids currently visible on a monitor (active + open special).
+fn visible_workspace_ids(mon: &HyprMonitor) -> Vec<i64> {
+    let mut ids = Vec::with_capacity(2);
+    if mon.active_workspace.id != 0 {
+        ids.push(mon.active_workspace.id);
+    }
+    // Hyprland reports `specialWorkspace.id == 0` when no special is shown.
+    if mon.special_workspace.id != 0 {
+        ids.push(mon.special_workspace.id);
+    }
+    ids
+}
+
+/// Monitor ids whose *visible* workspace has a fullscreen (or maximized) client.
+///
+/// Fullscreen clients on inactive workspaces do not suppress the shell — only the
+/// workspace (or open special) you are looking at.
+pub fn fullscreen_monitor_ids(clients: &[HyprClient], monitors: &[HyprMonitor]) -> Vec<i64> {
+    if monitors.is_empty() {
+        // Fallback when monitor list is unavailable: any fullscreen client.
+        let mut ids: Vec<i64> = clients
+            .iter()
+            .filter(|c| c.fullscreen > 0)
+            .map(|c| c.monitor)
+            .filter(|&id| id >= 0)
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        return ids;
+    }
+
+    let mut ids: Vec<i64> = Vec::new();
+    for mon in monitors {
+        let visible = visible_workspace_ids(mon);
+        if visible.is_empty() {
+            continue;
+        }
+        let has_fs = clients.iter().any(|c| {
+            c.fullscreen > 0 && c.monitor == mon.id && visible.contains(&c.workspace.id)
+        });
+        if has_fs {
+            ids.push(mon.id);
+        }
+    }
     ids.sort_unstable();
     ids.dedup();
     ids
@@ -457,13 +493,29 @@ fn schedule_hyprland_state_emit() {
     }
     let gen = HYPRLAND_EMIT_GEN.fetch_add(1, Ordering::Relaxed) + 1;
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(20)).await;
+        // Short coalesce so bursty socket2 events share one hyprctl pass.
+        tokio::time::sleep(Duration::from_millis(8)).await;
         if HYPRLAND_EMIT_GEN.load(Ordering::Relaxed) != gen {
             return;
         }
+        let (clients_raw, mon_raw) = tokio::join!(
+            hyprctl_json_or_null(&["clients"]),
+            hyprctl_json_or_null(&["monitors"]),
+        );
+        let clients = parse_clients(&clients_raw);
+        let monitors = parse_monitors(&mon_raw);
+        let fullscreen_monitor_ids = fullscreen_monitor_ids(&clients, &monitors);
+        let monitor_tags: Vec<Value> = monitors
+            .iter()
+            .map(|m| json!({ "id": m.id, "name": m.name }))
+            .collect();
         notify::emit(
             "Hyprland.StateChanged",
-            json!({ "areas": STATE_CHANGED_AREAS }),
+            json!({
+                "areas": STATE_CHANGED_AREAS,
+                "fullscreen_monitor_ids": fullscreen_monitor_ids,
+                "monitors": monitor_tags,
+            }),
         );
     });
 }
@@ -507,13 +559,14 @@ async fn bar_snapshot() -> Value {
         hyprctl_json_or_null(&["monitors"]),
     );
     let clients = parse_clients(&clients_raw);
-    let fullscreen_monitor_ids = fullscreen_monitor_ids(&clients);
+    let monitors = parse_monitors(&mon_raw);
+    let fullscreen_monitor_ids = fullscreen_monitor_ids(&clients, &monitors);
     json!({
         "workspaces": parse_workspaces(&ws_raw),
         "active_workspace": parse_active_workspace(&active_raw),
         "clients": clients,
         "active_window": parse_active_window(&win_raw),
-        "monitors": parse_monitors(&mon_raw),
+        "monitors": monitors,
         "fullscreen_monitor_ids": fullscreen_monitor_ids,
     })
 }
@@ -570,6 +623,7 @@ pub fn register(registry: &mut ServiceRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::{HyprMonitor, HyprWorkspaceRef};
     use std::fs;
     use std::path::PathBuf;
 
@@ -614,7 +668,59 @@ mod tests {
         assert_eq!(clients.len(), 1);
         assert_eq!(clients[0].fullscreen, 1);
         assert_eq!(clients[0].monitor, 0);
-        assert_eq!(fullscreen_monitor_ids(&clients), vec![0]);
+        let monitors = parse_monitors(&fixture("monitors.json"));
+        assert_eq!(fullscreen_monitor_ids(&clients, &monitors), vec![0]);
+    }
+
+    #[test]
+    fn fullscreen_monitor_ids_ignores_inactive_workspace() {
+        let clients = parse_clients(&fixture("clients_fullscreen.json"));
+        // Same monitor, but active workspace is 2 while fullscreen client is on 1.
+        let monitors = vec![HyprMonitor {
+            name: "eDP-1".into(),
+            id: 0,
+            active_workspace: HyprWorkspaceRef {
+                id: 2,
+                name: Some("2".into()),
+            },
+            special_workspace: HyprWorkspaceRef {
+                id: 0,
+                name: None,
+            },
+            focused: true,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        }];
+        assert!(fullscreen_monitor_ids(&clients, &monitors).is_empty());
+    }
+
+    #[test]
+    fn fullscreen_monitor_ids_includes_open_special() {
+        let mut clients = parse_clients(&fixture("clients_fullscreen.json"));
+        clients[0].workspace = HyprWorkspaceRef {
+            id: -95,
+            name: Some("special:communication".into()),
+        };
+        let monitors = vec![HyprMonitor {
+            name: "eDP-1".into(),
+            id: 0,
+            active_workspace: HyprWorkspaceRef {
+                id: 1,
+                name: Some("1".into()),
+            },
+            special_workspace: HyprWorkspaceRef {
+                id: -95,
+                name: Some("special:communication".into()),
+            },
+            focused: true,
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        }];
+        assert_eq!(fullscreen_monitor_ids(&clients, &monitors), vec![0]);
     }
 
     #[test]

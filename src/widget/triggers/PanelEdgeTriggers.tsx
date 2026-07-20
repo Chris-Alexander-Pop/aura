@@ -3,7 +3,14 @@ import Gtk from "gi://Gtk?version=4.0"
 import Astal from "gi://Astal?version=4.0"
 import Gdk from "gi://Gdk?version=4.0"
 import app from "ags/gtk4/app"
-import { cancelHoverClose, scheduleHoverClose, showHoverPanel, MODULE_HUB_ENABLED } from "../../lib/panel-hover"
+import {
+    cancelHoverClose,
+    scheduleHoverClose,
+    showHoverPanel,
+    MODULE_HUB_ENABLED,
+    registerEdgeTriggerForPanel,
+    unregisterEdgeTrigger,
+} from "../../lib/panel-hover"
 import {
     BAR_STRIP_WIDTH_PX,
     moduleHubLayout,
@@ -22,13 +29,17 @@ const triggersByMonitor = new Map<string, Gtk.Window[]>()
 const TRIGGER_SIZE = 2
 /** Top module-hub strip — wider than corner legs so hover is reachable. */
 const TOP_HUB_TRIGGER_H = 10
-const MEDIA_TRIGGER_H = 140
+const MEDIA_TRIGGER_H = 160
 /** L-shaped dropdown corner: length of each leg along bottom and right edges. */
 const DROPDOWN_CORNER_LEG = 56
 
 const DEBUG_TRIGGERS = GLib.getenv("AURA_DEBUG_EDGE_TRIGGERS") === "1"
-const HIT_RGBA = DEBUG_TRIGGERS ? "rgba(255, 34, 34, 0.92)" : "rgba(255, 255, 255, 0.01)"
-const WIN_RGBA = DEBUG_TRIGGERS ? "rgba(255, 0, 0, 0.25)" : "transparent"
+/**
+ * Near-clear black. Fully transparent surfaces often get no input on Wayland;
+ * white@1% + Hyprland blur looked like a frosted strip.
+ */
+const HIT_RGBA = DEBUG_TRIGGERS ? "rgba(255, 34, 34, 0.92)" : "rgba(0, 0, 0, 0.01)"
+const WIN_RGBA = DEBUG_TRIGGERS ? "rgba(255, 0, 0, 0.25)" : "rgba(0, 0, 0, 0)"
 
 export { monitorTag }
 
@@ -57,6 +68,7 @@ function removeFromEdgeRefs(win: Gtk.Window) {
 }
 
 function destroyTriggerWindow(win: Gtk.Window) {
+    unregisterEdgeTrigger(win)
     removeFromEdgeRefs(win)
     // Unmap before destroy — sync destroy of mapped layer surfaces SIGSEGVs
     // in gdk_wayland_toplevel_remove_from_session.
@@ -85,7 +97,8 @@ function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
         name: spec.name,
         visible: true,
         anchor: spec.anchor,
-        layer: spec.layer ?? Astal.Layer.OVERLAY,
+        // Default TOP so open hover panels (OVERLAY) can cover the hit strip.
+        layer: spec.layer ?? Astal.Layer.TOP,
         exclusivity: Astal.Exclusivity.IGNORE,
         gdkmonitor,
     })
@@ -124,6 +137,7 @@ function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
     win.set_child(box)
     app.add_window(win)
     edgeTriggerWindows.push(win)
+    registerEdgeTriggerForPanel(spec.targetWindow, win)
 
     if (DEBUG_TRIGGERS) {
         console.error(`edge-trigger registered: ${spec.name} on ${monitorTag(gdkmonitor)}`)
@@ -259,6 +273,8 @@ export function mountPanelEdgeTriggers(
             marginBottom: mediaMargins.marginBottom,
             width: TRIGGER_SIZE,
             height: MEDIA_TRIGGER_H,
+            // Below hover panels (OVERLAY) so the open card covers this strip.
+            layer: Astal.Layer.TOP,
         })
     )
 

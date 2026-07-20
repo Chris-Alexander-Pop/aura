@@ -141,8 +141,8 @@ export function SettingsPane() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["settings", "power-profile"] }),
   })
 
-  async function applyPowerProfile(profile: PowerProfile) {
-    await powerMut.mutateAsync(profile)
+  function applyPowerProfile(profile: PowerProfile) {
+    powerMut.mutate(profile)
   }
 
   const defaultSink = audio.data?.sinks.find((s) => s.is_default)

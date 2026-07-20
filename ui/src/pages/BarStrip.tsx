@@ -395,13 +395,11 @@ function useBarSectionOrder(): BarSectionId[] {
 function BarSectionGroup({ ids, renderSection }: { ids: BarSectionId[]; renderSection: (id: BarSectionId) => ReactNode }) {
   if (ids.length === 0) return null
   return (
-    <>
+    <div className="flex flex-col gap-1">
       {ids.map((id) => (
-        <div key={id} className="border-b border-surface0/40 pb-1">
-          {renderSection(id)}
-        </div>
+        <div key={id}>{renderSection(id)}</div>
       ))}
-    </>
+    </div>
   )
 }
 

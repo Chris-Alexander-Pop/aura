@@ -101,7 +101,7 @@ export function HubDashboard({ quick }: { quick: DashboardQuickStatusView | unde
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <button
           type="button"
-          className="glass-card flex flex-col rounded-xl border border-surface0/60 p-3 text-left transition-colors hover:border-mauve/30"
+          className="flex flex-col rounded-xl bg-surface0/35 p-3 text-left transition-colors hover:bg-surface0/55"
           title="Open calendar"
           onClick={() => void api.auraToggleWindow("calendar")}
         >
@@ -109,7 +109,7 @@ export function HubDashboard({ quick }: { quick: DashboardQuickStatusView | unde
           <span className="mt-1 text-[11px] text-subtext0">{dateStr}</span>
         </button>
 
-        <div className="glass-card flex flex-col justify-center rounded-xl border border-surface0/60 p-3">
+        <div className="flex flex-col justify-center rounded-xl bg-surface0/35 p-3">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-subtext1">
             Weather
           </span>
@@ -120,7 +120,7 @@ export function HubDashboard({ quick }: { quick: DashboardQuickStatusView | unde
 
         <button
           type="button"
-          className="glass-card flex flex-col rounded-xl border border-surface0/60 p-3 text-left transition-colors hover:border-mauve/30"
+          className="flex flex-col rounded-xl bg-surface0/35 p-3 text-left transition-colors hover:bg-surface0/55"
           title="Open calendar"
           onClick={() => void api.auraToggleWindow("calendar")}
         >
@@ -138,7 +138,7 @@ export function HubDashboard({ quick }: { quick: DashboardQuickStatusView | unde
         </button>
       </div>
 
-      <div className="glass-card shrink-0 px-3 py-2">
+      <div className="rounded-xl bg-surface0/35 px-3 py-2">
         <ResourceBars />
       </div>
     </div>

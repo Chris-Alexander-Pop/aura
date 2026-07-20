@@ -23,7 +23,7 @@ export default function ModuleHubWindow() {
         name: "module-hub",
         page: "#/module-hub",
         anchor: Astal.WindowAnchor.TOP,
-        layer: Astal.Layer.TOP,
+        layer: Astal.Layer.OVERLAY,
         marginTop: 10,
         marginLeft: 720,
         width: 720,

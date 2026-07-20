@@ -10,6 +10,10 @@ import api, { type CalendarEvent } from "@/lib/api"
 import { connectWs, useWsStore } from "@/lib/ws"
 import { cn } from "@/lib/utils"
 import { postPanelHover } from "@/lib/panel-hover"
+import CalendarNotificationHistory from "@/components/calendar/CalendarNotificationHistory"
+import { notificationQueryKeys } from "@/lib/ws-invalidation"
+
+type LowerTab = "events" | "notifications"
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
 const MONTHS = [
@@ -318,6 +322,14 @@ export default function Calendar() {
   const [newTaskText, setNewTaskText] = useState("")
   const [newEventTitle, setNewEventTitle] = useState("")
   const [showAddEvent, setShowAddEvent] = useState(false)
+  const [lowerTab, setLowerTab] = useState<LowerTab>("events")
+
+  const { data: notificationList } = useQuery({
+    queryKey: notificationQueryKeys.list,
+    queryFn: () => api.listNotifications(80),
+    refetchInterval: 15_000,
+  })
+  const notificationCount = notificationList?.length ?? 0
 
   useEffect(() => {
     connectWs()
@@ -521,109 +533,156 @@ export default function Calendar() {
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col border-t border-surface0/50">
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3">
-            <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-subtext0">
-                  {agendaSubtitle}
-                </p>
-                <p className="truncate text-sm font-semibold text-text">{agendaTitle}</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
+          <div className="flex shrink-0 gap-1 border-b border-surface0/40 px-3 pt-2">
+            {(
+              [
+                { id: "events" as const, label: "Events", icon: "event" },
+                {
+                  id: "notifications" as const,
+                  label: "Notifications",
+                  icon: "notifications",
+                  badge: notificationCount > 0 ? notificationCount : undefined,
+                },
+              ] as const
+            ).map((tab) => {
+              const active = lowerTab === tab.id
+              return (
                 <button
+                  key={tab.id}
                   type="button"
-                  className="btn-ghost px-2 text-[11px]"
-                  title="Add event"
-                  onClick={() => setShowAddEvent((v) => !v)}
+                  onClick={() => setLowerTab(tab.id)}
+                  className={cn(
+                    "relative flex items-center gap-1.5 px-2.5 pb-2 pt-1 text-[11px] font-medium transition-colors",
+                    active ? "text-text" : "text-subtext0 hover:text-subtext1"
+                  )}
                 >
-                  <span className="icon text-sm">add</span>
+                  <span className="icon text-sm">{tab.icon}</span>
+                  {tab.label}
+                  {"badge" in tab && tab.badge != null ? (
+                    <span className="rounded-md bg-mauve/25 px-1.5 py-0.5 text-[10px] tabular-nums text-mauve">
+                      {tab.badge > 99 ? "99+" : tab.badge}
+                    </span>
+                  ) : null}
+                  {active ? (
+                    <motion.span
+                      layoutId="calendar-lower-tab"
+                      className="absolute inset-x-1 -bottom-px h-0.5 rounded-full bg-mauve"
+                    />
+                  ) : null}
                 </button>
-                <button
-                  type="button"
-                  className="btn-ghost px-2 text-[11px]"
-                  disabled={eventsLoading || isFetching}
-                  onClick={() => void refetch()}
-                  title="Refresh"
-                >
-                  <span className={cn("icon text-sm", isFetching && "animate-spin")}>refresh</span>
-                </button>
-              </div>
-            </div>
+              )
+            })}
+          </div>
 
-            {showAddEvent ? (
-              <div className="mb-2 flex gap-1.5">
-                <input
-                  type="text"
-                  value={newEventTitle}
-                  onChange={(e) => setNewEventTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") addEvent()
-                  }}
-                  placeholder={
-                    selectedDay != null
-                      ? `Event on ${MONTHS[month]} ${selectedDay}…`
-                      : "New event (today 10:00)…"
-                  }
-                  className="flex-1 rounded-lg border border-surface0/60 bg-surface0/50 px-2.5 py-1.5 text-[12px] placeholder:text-subtext0 focus:outline-none focus:ring-2 focus:ring-mauve/40"
-                />
-                <button
-                  type="button"
-                  className="btn-ghost shrink-0 px-2.5 text-[11px]"
-                  disabled={createEventMut.isPending}
-                  onClick={addEvent}
-                >
-                  Add
-                </button>
-              </div>
-            ) : null}
-
-            {eventsLoading && events === undefined ? (
-              <EmptyHint>Loading events…</EmptyHint>
-            ) : eventsError ? (
-              <EmptyHint>
-                {eventsErr instanceof Error ? eventsErr.message : "Could not load events."}{" "}
-                <button type="button" className="text-mauve underline" onClick={() => void refetch()}>
-                  Retry
-                </button>
-              </EmptyHint>
-            ) : agendaEvents.length === 0 ? (
-              <EmptyHint>
-                {monthEvents.length === 0
-                  ? "No events this month. Connect Google or add one."
-                  : selectedDay != null
-                    ? "Nothing on this day — tap again to show the whole month."
-                    : "No events to show."}
-              </EmptyHint>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 py-3">
+            {lowerTab === "notifications" ? (
+              <CalendarNotificationHistory />
             ) : (
-              <ul className="flex flex-col gap-1.5">
-                <AnimatePresence initial={false}>
-                  {agendaEvents.map((ev) => (
-                    <motion.li
-                      key={ev.id}
-                      layout
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      className="group flex items-start gap-2 rounded-xl border border-surface0/35 bg-surface0/25 px-2.5 py-2"
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-subtext0">
+                      {agendaSubtitle}
+                    </p>
+                    <p className="truncate text-sm font-semibold text-text">{agendaTitle}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      className="btn-ghost px-2 text-[11px]"
+                      title="Add event"
+                      onClick={() => setShowAddEvent((v) => !v)}
                     >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-medium leading-snug text-text">{ev.title}</p>
-                        <p className="mt-0.5 text-[10px] text-subtext0">
-                          {formatEventWhen(ev, selectedDay == null)}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        className="icon-btn opacity-0 transition-opacity group-hover:opacity-70 hover:!opacity-100"
-                        aria-label="Delete event"
-                        onClick={() => deleteEventMut.mutate(ev.id)}
-                      >
-                        <span className="icon text-sm">close</span>
-                      </button>
-                    </motion.li>
-                  ))}
-                </AnimatePresence>
-              </ul>
+                      <span className="icon text-sm">add</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost px-2 text-[11px]"
+                      disabled={eventsLoading || isFetching}
+                      onClick={() => void refetch()}
+                      title="Refresh"
+                    >
+                      <span className={cn("icon text-sm", isFetching && "animate-spin")}>refresh</span>
+                    </button>
+                  </div>
+                </div>
+
+                {showAddEvent ? (
+                  <div className="mb-2 flex gap-1.5">
+                    <input
+                      type="text"
+                      value={newEventTitle}
+                      onChange={(e) => setNewEventTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") addEvent()
+                      }}
+                      placeholder={
+                        selectedDay != null
+                          ? `Event on ${MONTHS[month]} ${selectedDay}…`
+                          : "New event (today 10:00)…"
+                      }
+                      className="flex-1 rounded-lg border border-surface0/60 bg-surface0/50 px-2.5 py-1.5 text-[12px] placeholder:text-subtext0 focus:outline-none focus:ring-2 focus:ring-mauve/40"
+                    />
+                    <button
+                      type="button"
+                      className="btn-ghost shrink-0 px-2.5 text-[11px]"
+                      disabled={createEventMut.isPending}
+                      onClick={addEvent}
+                    >
+                      Add
+                    </button>
+                  </div>
+                ) : null}
+
+                {eventsLoading && events === undefined ? (
+                  <EmptyHint>Loading events…</EmptyHint>
+                ) : eventsError ? (
+                  <EmptyHint>
+                    {eventsErr instanceof Error ? eventsErr.message : "Could not load events."}{" "}
+                    <button type="button" className="text-mauve underline" onClick={() => void refetch()}>
+                      Retry
+                    </button>
+                  </EmptyHint>
+                ) : agendaEvents.length === 0 ? (
+                  <EmptyHint>
+                    {monthEvents.length === 0
+                      ? "No events this month. Connect Google or add one."
+                      : selectedDay != null
+                        ? "Nothing on this day — tap again to show the whole month."
+                        : "No events to show."}
+                  </EmptyHint>
+                ) : (
+                  <ul className="flex flex-col gap-1.5">
+                    <AnimatePresence initial={false}>
+                      {agendaEvents.map((ev) => (
+                        <motion.li
+                          key={ev.id}
+                          layout
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          className="group flex items-start gap-2 rounded-xl border border-surface0/35 bg-surface0/25 px-2.5 py-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[13px] font-medium leading-snug text-text">{ev.title}</p>
+                            <p className="mt-0.5 text-[10px] text-subtext0">
+                              {formatEventWhen(ev, selectedDay == null)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="icon-btn opacity-0 transition-opacity group-hover:opacity-70 hover:!opacity-100"
+                            aria-label="Delete event"
+                            onClick={() => deleteEventMut.mutate(ev.id)}
+                          >
+                            <span className="icon text-sm">close</span>
+                          </button>
+                        </motion.li>
+                      ))}
+                    </AnimatePresence>
+                  </ul>
+                )}
+              </div>
             )}
           </div>
 

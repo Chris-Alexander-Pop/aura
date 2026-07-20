@@ -12,6 +12,7 @@ import WebKit from "gi://WebKit?version=6.0"
 import { Astal, Gdk } from "ags/gtk4"
 import App from "ags/gtk4/app"
 import { createWebViewWindow } from "./WebViewWindow"
+import { attachWebViewCrashHandlers } from "../../lib/crash-log"
 
 import { BAR_STRIP_WIDTH_PX, gdkMonitorConnector, monitorTag } from "../../lib/monitor"
 
@@ -69,6 +70,7 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
 
     // ── Flyout WebView (built manually to keep a reference) ──────────────────
     const flyoutWv = new WebKit.WebView() as AnyWv
+    attachWebViewCrashHandlers(flyoutWv, flyoutName)
     flyoutWv.connect("context-menu", (_wv, menu) => {
         try {
             const ctx = menu as {

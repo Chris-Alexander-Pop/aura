@@ -207,8 +207,12 @@ export default function Dropdown() {
     const order: PowerProfile[] = ["balanced", "performance", "saver"]
     const cur = (quick?.power_profile ?? "balanced") as PowerProfile
     const i = Math.max(0, order.indexOf(cur))
-    await api.setPowerProfile(order[(i + 1) % order.length])
-    await qc.invalidateQueries({ queryKey: ["dashboard-quick-status"] })
+    try {
+      await api.setPowerProfile(order[(i + 1) % order.length])
+      await qc.invalidateQueries({ queryKey: ["dashboard-quick-status"] })
+    } catch (err) {
+      console.warn("power profile change failed:", err)
+    }
   }, [quick?.power_profile, qc])
 
   const moduleIds = useMemo(

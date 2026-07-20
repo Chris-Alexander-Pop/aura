@@ -41,7 +41,7 @@ function TileCard({ tileId, large }: { tileId: string; large?: boolean }) {
       onClick={openPanel}
       disabled={!isDropdownTileId(tileId)}
       className={cn(
-        "glass-card flex min-w-0 flex-col gap-0.5 rounded-xl border border-surface0/60 p-2.5 text-left transition-colors hover:border-mauve/30",
+        "flex min-w-0 flex-col gap-0.5 rounded-xl bg-surface0/35 p-2.5 text-left transition-colors hover:bg-surface0/55",
         large && "sm:col-span-2",
         (!isDropdownTileId(tileId) || isError) && "opacity-60"
       )}
