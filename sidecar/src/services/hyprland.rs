@@ -467,6 +467,12 @@ pub fn event_triggers_state_changed(event: &str) -> bool {
             | "float"
             | "pin"
             | "fullscreen"
+            // Output hotplug — GDK alone often keeps phantom monitors, so Aura
+            // must resync per-monitor shell windows from Hyprland's list.
+            | "monitoradded"
+            | "monitorremoved"
+            | "monitoraddedv2"
+            | "monitorremovedv2"
     )
 }
 
