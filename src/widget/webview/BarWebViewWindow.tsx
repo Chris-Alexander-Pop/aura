@@ -17,7 +17,7 @@ import { attachWebViewCrashHandlers } from "../../lib/crash-log"
 import { BAR_STRIP_WIDTH_PX, gdkMonitorConnector, monitorTag } from "../../lib/monitor"
 
 const STRIP_W = BAR_STRIP_WIDTH_PX
-const FLYOUT_W = 320 // max popout width; individual panels use narrower content inside
+const FLYOUT_W = 340 // max popout width; individual panels use narrower content inside
 const CLOSE_DELAY_MS = 250
 
 type AnyWv = WebKit.WebView & {

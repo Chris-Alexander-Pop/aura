@@ -8,6 +8,11 @@ export type NetworkConnectModalProps = {
   securityLabel: string
   onClose: () => void
   onConnect: (password: string) => Promise<void>
+  /**
+   * `overlay` — centered dialog (control center).
+   * `inline` — fills parent (narrow flyouts); parent must be `relative`.
+   */
+  placement?: "overlay" | "inline"
 }
 
 export function NetworkConnectModal({
@@ -16,6 +21,7 @@ export function NetworkConnectModal({
   securityLabel,
   onClose,
   onConnect,
+  placement = "overlay",
 }: NetworkConnectModalProps) {
   const titleId = useId()
   const passwordRef = useRef<HTMLInputElement>(null)
@@ -69,6 +75,17 @@ export function NetworkConnectModal({
     }
   }
 
+  const dialogClass =
+    placement === "inline"
+      ? cn(
+          "absolute inset-x-2 top-2 z-[90] rounded-2xl border border-surface0/80",
+          "bg-mantle/98 backdrop-blur-xl shadow-2xl p-4 text-text",
+        )
+      : cn(
+          "fixed left-1/2 top-1/2 z-[90] w-[min(100%-2rem,22rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-surface0/80",
+          "bg-mantle/95 backdrop-blur-xl shadow-2xl p-5 text-text",
+        )
+
   return (
     <AnimatePresence>
       {open ? (
@@ -76,7 +93,10 @@ export function NetworkConnectModal({
           <motion.button
             type="button"
             aria-label="Close dialog"
-            className="fixed inset-0 z-[80] bg-crust/55 backdrop-blur-md"
+            className={cn(
+              "z-[80] bg-crust/55 backdrop-blur-md",
+              placement === "inline" ? "absolute inset-0" : "fixed inset-0",
+            )}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -86,10 +106,7 @@ export function NetworkConnectModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className={cn(
-              "fixed left-1/2 top-1/2 z-[90] w-[min(100%-2rem,22rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-surface0/80",
-              "bg-mantle/95 backdrop-blur-xl shadow-2xl p-5 text-text"
-            )}
+            className={dialogClass}
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 6 }}
@@ -105,7 +122,7 @@ export function NetworkConnectModal({
               </div>
             </div>
 
-            <form onSubmit={submit} className="flex flex-col gap-3">
+            <form onSubmit={(e) => void submit(e)} className="flex flex-col gap-3">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11px] uppercase tracking-wide text-subtext1">Password</span>
                 <input

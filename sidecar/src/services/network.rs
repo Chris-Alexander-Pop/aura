@@ -111,31 +111,16 @@ pub fn register(registry: &mut ServiceRegistry) {
                 .ok_or_else(|| anyhow::anyhow!("Missing ssid parameter"))?,
         )?;
 
-        let password: Option<String> = params
+        let user_password: Option<String> = params
             .and_then(|p| p.get("password").cloned())
-            .and_then(|v| serde_json::from_value(v).ok());
-
-        let password = match password {
-            Some(p) => {
-                if !p.is_empty() {
-                    if let Err(e) = keyring::store_wifi_password(&ssid, &p).await {
-                        return Ok(serde_json::json!({
-                            "success": false,
-                            "error": format!(
-                                "Could not save Wi‑Fi password to keyring: {e}. Unlock your login keyring and try again."
-                            ),
-                        }));
-                    }
-                }
-                Some(p)
-            }
-            None => keyring::lookup_wifi_password(&ssid).await?,
-        };
+            .and_then(|v| serde_json::from_value(v).ok())
+            .and_then(|p: String| if p.is_empty() { None } else { Some(p) });
 
         if let Some(sec) = scan_security_for_ssid(&ssid).await {
             if is_enterprise_security(&sec) {
                 return Ok(serde_json::json!({
                     "success": false,
+                    "needs_password": false,
                     "error": map_nmcli_connect_error(
                         "802.1X enterprise Wi‑Fi is not supported yet; configure the profile in NetworkManager",
                     ),
@@ -143,9 +128,36 @@ pub fn register(registry: &mut ServiceRegistry) {
             }
         }
 
-        let result = match password.as_deref() {
-            Some(pass) if !pass.is_empty() => connect_wifi_with_password(&ssid, pass).await,
-            _ => connect_open_or_saved(&ssid).await,
+        // Caelestia-style: prefer NetworkManager saved profiles first. Only ask the
+        // UI for a password when NM has no secrets (and Aura keyring has none).
+        let result = if let Some(pass) = user_password.as_deref() {
+            if let Err(e) = keyring::store_wifi_password(&ssid, pass).await {
+                return Ok(serde_json::json!({
+                    "success": false,
+                    "needs_password": false,
+                    "error": format!(
+                        "Could not save Wi‑Fi password to keyring: {e}. Unlock your login keyring and try again."
+                    ),
+                }));
+            }
+            connect_wifi_with_password(&ssid, pass).await
+        } else {
+            match connect_open_or_saved(&ssid).await {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    let mapped = map_nmcli_connect_error(&e.to_string());
+                    if connect_error_needs_password(&mapped) {
+                        match keyring::lookup_wifi_password(&ssid).await {
+                            Ok(Some(pass)) if !pass.is_empty() => {
+                                connect_wifi_with_password(&ssid, &pass).await
+                            }
+                            _ => Err(e),
+                        }
+                    } else {
+                        Err(e)
+                    }
+                }
+            }
         };
 
         match result {
@@ -154,10 +166,15 @@ pub fn register(registry: &mut ServiceRegistry) {
                 let _ = emit_network_state().await;
                 Ok(serde_json::json!({ "success": true }))
             }
-            Err(e) => Ok(serde_json::json!({
-                "success": false,
-                "error": map_nmcli_connect_error(&e.to_string()),
-            })),
+            Err(e) => {
+                let error = map_nmcli_connect_error(&e.to_string());
+                let needs_password = connect_error_needs_password(&error);
+                Ok(serde_json::json!({
+                    "success": false,
+                    "needs_password": needs_password,
+                    "error": error,
+                }))
+            }
         }
     });
 
@@ -224,6 +241,11 @@ async fn scan_security_for_ssid(ssid: &str) -> Option<String> {
         .map(|n| n.security.clone())
 }
 
+/// True when the UI should prompt for a Wi‑Fi password (Caelestia `needsPassword`).
+pub fn connect_error_needs_password(mapped: &str) -> bool {
+    mapped == "Password required for this network" || mapped == "Incorrect Wi‑Fi password"
+}
+
 /// Map raw `nmcli` / process errors to short UI-facing messages.
 pub fn map_nmcli_connect_error(raw: &str) -> String {
     let msg = extract_nmcli_error_message(raw);
@@ -235,7 +257,7 @@ pub fn map_nmcli_connect_error(raw: &str) -> String {
     if lower.contains("no network with ssid") {
         return "Wi‑Fi network not in range — scan again".to_string();
     }
-    if lower.contains("secrets were required") {
+    if lower.contains("secrets were required") || lower.contains("no secrets were provided") {
         return "Password required for this network".to_string();
     }
     if lower.contains("passwords or encryption keys")

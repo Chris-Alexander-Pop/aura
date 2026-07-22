@@ -1,4 +1,5 @@
 // Typed fetch wrappers for the sidecar REST API at localhost:9080
+import { NetworkConnectError } from "@/lib/network-connect"
 import {
   adaptDndPrefs,
   adaptLogEntries,
@@ -157,9 +158,12 @@ export const api = {
     const data = (await callData("Network.Connect", {
       ssid,
       ...(password != null && password !== "" ? { password } : {}),
-    })) as { success?: boolean; error?: string }
+    })) as { success?: boolean; error?: string; needs_password?: boolean }
     if (data?.success === false) {
-      throw new Error(data.error ?? "Connection failed")
+      throw new NetworkConnectError(
+        data.error ?? "Connection failed",
+        data.needs_password === true,
+      )
     }
     return data
   },

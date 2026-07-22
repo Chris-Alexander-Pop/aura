@@ -74,6 +74,10 @@ pub mod contract_parsers {
         crate::services::network::map_nmcli_connect_error(raw)
     }
 
+    pub fn connect_error_needs_password(mapped: &str) -> bool {
+        crate::services::network::connect_error_needs_password(mapped)
+    }
+
     pub fn nmcli_connect_output_success(output: &str) -> bool {
         crate::services::network::nmcli_connect_output_success(output)
     }

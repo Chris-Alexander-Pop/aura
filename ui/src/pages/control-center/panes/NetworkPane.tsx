@@ -2,20 +2,13 @@ import { useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/lib/api"
+import {
+  isPasswordRequiredError,
+  isSecuredNetwork,
+  strengthIcon,
+} from "@/lib/network-connect"
 import { cn } from "@/lib/utils"
 import { NetworkConnectModal } from "./NetworkConnectModal"
-
-function strengthIcon(strength: number): string {
-  if (strength >= 75) return "wifi"
-  if (strength >= 50) return "wifi_2_bar"
-  if (strength >= 25) return "wifi_1_bar"
-  return "wifi_1_bar"
-}
-
-function isSecured(security: string): boolean {
-  const s = security.trim().toLowerCase()
-  return s.length > 0 && s !== "none" && s !== "open"
-}
 
 export function NetworkPane() {
   const qc = useQueryClient()
@@ -87,8 +80,15 @@ export function NetworkPane() {
     setConnectError(null)
     try {
       await api.connectNetwork(ssid, password)
+      setPasswordTarget(null)
       await invalidateNetwork()
     } catch (err) {
+      if (!password && isPasswordRequiredError(err)) {
+        const ap = sorted.find((n) => n.ssid === ssid)
+        setPasswordTarget({ ssid, security: ap?.security ?? "Secured" })
+        setConnectError(null)
+        return
+      }
       setConnectError(err instanceof Error ? err.message : "Connection failed")
       throw err
     } finally {
@@ -96,13 +96,10 @@ export function NetworkPane() {
     }
   }
 
+  /** Caelestia path: always try saved NM profile / keyring first. */
   const onApActivate = (ap: { ssid: string; security: string; active: boolean }) => {
     if (ap.active) return
     if (!wifiOn) return
-    if (isSecured(ap.security)) {
-      setPasswordTarget({ ssid: ap.ssid, security: ap.security })
-      return
-    }
     void runConnect(ap.ssid)
   }
 
@@ -130,7 +127,7 @@ export function NetworkPane() {
               <h2 className="text-xl font-semibold text-text tracking-tight">Network</h2>
             </div>
             <p className="text-xs text-subtext1 mt-1.5 max-w-prose">
-              Wi‑Fi status, scan, and connection. Secured networks open a password step.
+              Wi‑Fi status, scan, and connection. Saved networks connect without re-entering a password.
             </p>
           </div>
         </header>
@@ -226,9 +223,10 @@ export function NetworkPane() {
 
         <ul className="flex flex-col gap-2.5 pr-0.5">
           {sorted.map((ap) => {
-            const secure = isSecured(ap.security)
+            const secure = isSecuredNetwork(ap.security)
             const isConnecting = connectingToSsid === ap.ssid
             const canInteract = wifiOn && !ap.active
+            const isSaved = (saved ?? []).some((s) => s.name === ap.ssid)
 
             return (
               <li key={`${ap.ssid}-${ap.strength}`}>
@@ -284,11 +282,8 @@ export function NetworkPane() {
                     </div>
                     <p className="text-[11px] text-subtext0 mt-0.5">
                       {ap.security || "—"} · {ap.strength}%
-                      {canInteract
-                        ? secure
-                          ? " · password to connect"
-                          : " · tap to connect"
-                        : ""}
+                      {isSaved ? " · saved" : ""}
+                      {canInteract ? " · tap to connect" : ""}
                     </p>
                   </div>
 
@@ -318,7 +313,7 @@ export function NetworkPane() {
                             ? "bg-blue/35 text-blue hover:bg-blue/45"
                             : "bg-mauve/35 text-mauve hover:bg-mauve/45"
                         )}
-                        title={secure ? "Enter password" : "Connect"}
+                        title="Connect"
                         onClick={(e) => {
                           e.stopPropagation()
                           onApActivate(ap)

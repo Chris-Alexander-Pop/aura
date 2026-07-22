@@ -64,7 +64,7 @@ export default function BarFlyout() {
         {content && state ? (
           <motion.div
             key={state.panel}
-            className="pointer-events-auto absolute max-h-[min(440px,calc(100vh-48px))] origin-left overflow-hidden overflow-y-auto rounded-r-xl border border-surface0/90 border-l-transparent bg-mantle/90 text-text shadow-xl backdrop-blur-xl"
+            className="pointer-events-auto absolute max-h-[min(560px,calc(100vh-48px))] origin-left overflow-hidden overflow-y-auto rounded-r-xl border border-surface0/90 border-l-transparent bg-mantle/90 text-text shadow-xl backdrop-blur-xl"
             style={{ top: state.y, width: panelW }}
             initial={{ opacity: 0, x: -panelW, y: "-50%" }}
             animate={{ opacity: 1, x: 0, y: "-50%" }}

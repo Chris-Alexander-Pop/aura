@@ -1,6 +1,6 @@
 /** Per-panel flyout widths — mirrors src/lib/theme.ts bar.popoutWidth */
 export const FLYOUT_WIDTHS = {
-  network: 320,
+  network: 340,
   bluetooth: 300,
   audio: 300,
   brightness: 260,

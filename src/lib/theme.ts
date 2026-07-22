@@ -95,7 +95,7 @@ export const bar = {
     totalWidth: 56, // innerWidth + padding.normal * 2 - adjusted for GTK
     popoutWidth: {
         audio: 300,
-        network: 320,
+        network: 340,
         battery: 250,
         bluetooth: 300,
     },

@@ -66,6 +66,15 @@ fn network_connect_error_fixtures_map_to_ui_messages() {
         map_nmcli_connect_error(&secrets),
         "Password required for this network"
     );
+    assert!(ags_sidecar::contract_parsers::connect_error_needs_password(
+        "Password required for this network"
+    ));
+    assert!(ags_sidecar::contract_parsers::connect_error_needs_password(
+        "Incorrect Wi‑Fi password"
+    ));
+    assert!(!ags_sidecar::contract_parsers::connect_error_needs_password(
+        "Wi‑Fi network not in range — scan again"
+    ));
 }
 
 #[test]
