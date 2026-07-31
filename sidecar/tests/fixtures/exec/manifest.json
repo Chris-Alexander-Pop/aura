@@ -692,6 +692,15 @@
     {
       "cmd": [
         "systemctl",
+        "is-active",
+        "power-profiles-daemon.service"
+      ],
+      "stdout": "systemctl/is_active_power_profiles_daemon.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "systemctl",
         "is-enabled",
         "sshd"
       ],
