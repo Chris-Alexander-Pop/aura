@@ -1,7 +1,36 @@
 use anyhow::Result;
+use std::io::ErrorKind;
 use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+
+/// Run `secret-tool` and capture output. Missing binary → `Ok(None)` so callers can
+/// treat "no keyring tooling" like "no stored secret" (CI / minimal hosts).
+async fn secret_tool_output(args: &[&str]) -> Result<Option<std::process::Output>> {
+    match Command::new("secret-tool")
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .await
+    {
+        Ok(output) => Ok(Some(output)),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn secret_from_lookup_output(output: &std::process::Output) -> Option<String> {
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
 
 /// Human-readable secret-tool label for a VPN credential type.
 pub(crate) fn vpn_credential_label(credential_type: &str) -> &str {
@@ -54,30 +83,20 @@ pub async fn store_vpn_credential(vpn_id: &str, credential_type: &str, value: &s
 
 /// Look up a VPN credential by vpn_id and credential_type from the keyring.
 pub async fn lookup_vpn_credential(vpn_id: &str, credential_type: &str) -> Result<Option<String>> {
-    let output = Command::new("secret-tool")
-        .arg("lookup")
-        .arg("application")
-        .arg("aura")
-        .arg("type")
-        .arg(credential_type)
-        .arg("vpn_id")
-        .arg(vpn_id)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await?;
-
-    if !output.status.success() {
-        // Treat missing secret or error as "not found"
+    let Some(output) = secret_tool_output(&[
+        "lookup",
+        "application",
+        "aura",
+        "type",
+        credential_type,
+        "vpn_id",
+        vpn_id,
+    ])
+    .await?
+    else {
         return Ok(None);
-    }
-
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if text.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(text))
-    }
+    };
+    Ok(secret_from_lookup_output(&output))
 }
 
 /// Store a Wi-Fi password in GNOME Keyring (Aura application namespace).
@@ -137,28 +156,20 @@ pub async fn store_caldav_password(username: &str, password: &str) -> Result<()>
 
 /// Look up CalDAV password for a username.
 pub async fn lookup_caldav_password(username: &str) -> Result<Option<String>> {
-    let output = Command::new("secret-tool")
-        .arg("lookup")
-        .arg("application")
-        .arg("aura")
-        .arg("type")
-        .arg("caldav_password")
-        .arg("username")
-        .arg(username)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await?;
-
-    if !output.status.success() {
+    let Some(output) = secret_tool_output(&[
+        "lookup",
+        "application",
+        "aura",
+        "type",
+        "caldav_password",
+        "username",
+        username,
+    ])
+    .await?
+    else {
         return Ok(None);
-    }
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if text.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(text))
-    }
+    };
+    Ok(secret_from_lookup_output(&output))
 }
 
 /// Store Google OAuth refresh token (never logged).
@@ -188,31 +199,23 @@ pub async fn store_google_oauth_refresh(refresh_token: &str) -> Result<()> {
 
 /// Look up Google OAuth refresh token.
 pub async fn lookup_google_oauth_refresh() -> Result<Option<String>> {
-    let output = Command::new("secret-tool")
-        .arg("lookup")
-        .arg("application")
-        .arg("aura")
-        .arg("type")
-        .arg("google_oauth_refresh")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await?;
-
-    if !output.status.success() {
+    let Some(output) = secret_tool_output(&[
+        "lookup",
+        "application",
+        "aura",
+        "type",
+        "google_oauth_refresh",
+    ])
+    .await?
+    else {
         return Ok(None);
-    }
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if text.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(text))
-    }
+    };
+    Ok(secret_from_lookup_output(&output))
 }
 
 /// Clear stored Google OAuth refresh token.
 pub async fn clear_google_oauth_refresh() -> Result<()> {
-    let status = Command::new("secret-tool")
+    match Command::new("secret-tool")
         .arg("clear")
         .arg("application")
         .arg("aura")
@@ -221,10 +224,13 @@ pub async fn clear_google_oauth_refresh() -> Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .await?;
-    // clear returns non-zero if nothing matched — treat as ok
-    let _ = status;
-    Ok(())
+        .await
+    {
+        // clear returns non-zero if nothing matched — treat as ok
+        Ok(_status) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
 }
 
 /// Probe whether secret-tool exists and the login keyring is unlocked.
@@ -318,55 +324,38 @@ pub async fn store_vault_entry(key: &str, value: &str) -> Result<()> {
 
 /// Look up a Vault entry by key.
 pub async fn lookup_vault_entry(key: &str) -> Result<Option<String>> {
-    let output = Command::new("secret-tool")
-        .arg("lookup")
-        .arg("application")
-        .arg("aura-vault")
-        .arg("type")
-        .arg("vault_entry")
-        .arg("key")
-        .arg(key)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await?;
-
-    if !output.status.success() {
+    let Some(output) = secret_tool_output(&[
+        "lookup",
+        "application",
+        "aura-vault",
+        "type",
+        "vault_entry",
+        "key",
+        key,
+    ])
+    .await?
+    else {
         return Ok(None);
-    }
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if text.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(text))
-    }
+    };
+    Ok(secret_from_lookup_output(&output))
 }
 
 /// Look up a stored Wi-Fi password by SSID.
 pub async fn lookup_wifi_password(ssid: &str) -> Result<Option<String>> {
-    let output = Command::new("secret-tool")
-        .arg("lookup")
-        .arg("application")
-        .arg("aura")
-        .arg("type")
-        .arg("wifi_password")
-        .arg("ssid")
-        .arg(ssid)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .await?;
-
-    if !output.status.success() {
+    let Some(output) = secret_tool_output(&[
+        "lookup",
+        "application",
+        "aura",
+        "type",
+        "wifi_password",
+        "ssid",
+        ssid,
+    ])
+    .await?
+    else {
         return Ok(None);
-    }
-
-    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if text.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(text))
-    }
+    };
+    Ok(secret_from_lookup_output(&output))
 }
 
 #[cfg(test)]
@@ -542,5 +531,21 @@ exit 1
         let _mock = MockKeyring::new();
         let value = lookup_vault_entry("missing-key").await.expect("lookup");
         assert!(value.is_none());
+    }
+
+    #[tokio::test]
+    async fn lookup_google_oauth_refresh_missing_secret_tool_returns_none() {
+        let _guard = keyring_test_lock().lock().await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Empty PATH so secret-tool is not found (ENOENT → Ok(None)).
+        let prev = std::env::var("PATH").ok();
+        std::env::set_var("PATH", dir.path());
+        let value = lookup_google_oauth_refresh().await.expect("lookup");
+        assert!(value.is_none());
+        clear_google_oauth_refresh().await.expect("clear ok without binary");
+        match prev {
+            Some(p) => std::env::set_var("PATH", p),
+            None => std::env::remove_var("PATH"),
+        }
     }
 }
