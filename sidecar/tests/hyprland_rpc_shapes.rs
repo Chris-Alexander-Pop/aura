@@ -10,6 +10,7 @@ const HYPRLAND_READONLY_METHODS: &[&str] = &[
     "Hyprland.GetClients",
     "Hyprland.GetActiveWindow",
     "Hyprland.GetMonitors",
+    "Hyprland.GetBarSnapshot",
 ];
 
 #[tokio::test]
