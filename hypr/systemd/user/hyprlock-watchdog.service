@@ -1,0 +1,10 @@
+[Unit]
+Description=Aura hyprlock restore (dead lock client)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.config/ags/scripts/hyprlock-watchdog.sh
+# Inherit compositor env from the user session.
+PassEnvironment=WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS XDG_SESSION_ID

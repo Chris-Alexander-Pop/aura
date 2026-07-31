@@ -92,9 +92,10 @@ Implement in order; all are in scope, not mutually exclusive:
 
 | Topic | Decision |
 |--------|----------|
-| Source of truth | **Hyprland**, with binds maintained in an **Aura-managed file** included from `hyprland.conf` |
-| Suggested path | `~/.config/ags/hypr/hyprland/aura-keybinds.conf` (generated/applied by `Keybinds.*` RPC) |
-| Hyprland include | `source = ~/.config/ags/hypr/hyprland/aura-keybinds.conf` and `source = ~/.config/ags/hypr/hyprland/execs-aura.conf` |
+| Source of truth | **Hyprland Lua** under `~/.config/ags/hypr/` (`hyprland.lua` + `hyprland/*.lua`); XDG stub at `~/.config/hypr/hyprland.lua` |
+| Static binds | Edit `hypr/hyprland/keybinds.lua` |
+| RPC overrides | `Keybinds.*` writes `hypr/hyprland/aura-overrides.lua` (loaded last) |
+| Legacy hyprlang | `aura-keybinds.conf` / `execs-aura.conf` unused on the Lua path |
 | **keyd** | **Optional** for FN/media key layer below Hyprland — install when ready; sidecar documents toggle, does not require keyd for v1 keybind editor |
 
 ### What is keyd?

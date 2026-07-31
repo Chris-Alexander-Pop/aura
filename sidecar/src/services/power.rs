@@ -249,14 +249,14 @@ async fn read_sysfs_string(path: &str) -> Option<String> {
 }
 
 async fn sync_profile_from_system() -> Result<()> {
-    let profile = if process::exec_command(&["which", "powerprofilesctl"])
-        .await
-        .is_ok()
-    {
+    // power-profiles-daemon is masked on this host (TLP owns profiles). Calling
+    // `powerprofilesctl get` every tick used to SIGABRT under GI/DBus activation
+    // against a masked unit — only use it when the daemon is actually running.
+    let profile = if powerprofilesctl_daemon_ok().await {
         let out = process::exec_command(&["powerprofilesctl", "get"]).await?;
         parse_powerprofilesctl_output(&out)
     } else {
-        read_caelestia_profile_file().await?
+        read_aura_profile_file().await?
     };
 
     let Some(profile) = profile else {
@@ -283,11 +283,11 @@ pub fn parse_powerprofilesctl_output(out: &str) -> Option<PowerProfile> {
     }
 }
 
-async fn read_caelestia_profile_file() -> Result<Option<PowerProfile>> {
+async fn read_aura_profile_file() -> Result<Option<PowerProfile>> {
     let home = std::env::var("HOME")?;
     let profile_path = PathBuf::from(home)
         .join(".config")
-        .join("caelestia")
+        .join("ags")
         .join("current-power-profile");
 
     if !profile_path.exists() {
@@ -311,9 +311,19 @@ pub(crate) async fn set_profile_by_name(profile_str: &str) -> Result<()> {
     set_profile(parse_profile_str(profile_str)).await
 }
 
-/// `powerprofilesctl` may be installed while the daemon is masked/stopped.
+/// `powerprofilesctl` may be installed while the daemon is masked/stopped (TLP).
+/// Prefer a cheap systemd check so we never D-Bus-activate a masked unit.
 async fn powerprofilesctl_daemon_ok() -> bool {
-    process::exec_command(&["powerprofilesctl", "get"]).await.is_ok()
+    if process::exec_command(&["which", "powerprofilesctl"])
+        .await
+        .is_err()
+    {
+        return false;
+    }
+    matches!(
+        process::exec_command(&["systemctl", "is-active", "power-profiles-daemon.service"]).await,
+        Ok(s) if s.trim() == "active"
+    )
 }
 
 async fn set_profile(profile: PowerProfile) -> Result<()> {
@@ -330,14 +340,14 @@ async fn set_profile(profile: PowerProfile) -> Result<()> {
         let home = std::env::var("HOME")?;
         let script_path = PathBuf::from(home)
             .join(".config")
-            .join("caelestia")
+            .join("ags")
             .join("set-power-profile.sh");
 
         let mode = profile_to_str(&profile);
         if script_path.exists() {
             process::exec_command_detached(&[script_path.to_str().unwrap(), mode]).await?;
         } else {
-            tracing::warn!("No powerprofilesctl or Caelestia profile script found");
+            tracing::warn!("No powerprofilesctl or Aura profile script found");
         }
     }
 

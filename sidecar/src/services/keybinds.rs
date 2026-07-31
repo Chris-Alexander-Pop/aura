@@ -47,9 +47,32 @@ pub fn aura_binds_path() -> PathBuf {
             .join("ags")
             .join("hypr")
             .join("hyprland")
-            .join("aura-keybinds.conf");
+            .join("aura-overrides.lua");
     }
-    PathBuf::from("/tmp/aura-keybinds.conf")
+    PathBuf::from("/tmp/aura-overrides.lua")
+}
+
+fn aura_keybinds_lua_path() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home)
+            .join(".config")
+            .join("ags")
+            .join("hypr")
+            .join("hyprland")
+            .join("keybinds.lua");
+    }
+    PathBuf::from("/tmp/keybinds.lua")
+}
+
+fn aura_hyprland_entry() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home)
+            .join(".config")
+            .join("ags")
+            .join("hypr")
+            .join("hyprland.lua");
+    }
+    PathBuf::from("/tmp/hyprland.lua")
 }
 
 pub fn register(registry: &mut ServiceRegistry) {
@@ -197,6 +220,17 @@ fn default_hypr_config() -> PathBuf {
         return PathBuf::from(p);
     }
     if let Ok(home) = std::env::var("HOME") {
+        let lua_stub = PathBuf::from(&home)
+            .join(".config")
+            .join("hypr")
+            .join("hyprland.lua");
+        if lua_stub.exists() {
+            return lua_stub;
+        }
+        let aura = aura_hyprland_entry();
+        if aura.exists() {
+            return aura;
+        }
         return PathBuf::from(home)
             .join(".config")
             .join("hypr")
@@ -214,15 +248,22 @@ async fn load_all_keybinds() -> Result<Vec<KeybindEntry>> {
     })
     .await??;
 
-    let aura = aura_binds_path();
-    if aura.exists() && !files.iter().any(|f| f == &aura) {
-        files.push(aura);
+    // Always include Aura Lua modules (XDG stub does not `source=` them).
+    for extra in [aura_keybinds_lua_path(), aura_binds_path()] {
+        if extra.exists() && !files.iter().any(|f| f == &extra) {
+            files.push(extra);
+        }
     }
 
     let mut all = Vec::new();
     for path in files {
         let text = tokio::fs::read_to_string(&path).await.unwrap_or_default();
-        all.extend(parse_keybinds(&text, &path.display().to_string()));
+        let display = path.display().to_string();
+        if path.extension().and_then(|e| e.to_str()) == Some("lua") {
+            all.extend(parse_lua_keybinds(&text, &display));
+        } else {
+            all.extend(parse_keybinds(&text, &display));
+        }
     }
     Ok(all)
 }
@@ -233,7 +274,12 @@ async fn load_aura_binds_only() -> Result<Vec<KeybindEntry>> {
         return Ok(Vec::new());
     }
     let text = tokio::fs::read_to_string(&path).await?;
-    Ok(parse_keybinds(&text, &path.display().to_string()))
+    let display = path.display().to_string();
+    if path.extension().and_then(|e| e.to_str()) == Some("lua") {
+        Ok(parse_lua_keybinds(&text, &display))
+    } else {
+        Ok(parse_keybinds(&text, &display))
+    }
 }
 
 fn collect_config_files(path: &Path, depth: usize, out: &mut Vec<PathBuf>) -> Result<()> {
@@ -303,6 +349,116 @@ pub fn parse_keybinds(text: &str, file: &str) -> Vec<KeybindEntry> {
         });
     }
     out
+}
+
+/// Best-effort parse of `hl.bind("SUPER + Q", …)` lines for the Lua config path.
+pub fn parse_lua_keybinds(text: &str, file: &str) -> Vec<KeybindEntry> {
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let raw = line.split("--").next().unwrap_or("").trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let Some(rest) = raw.strip_prefix("hl.bind(") else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let quote = rest.chars().next().unwrap_or('\0');
+        if quote != '"' && quote != '\'' {
+            continue;
+        }
+        let body = &rest[1..];
+        let Some(end) = body.find(quote) else {
+            continue;
+        };
+        let lua_combo = &body[..end];
+        if lua_combo.is_empty() {
+            continue;
+        }
+        let after = body[end + 1..].trim_start().trim_start_matches(',').trim();
+        let action = summarize_lua_action(after);
+        let combo = lua_combo_to_hyprlang(lua_combo);
+        let category = categorize_action(&action);
+        out.push(KeybindEntry {
+            combo,
+            action,
+            bind_type: "bind".to_string(),
+            flags: None,
+            file: file.to_string(),
+            line: (i + 1) as u32,
+            category,
+        });
+    }
+    out
+}
+
+fn lua_combo_to_hyprlang(combo: &str) -> String {
+    let parts: Vec<&str> = combo.split('+').map(str::trim).filter(|s| !s.is_empty()).collect();
+    if parts.is_empty() {
+        return combo.to_string();
+    }
+    if parts.len() == 1 {
+        return format!(", {}", parts[0]);
+    }
+    let key = parts[parts.len() - 1];
+    let mods = parts[..parts.len() - 1].join(" ");
+    format!("{mods}, {key}")
+}
+
+fn hyprlang_combo_to_lua(combo: &str) -> String {
+    let parts: Vec<&str> = combo.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+    if parts.is_empty() {
+        return combo.to_string();
+    }
+    if parts.len() == 1 {
+        return parts[0].to_string();
+    }
+    let key = parts[parts.len() - 1];
+    let mods = parts[..parts.len() - 1]
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" + ");
+    format!("{mods} + {key}")
+}
+
+fn summarize_lua_action(after: &str) -> String {
+    let a = after.trim().trim_end_matches(',').trim().trim_end_matches(')').trim();
+    if let Some(rest) = a.strip_prefix("exec(") {
+        let inner = rest.trim().trim_matches(|c| c == '"' || c == '\'');
+        return format!("exec, {inner}");
+    }
+    if let Some(rest) = a.strip_prefix("hl.dsp.exec_cmd(") {
+        let inner = rest.trim().trim_matches(|c| c == '"' || c == '\'');
+        return format!("exec, {inner}");
+    }
+    if a.contains("workspace") {
+        return "workspace".to_string();
+    }
+    if a.contains("window.move") || a.contains("window.close") {
+        return a.to_string();
+    }
+    if a.starts_with("function") {
+        return "lua-fn".to_string();
+    }
+    if a.is_empty() {
+        return "lua".to_string();
+    }
+    a.chars().take(120).collect()
+}
+
+fn action_to_lua_dispatcher(action: &str) -> String {
+    let a = action.trim();
+    if let Some(rest) = a.strip_prefix("exec") {
+        let cmd = rest.trim().trim_start_matches(',').trim();
+        let escaped = cmd.replace('\\', "\\\\").replace('"', "\\\"");
+        return format!("hl.dsp.exec_cmd(\"{escaped}\")");
+    }
+    // Best-effort: unsupported classic dispatchers become a user-visible no-op.
+    let escaped = a.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        "hl.dsp.exec_cmd(\"notify-send -u low Aura 'Bind override needs Lua: {escaped}'\")"
+    )
 }
 
 fn parse_bind_line(raw: &str) -> Option<(&str, &str)> {
@@ -384,18 +540,32 @@ async fn write_aura_binds(entries: &[KeybindEntry]) -> Result<()> {
         tokio::fs::copy(&path, &backup).await.ok();
     }
 
-    let mut lines = vec![
-        "# Aura-managed Hyprland binds — safe to edit via Keybinds.* RPC".to_string(),
-        "# Source from live hyprland.conf (see hypr/README.md):".to_string(),
-        "# source = ~/.config/ags/hypr/hyprland/aura-keybinds.conf".to_string(),
-        String::new(),
-    ];
+    let is_lua = path.extension().and_then(|e| e.to_str()) == Some("lua");
+    let mut lines = if is_lua {
+        vec![
+            "-- Aura-managed Hyprland binds — written by Keybinds.* RPC".to_string(),
+            "-- Loaded last from hyprland.lua via pcall(require, \"hyprland/aura-overrides\").".to_string(),
+            String::new(),
+        ]
+    } else {
+        vec![
+            "# Aura-managed Hyprland binds — safe to edit via Keybinds.* RPC".to_string(),
+            "# Legacy hyprlang path (prefer aura-overrides.lua on Lua-config Hyprland).".to_string(),
+            String::new(),
+        ]
+    };
     for e in entries {
-        lines.push(format!("{} = {}, {}", e.bind_type, e.combo, e.action));
+        if is_lua {
+            let combo = hyprlang_combo_to_lua(&e.combo);
+            let disp = action_to_lua_dispatcher(&e.action);
+            lines.push(format!("hl.bind(\"{combo}\", {disp})"));
+        } else {
+            lines.push(format!("{} = {}, {}", e.bind_type, e.combo, e.action));
+        }
     }
     tokio::fs::write(&path, lines.join("\n") + "\n")
         .await
-        .context("write aura-keybinds.conf")?;
+        .context("write aura keybind overrides")?;
     Ok(())
 }
 

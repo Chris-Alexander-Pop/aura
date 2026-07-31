@@ -2,3 +2,5 @@ node_modules/
 @girs/
 ui/dist/
 hypr/dist/
+# Local OpenVPN profiles often embed client private keys — keep out of git.
+vpn/

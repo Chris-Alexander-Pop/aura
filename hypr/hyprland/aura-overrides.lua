@@ -1,0 +1,3 @@
+-- Optional Aura Keybinds.* RPC overrides.
+-- Generated/updated by the sidecar; safe to leave empty.
+-- Loaded last from hyprland.lua via pcall(require, "hyprland/aura-overrides").

@@ -306,17 +306,25 @@ async fn run_internal(cmd: &[&str], opts: ExecOpts, detached: bool) -> Result<St
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
+            .kill_on_drop(true)
             .spawn()
             .context("spawn detached")?;
         return Ok(String::new());
     }
 
-    let run = async {
-        let output = Command::new(cmd[0])
-            .args(&cmd[1..])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
+    // Spawn + wait (not `.output()` alone) so timeout cancellation kills the
+    // child via kill_on_drop — otherwise hung bluetoothctl/etc. leak FDs.
+    let child = Command::new(cmd[0])
+        .args(&cmd[1..])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .with_context(|| format!("failed to spawn {}", cmd[0]))?;
+
+    let run = async move {
+        let output = child
+            .wait_with_output()
             .await
             .with_context(|| format!("failed to run {}", cmd[0]))?;
 

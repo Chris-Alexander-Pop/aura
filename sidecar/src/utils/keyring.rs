@@ -6,9 +6,9 @@ use tokio::process::Command;
 /// Human-readable secret-tool label for a VPN credential type.
 pub(crate) fn vpn_credential_label(credential_type: &str) -> &str {
     match credential_type {
-        "vpn_user" => "Caelestia VPN User",
-        "vpn_password" => "Caelestia VPN Password",
-        "vpn_mfa" => "Caelestia VPN MFA",
+        "vpn_user" => "Aura VPN User",
+        "vpn_password" => "Aura VPN Password",
+        "vpn_mfa" => "Aura VPN MFA",
         other => other,
     }
 }
@@ -18,8 +18,7 @@ pub(crate) fn wifi_credential_label(ssid: &str) -> String {
     format!("Aura Wi-Fi: {ssid}")
 }
 
-/// Store a VPN credential in the desktop keyring using `secret-tool`, matching the
-/// scheme used by the legacy Caelestia QML implementation.
+/// Store a VPN credential in the desktop keyring using `secret-tool`.
 ///
 /// - `credential_type` is one of: "vpn_user", "vpn_password", "vpn_mfa"
 pub async fn store_vpn_credential(vpn_id: &str, credential_type: &str, value: &str) -> Result<()> {
@@ -31,7 +30,7 @@ pub async fn store_vpn_credential(vpn_id: &str, credential_type: &str, value: &s
         .arg("--label")
         .arg(label)
         .arg("application")
-        .arg("caelestia")
+        .arg("aura")
         .arg("type")
         .arg(credential_type)
         .arg("vpn_id")
@@ -58,7 +57,7 @@ pub async fn lookup_vpn_credential(vpn_id: &str, credential_type: &str) -> Resul
     let output = Command::new("secret-tool")
         .arg("lookup")
         .arg("application")
-        .arg("caelestia")
+        .arg("aura")
         .arg("type")
         .arg(credential_type)
         .arg("vpn_id")
@@ -383,10 +382,10 @@ mod tests {
     }
 
     #[test]
-    fn vpn_credential_labels_match_caelestia() {
-        assert_eq!(vpn_credential_label("vpn_user"), "Caelestia VPN User");
-        assert_eq!(vpn_credential_label("vpn_password"), "Caelestia VPN Password");
-        assert_eq!(vpn_credential_label("vpn_mfa"), "Caelestia VPN MFA");
+    fn vpn_credential_labels_match_aura() {
+        assert_eq!(vpn_credential_label("vpn_user"), "Aura VPN User");
+        assert_eq!(vpn_credential_label("vpn_password"), "Aura VPN Password");
+        assert_eq!(vpn_credential_label("vpn_mfa"), "Aura VPN MFA");
     }
 
     #[test]

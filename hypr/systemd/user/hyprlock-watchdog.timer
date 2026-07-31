@@ -1,0 +1,14 @@
+[Unit]
+Description=Aura hyprlock restore timer
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=15s
+AccuracySec=5s
+Persistent=false
+Unit=hyprlock-watchdog.service
+
+[Install]
+WantedBy=graphical-session.target

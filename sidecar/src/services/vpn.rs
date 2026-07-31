@@ -379,7 +379,7 @@ async fn connect_openvpn(
         .filter(|p| p.is_file())
         .or_else(|| {
             std::env::var("HOME").ok().map(|home| {
-                PathBuf::from(home).join(".config/quickshell/caelestia/assets/vpn/home.ovpn")
+                PathBuf::from(home).join(".config/ags/vpn/home.ovpn")
             })
         })
         .ok_or_else(|| anyhow!("OpenVPN config not found for profile {profile_id}"))?;
@@ -935,7 +935,7 @@ mod tests {
     }
 
     #[test]
-    fn default_profiles_include_caelestia_ids() {
+    fn default_profiles_include_expected_ids() {
         let profiles = default_profile_defs();
         let ids: Vec<_> = profiles.iter().map(|p| p.id.as_str()).collect();
         assert!(ids.contains(&"education"));

@@ -10,8 +10,9 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json;
 
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tokio::sync::RwLock;
-use tokio::time::{interval, Duration};
+use tokio::time::{interval, Duration, MissedTickBehavior};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BluetoothAdapter {
@@ -51,12 +52,29 @@ lazy_static::lazy_static! {
     static ref BLUETOOTH_STATE: RwLock<BluetoothState> = RwLock::new(BluetoothState::default());
 }
 
+/// Prevent overlapping bluetoothctl polls (each refresh spawns multiple
+/// processes; under a wedged BlueZ/DBus this used to amplify FD pressure).
+static REFRESH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+static REFRESH_FAIL_STREAK: AtomicU32 = AtomicU32::new(0);
+
 pub fn register(registry: &mut ServiceRegistry) {
     tokio::spawn(async {
-        let mut tick = interval(Duration::from_secs(2));
+        let mut tick = interval(Duration::from_secs(5));
+        tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
             tick.tick().await;
-            let _ = refresh_all(false).await;
+            if REFRESH_IN_FLIGHT.swap(true, Ordering::AcqRel) {
+                continue;
+            }
+            let ok = refresh_all(false).await.is_ok();
+            REFRESH_IN_FLIGHT.store(false, Ordering::Release);
+            if ok {
+                REFRESH_FAIL_STREAK.store(0, Ordering::Relaxed);
+            } else {
+                let streak = REFRESH_FAIL_STREAK.fetch_add(1, Ordering::Relaxed) + 1;
+                let backoff_secs = 5u64.saturating_mul(2u64.pow(streak.min(4)));
+                tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+            }
         }
     });
 
@@ -256,8 +274,12 @@ async fn resolve_adapter_mac(adapter_path: &str) -> Result<Option<String>> {
 }
 
 async fn refresh_all(force_emit: bool) -> Result<()> {
-    let adapters = fetch_adapters().await.unwrap_or_default();
-    let devices = fetch_devices().await.unwrap_or_default();
+    let adapters_res = fetch_adapters().await;
+    let devices_res = fetch_devices().await;
+    let adapters_ok = adapters_res.is_ok();
+    let devices_ok = devices_res.is_ok();
+    let adapters = adapters_res.unwrap_or_default();
+    let devices = devices_res.unwrap_or_default();
 
     let mut state = BLUETOOTH_STATE.write().await;
     let changed = state.adapters != adapters || state.devices != devices;
@@ -272,6 +294,9 @@ async fn refresh_all(force_emit: bool) -> Result<()> {
                 "devices": state.devices,
             }),
         );
+    }
+    if !adapters_ok && !devices_ok {
+        anyhow::bail!("bluetoothctl refresh failed (adapter+device queries)");
     }
     Ok(())
 }

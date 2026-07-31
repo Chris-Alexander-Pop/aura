@@ -128,7 +128,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             }
         }
 
-        // Caelestia-style: prefer NetworkManager saved profiles first. Only ask the
+        // Prefer NetworkManager saved profiles first. Only ask the
         // UI for a password when NM has no secrets (and Aura keyring has none).
         let result = if let Some(pass) = user_password.as_deref() {
             if let Err(e) = keyring::store_wifi_password(&ssid, pass).await {
@@ -241,7 +241,7 @@ async fn scan_security_for_ssid(ssid: &str) -> Option<String> {
         .map(|n| n.security.clone())
 }
 
-/// True when the UI should prompt for a Wi‑Fi password (Caelestia `needsPassword`).
+/// True when the UI should prompt for a Wi‑Fi password (`needsPassword`).
 pub fn connect_error_needs_password(mapped: &str) -> bool {
     mapped == "Password required for this network" || mapped == "Incorrect Wi‑Fi password"
 }

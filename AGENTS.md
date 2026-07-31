@@ -27,21 +27,23 @@ Sidecar panics, AGS/JS fatals, and unexpected sidecar exits write JSON under `~/
 
 ## Hypr config (Aura-owned)
 
-Aura keeps polkit, lock screen, keybinds, and session autostart under `hypr/`:
+Aura owns the **full Hyprland Lua compositor config** plus polkit/lock/PAM under `hypr/`:
 
 ```bash
-./scripts/aura-hypr-link.sh          # symlink XDG paths into ~/.config/ags/hypr/
-./scripts/aura-hypr-link.sh --check  # verify links + hyprland.conf sources
+./scripts/aura-hypr-link.sh          # XDG symlinks + ~/.config/hypr/hyprland.lua stub
+./scripts/aura-hypr-link.sh --check  # verify links + Aura Lua entry
+hyprctl reload
 ```
 
-Add to live `~/.config/hypr/hyprland.conf`:
-
-```ini
-source = ~/.config/ags/hypr/hyprland/execs-aura.conf
-source = ~/.config/ags/hypr/hyprland/aura-keybinds.conf
-```
+| Path | Role |
+|------|------|
+| `hypr/hyprland.lua` | Canonical compositor entry |
+| `hypr/hyprland/*.lua` | Modules (keybinds, execs, monitors, …) |
+| `~/.config/hypr/hyprland.lua` | Thin stub — do not put real config here |
 
 Full checklist: [`hypr/README.md`](hypr/README.md). Polkit: build hyprtoolkit agent with `./scripts/build-hypr-polkit.sh` (Arch’s package is still Qt).
+
+**Workspace binds:** use `hl.dsp.focus` / `hl.dsp.window.move` — classic `hyprctl dispatch workspace N` fails on Lua-config Hyprland.
 
 ## Critical: sidecar binary path
 
