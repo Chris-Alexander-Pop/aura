@@ -5,8 +5,8 @@
 mod common;
 
 use common::{
-    call_method, call_rpc, is_denied_rpc_method, is_safe_readonly_rpc, load_api_ts_methods,
-    test_registry, ExecFixtureGuard,
+    call_method, call_rpc, is_denied_rpc_method, is_safe_readonly_rpc, keyring_test_lock,
+    load_api_ts_methods, test_registry, ExecFixtureGuard, MockKeyring,
 };
 use common::setup_temp_storage_db;
 use serde_json::{json, Value};
@@ -744,6 +744,7 @@ fn api_ts_rpc_params(method: &str) -> Option<Value> {
         "Launcher.Query" => Some(json!({ "query": "" })),
         "Sidebar.GetTileData" => Some(json!({ "tile": "network" })),
         "Todos.ParseDueDate" => Some(json!({ "text": "tomorrow" })),
+        "Vault.GetEntry" => Some(json!({ "key": "__aura_readonly_probe__" })),
         _ => readonly_rpc_params(method),
     }
 }
@@ -873,6 +874,9 @@ async fn readonly_gap_methods_resolve() {
 
 async fn assert_api_ts_readonly_methods_resolve() {
     let _exec = ExecFixtureGuard::activate();
+    // Vault.GetEntry (and similar) look up via secret-tool; CI has no login keyring.
+    let _keyring = keyring_test_lock().await;
+    let _mock = MockKeyring::new();
     let registry = test_registry();
     let methods: Vec<String> = load_api_ts_methods()
         .into_iter()
