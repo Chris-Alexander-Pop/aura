@@ -205,10 +205,11 @@ async fn shell_lock_launch_and_toggle_mocked() {
     .await
     .expect("Aura.ToggleWindow");
 
+    // `launcher` is allowlisted (shell window); probe a name outside the set.
     let err = call_method_unchecked(
         &registry,
         "Aura.ToggleWindow",
-        Some(json!({ "name": "launcher" })),
+        Some(json!({ "name": "not-a-window" })),
     )
     .await
     .expect_err("disallowed window");
