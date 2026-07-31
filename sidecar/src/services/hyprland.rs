@@ -10,11 +10,15 @@ use anyhow::{anyhow, bail, Result};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::UnixStream;
 
 static HYPRLAND_EMIT_GEN: AtomicU64 = AtomicU64::new(0);
+/// Last `activewindowv2` address — title-only churn on the focused window must
+/// not schedule a full StateChanged (Cursor agent spinners emit activewindow*).
+static LAST_ACTIVE_WINDOW_ADDR: Mutex<String> = Mutex::new(String::new());
 
 const STATE_CHANGED_AREAS: &[&str] = &["workspaces", "clients", "active"];
 
@@ -448,18 +452,24 @@ fn workspace_event_name(event: &str, data: &str, id: i64) -> String {
 }
 
 /// Hyprland socket2 event names that should invalidate bar state.
+///
+/// Title animation events are excluded:
+/// - `windowtitle` / `windowtitlev2` — every spinner frame
+/// - `activewindow` — Hyprland re-emits this when the focused title changes
+///
+/// Focus changes use `activewindowv2` (address-only) with change detection in
+/// [`note_hyprland_event_line`]. Titles still refresh on real focus changes and
+/// the bar safety-net poll.
 pub fn event_triggers_state_changed(event: &str) -> bool {
     matches!(
         event,
         "workspace"
             | "workspacev2"
             | "focusedmon"
-            | "activewindow"
             | "activewindowv2"
             | "openwindow"
             | "closewindow"
             | "movewindow"
-            | "windowtitle"
             | "createworkspace"
             | "createworkspacev2"
             | "destroyworkspace"
@@ -476,6 +486,22 @@ pub fn event_triggers_state_changed(event: &str) -> bool {
     )
 }
 
+fn active_window_address_changed(addr: &str) -> bool {
+    let addr = addr.trim();
+    if addr.is_empty() {
+        return false;
+    }
+    let Ok(mut last) = LAST_ACTIVE_WINDOW_ADDR.lock() else {
+        return true;
+    };
+    if last.as_str() == addr {
+        return false;
+    }
+    last.clear();
+    last.push_str(addr);
+    true
+}
+
 pub fn note_hyprland_event_line(line: &str) {
     let Some((event, data)) = line.split_once(">>") else {
         return;
@@ -488,6 +514,12 @@ pub fn note_hyprland_event_line(line: &str) {
             );
         }
     }
+    if event == "activewindowv2" {
+        if active_window_address_changed(data) {
+            schedule_hyprland_state_emit();
+        }
+        return;
+    }
     if event_triggers_state_changed(event) {
         schedule_hyprland_state_emit();
     }
@@ -499,8 +531,8 @@ fn schedule_hyprland_state_emit() {
     }
     let gen = HYPRLAND_EMIT_GEN.fetch_add(1, Ordering::Relaxed) + 1;
     tokio::spawn(async move {
-        // Short coalesce so bursty socket2 events share one hyprctl pass.
-        tokio::time::sleep(Duration::from_millis(8)).await;
+        // Coalesce bursty socket2 events into one hyprctl pass.
+        tokio::time::sleep(Duration::from_millis(50)).await;
         if HYPRLAND_EMIT_GEN.load(Ordering::Relaxed) != gen {
             return;
         }

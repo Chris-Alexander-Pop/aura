@@ -55,7 +55,7 @@ async fn dispatch_denied_via_rpc_without_hyprctl() {
 fn event_names_cover_bar_invalidation() {
     assert!(event_triggers_state_changed("workspace"));
     assert!(event_triggers_state_changed("workspacev2"));
-    assert!(event_triggers_state_changed("activewindow"));
+    assert!(event_triggers_state_changed("activewindowv2"));
     assert!(event_triggers_state_changed("closewindow"));
     assert!(event_triggers_state_changed("float"));
     assert!(event_triggers_state_changed("monitoradded"));
@@ -63,6 +63,11 @@ fn event_names_cover_bar_invalidation() {
     assert!(event_triggers_state_changed("monitoraddedv2"));
     assert!(event_triggers_state_changed("monitorremovedv2"));
     assert!(!event_triggers_state_changed("bell"));
+    // Animated titles (Cursor agent spinners, etc.) must not full-refresh.
+    assert!(!event_triggers_state_changed("windowtitle"));
+    assert!(!event_triggers_state_changed("windowtitlev2"));
+    // Legacy activewindow includes the title and re-fires on rename — ignore.
+    assert!(!event_triggers_state_changed("activewindow"));
 }
 
 #[test]
