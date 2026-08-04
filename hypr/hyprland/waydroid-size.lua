@@ -2,5 +2,5 @@
 hl.window_rule({
   name = "waydroid-size",
   match = { class = "waydroid" },
-  size = { 1202, 1354 },
+  size = { 2470, 1394 },
 })
