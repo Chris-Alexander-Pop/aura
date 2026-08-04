@@ -104,14 +104,14 @@ export default function ControlCenter() {
           <span className="icon text-xl">{navExpanded ? "menu_open" : "menu"}</span>
         </button>
 
-        <div className="flex flex-col gap-0.5 px-2 overflow-y-auto flex-1 min-h-0">
+        <div className="aura-scrollbar-none flex flex-col gap-px px-2 overflow-y-auto flex-1 min-h-0">
           {NAV_SECTIONS.map((section, si) => (
             <div
               key={section.label}
-              className={cn("flex flex-col gap-0.5", si > 0 && "pt-2 mt-1 border-t border-surface0/40")}
+              className={cn("flex flex-col gap-px", si > 0 && "pt-1.5 mt-0.5 border-t border-surface0/40")}
             >
               {navExpanded && (
-                <p className="text-[10px] uppercase tracking-wider text-subtext1/80 px-1.5 py-1.5">
+                <p className="text-[10px] uppercase tracking-wider text-subtext1/80 px-1.5 py-1">
                   {section.label}
                 </p>
               )}
@@ -120,10 +120,13 @@ export default function ControlCenter() {
                   key={item.id}
                   type="button"
                   onClick={() => setActive(item.id)}
-                  className={cn("nav-item w-full justify-start", active === item.id && "active")}
+                  className={cn(
+                    "nav-item w-full justify-start !gap-2 !px-2 !py-1.5",
+                    active === item.id && "active",
+                  )}
                   title={item.label}
                 >
-                  <span className="icon text-xl shrink-0">{item.icon}</span>
+                  <span className="icon text-lg shrink-0">{item.icon}</span>
                   <AnimatePresence>
                     {navExpanded && (
                       <motion.span

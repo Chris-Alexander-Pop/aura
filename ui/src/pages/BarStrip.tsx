@@ -452,7 +452,7 @@ export default function BarStrip() {
         style={{ width: BAR_STRIP_WIDTH_PX }}
       >
         <div className="flex min-h-0 flex-1 flex-col px-0.5 py-1.5">
-          <div className="scrollbar-thin flex min-h-0 shrink-0 flex-col gap-1 overflow-y-auto overflow-x-hidden">
+          <div className="flex min-h-0 shrink-0 flex-col gap-1 overflow-hidden">
             <BarSectionGroup ids={topSections} renderSection={renderSection} />
           </div>
           <div className="min-h-0 flex-1" aria-hidden />
