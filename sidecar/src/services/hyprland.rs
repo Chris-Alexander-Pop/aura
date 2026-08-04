@@ -477,6 +477,11 @@ pub fn event_triggers_state_changed(event: &str) -> bool {
             | "float"
             | "pin"
             | "fullscreen"
+            // Special/scratch toggles (SUPER+S / SUPER+D). Closing onto an empty
+            // regular workspace often emits only these — no workspace* change and
+            // activewindowv2 may be empty (ignored), so the bar overlay stuck open.
+            | "activespecial"
+            | "activespecialv2"
             // Output hotplug — GDK alone often keeps phantom monitors, so Aura
             // must resync per-monitor shell windows from Hyprland's list.
             | "monitoradded"

@@ -58,6 +58,8 @@ fn event_names_cover_bar_invalidation() {
     assert!(event_triggers_state_changed("activewindowv2"));
     assert!(event_triggers_state_changed("closewindow"));
     assert!(event_triggers_state_changed("float"));
+    assert!(event_triggers_state_changed("activespecial"));
+    assert!(event_triggers_state_changed("activespecialv2"));
     assert!(event_triggers_state_changed("monitoradded"));
     assert!(event_triggers_state_changed("monitorremoved"));
     assert!(event_triggers_state_changed("monitoraddedv2"));
