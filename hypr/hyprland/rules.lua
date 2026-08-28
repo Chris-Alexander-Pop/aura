@@ -1,5 +1,13 @@
 local v = require("hyprland/vars")
 
+-- Apps (GTK, Electron, browsers) often request maximize/fullscreen on map.
+-- That looks like "opened fullscreen" on a tiling layout. Super+F still works.
+hl.window_rule({
+  name = "suppress-maximize-fullscreen-events",
+  match = { class = ".*" },
+  suppress_event = "maximize fullscreen",
+})
+
 -- Opacity when not fullscreen
 hl.window_rule({
   name = "opacity-non-fullscreen",
