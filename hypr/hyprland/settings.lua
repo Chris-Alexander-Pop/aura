@@ -107,6 +107,7 @@ hl.config({
     disable_logs = false,
   },
   gestures = {
+    workspace_swipe_invert = false,
     workspace_swipe_distance = 700,
     workspace_swipe_cancel_ratio = 0.15,
     workspace_swipe_min_speed_to_force = 5,
