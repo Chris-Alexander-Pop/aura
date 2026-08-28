@@ -13,9 +13,14 @@ local E = { repeating = true }
 local LE = { locked = true, repeating = true }
 local M = { mouse = true }
 
--- Launcher
-hl.bind("SUPER + SUPER_L", exec("vicinae toggle"), R)
-hl.bind("SUPER + SUPER_R", exec("vicinae toggle"), R)
+-- Launcher (Super tap → vicinae)
+-- Hyprland 0.56 keybind rewrite breaks SUPER_L/SUPER_R sided-mod binds; use
+-- keycodes (125+8 / 126+8) plus scripts/vicinae-super-tap for Super+key ignore.
+local super_tap = ags .. "/scripts/vicinae-super-tap"
+hl.bind("SUPER + code:133", exec(super_tap .. " press"))
+hl.bind("SUPER + code:134", exec(super_tap .. " press"))
+hl.bind("SUPER + code:133", exec(super_tap .. " release"), R)
+hl.bind("SUPER + code:134", exec(super_tap .. " release"), R)
 hl.bind("SUPER + A", exec("ags request toggle launcher"))
 hl.bind("SUPER + SPACE", exec("ags request toggle launcher"))
 
@@ -194,8 +199,8 @@ hl.bind("SUPER + ALT + F12", exec(
 hl.bind("SUPER + slash", exec("ags request toggle control-center"))
 hl.bind("SUPER + SHIFT + slash", exec("ags request toggle control-center"))
 
--- Disable middle click paste
-hl.bind("mouse:274", exec(":"))
+-- Middle click paste is already off via misc.middle_click_paste = false.
+-- Do not bind mouse:274 — that swallows BTN_MIDDLE so apps never see it.
 
 -- Screen rotation (hypr-user.conf mapping wins)
 hl.bind("CTRL + ALT + SUPER + Up", exec(rotate .. " 0"))
