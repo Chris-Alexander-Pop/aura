@@ -108,6 +108,20 @@ hl.bind("CTRL + SUPER + SHIFT + left", hl.dsp.window.move({ workspace = "-1" }),
 hl.bind("CTRL + SUPER + SHIFT + up", hl.dsp.window.move({ workspace = "special:special" }))
 hl.bind("CTRL + SUPER + SHIFT + down", hl.dsp.window.move({ workspace = "e+0" }))
 hl.bind("SUPER + ALT + S", hl.dsp.window.move({ workspace = "special:special" }))
+hl.bind("SUPER + ALT + M", function()
+  local win = hl.get_active_window()
+  if not win then return end
+  local on_music = win.workspace and win.workspace.name == "special:music"
+  if on_music then
+    local dest = hl.get_active_workspace()
+    if dest and dest.name == "special:music" then
+      dest = hl.get_last_workspace()
+    end
+    hl.dispatch(hl.dsp.window.move({ workspace = dest and dest.id or "e+0" }))
+  else
+    hl.dispatch(hl.dsp.window.move({ workspace = "special:music" }))
+  end
+end)
 
 -- Groups
 hl.bind("ALT + Tab", hl.dsp.window.cycle_next(), E)
@@ -151,7 +165,8 @@ hl.bind("SUPER + Q", hl.dsp.window.close())
 
 -- Special toggles
 hl.bind("CTRL + SHIFT + Escape", exec("ags request toggle module-hub"))
-hl.bind("SUPER + M", exec("ags request toggle media-popup"))
+-- Music scratch (Namida/Spotify/Feishin/… via special:music). Volume/brightness sliders stay on right-edge hover.
+hl.bind("SUPER + M", hl.dsp.workspace.toggle_special("music"))
 hl.bind("SUPER + D", hl.dsp.workspace.toggle_special("communication"))
 hl.bind("SUPER + R", exec("ags request toggle calendar"))
 

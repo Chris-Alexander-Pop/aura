@@ -64,7 +64,7 @@ pcall(require, "hyprland/waydroid-size")
 -- Special workspaces
 hl.window_rule({ match = { class = "btop" }, workspace = "special:sysmon" })
 hl.window_rule({
-  match = { class = "feishin|Spotify|Supersonic|Cider" },
+  match = { class = "feishin|Spotify|Supersonic|Cider|com\\.msob7y\\.namida|namida" },
   workspace = "special:music",
 })
 hl.window_rule({
