@@ -21,23 +21,21 @@ on:
 jobs:
   fast-gate:
     runs-on: ubuntu-latest
-    # rustc 1.98 defaults to self-contained rust-lld (-B…/gcc-ld -fuse-ld=lld).
-    # That rust-lld SIGBUS'es (LLVM parallelFor) when linking many large
-    # integration-test binaries on ubuntu-latest. Override target rustflags
-    # (replaces sidecar/.cargo fuse-ld=lld) and turn self-contained linking
-    # off so the system bfd linker is used; serialize rustc jobs.
+    # rustc 1.98.0's rust-lld SIGBUS'es (LLVM parallelFor) while linking the
+    # many large integration-test binaries on ubuntu-latest. 1.97.1 is the
+    # last known-green stable for this gate (2026-08-04). Cap jobs as a
+    # secondary guard. Local Arch keeps current stable + LLD via .cargo.
     env:
-      CARGO_BUILD_JOBS: 1
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-self-contained=off"
+      CARGO_BUILD_JOBS: 2
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev ripgrep jq binutils
+          sudo apt-get install -y pkg-config libssl-dev ripgrep jq lld
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.1
 
       - name: Fast sidecar gate
         run: ./scripts/sidecar-test-fast.sh

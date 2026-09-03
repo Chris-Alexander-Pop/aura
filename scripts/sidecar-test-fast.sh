@@ -18,14 +18,11 @@ source "${ROOT}/scripts/rust-cache-env.sh"
 
 cd "${ROOT}/sidecar"
 
-# CI (and CI-like runs): avoid rustc 1.98 rust-lld SIGBUS under heavy
-# parallel linking of integration-test binaries. Local Arch keeps LLD via
-# sidecar/.cargo/config.toml unless the caller overrides these.
+# CI: cap parallel rustc/link jobs. Unlimited parallelism + rust-lld has
+# SIGBUS'd on GitHub Actions while linking many integration-test bins.
+# Toolchain pin (see .github/workflows/sidecar.yml) is the primary fix.
 if [[ "${CI:-}" == "true" ]]; then
-  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
-  # Replaces target rustflags from sidecar/.cargo/config.toml (fuse-ld=lld)
-  # and disables rustc's self-contained lld so the system linker is used.
-  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS:--C link-self-contained=off}"
+  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 fi
 
 cargo test --lib --no-fail-fast -- --test-threads=1
