@@ -1132,10 +1132,19 @@ mod tests {
                 .to_string_lossy()
                 .as_ref(),
         );
+        // A live gitignored ~/.config/ags/vpn/profiles.json must not leak into tests.
+        std::env::set_var(
+            "AURA_VPN_CONFIG_DIR",
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/exec")
+                .to_string_lossy()
+                .as_ref(),
+        );
     }
 
     fn clear_exec_fixtures() {
         std::env::remove_var(crate::utils::process::EXEC_FIXTURE_ENV);
+        std::env::remove_var("AURA_VPN_CONFIG_DIR");
     }
 
     async fn reset_vpn_state() {
