@@ -21,19 +21,21 @@ on:
 jobs:
   fast-gate:
     runs-on: ubuntu-latest
-    # rustc 1.98.0 rust-lld SIGBUS'es when many large integration-test
-    # binaries link in parallel (LLVM parallelFor). Cap jobs and clear the
-    # repo .cargo fuse-ld=lld override so CI uses the system bfd linker.
+    # rustc 1.98 defaults to self-contained rust-lld (-B…/gcc-ld -fuse-ld=lld).
+    # That rust-lld SIGBUS'es (LLVM parallelFor) when linking many large
+    # integration-test binaries on ubuntu-latest. Override target rustflags
+    # (replaces sidecar/.cargo fuse-ld=lld) and turn self-contained linking
+    # off so the system bfd linker is used; serialize rustc jobs.
     env:
-      CARGO_BUILD_JOBS: 2
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: ""
+      CARGO_BUILD_JOBS: 1
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-self-contained=off"
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev ripgrep jq
+          sudo apt-get install -y pkg-config libssl-dev ripgrep jq binutils
 
       - uses: dtolnay/rust-toolchain@stable
 
