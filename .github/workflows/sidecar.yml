@@ -21,13 +21,19 @@ on:
 jobs:
   fast-gate:
     runs-on: ubuntu-latest
+    # rustc 1.98+ defaults to rust-lld; parallel link of many integration
+    # test binaries has bus-errored on ubuntu-latest (SIGBUS / exit 101).
+    # Prefer system ld.bfd and cap rustc parallelism to keep the gate stable.
+    env:
+      CARGO_BUILD_JOBS: "2"
+      RUSTFLAGS: "-C link-arg=-fuse-ld=bfd"
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev ripgrep jq lld
+          sudo apt-get install -y pkg-config libssl-dev ripgrep jq binutils
 
       - uses: dtolnay/rust-toolchain@stable
 
