@@ -21,21 +21,33 @@ on:
 jobs:
   fast-gate:
     runs-on: ubuntu-latest
-    # rustc 1.98.0's rust-lld SIGBUS'es (LLVM parallelFor) while linking the
-    # many large integration-test binaries on ubuntu-latest. 1.97.1 is the
-    # last known-green stable for this gate (2026-08-04). Cap jobs as a
-    # secondary guard. Local Arch keeps current stable + LLD via .cargo.
+    # rust-lld (self-contained + sidecar/.cargo fuse-ld=lld) SIGBUS'es on
+    # ubuntu-latest while linking many large integration-test binaries
+    # (LLVM parallelFor), including under rustc 1.97.1. Rewrite cargo
+    # config to the system bfd linker and serialize rustc jobs.
     env:
-      CARGO_BUILD_JOBS: 2
+      CARGO_BUILD_JOBS: 1
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev ripgrep jq lld
+          sudo apt-get install -y pkg-config libssl-dev ripgrep jq binutils
 
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Force system bfd linker for CI
+        run: |
+          mkdir -p sidecar/.cargo
+          printf '%s\n' \
+            '# CI-only override (see workflow). Avoid rust-lld SIGBUS on GHA.' \
+            '[build]' \
+            'incremental = false' \
+            '' \
+            '[target.x86_64-unknown-linux-gnu]' \
+            'rustflags = ["-C", "link-self-contained=off"]' \
+            > sidecar/.cargo/config.toml
 
       - name: Fast sidecar gate
         run: ./scripts/sidecar-test-fast.sh

@@ -18,11 +18,10 @@ source "${ROOT}/scripts/rust-cache-env.sh"
 
 cd "${ROOT}/sidecar"
 
-# CI: cap parallel rustc/link jobs. Unlimited parallelism + rust-lld has
-# SIGBUS'd on GitHub Actions while linking many integration-test bins.
-# Toolchain pin (see .github/workflows/sidecar.yml) is the primary fix.
+# CI: serialize rustc/link jobs. Parallel rust-lld has SIGBUS'd on GHA while
+# linking many integration-test bins; the workflow also rewrites .cargo to bfd.
 if [[ "${CI:-}" == "true" ]]; then
-  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
 fi
 
 cargo test --lib --no-fail-fast -- --test-threads=1
