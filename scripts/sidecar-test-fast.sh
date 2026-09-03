@@ -18,11 +18,26 @@ source "${ROOT}/scripts/rust-cache-env.sh"
 
 cd "${ROOT}/sidecar"
 
-# Cap parallel rustc/link jobs. Unlimited parallelism + rust-lld has
-# SIGBUS'd on GitHub Actions while linking many integration test bins.
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+# CI: avoid rustc 1.98 rust-lld SIGBUS and runner disk exhaustion while
+# linking many integration-test binaries. Local Arch keeps LLD via
+# sidecar/.cargo/config.toml unless the caller overrides these.
+if [[ "${CI:-}" == "true" ]]; then
+  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
+  export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
+  # Replaces target rustflags from sidecar/.cargo/config.toml (fuse-ld=lld).
+  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS:--C link-self-contained=off -C link-arg=-fuse-ld=bfd -C debuginfo=1}"
+else
+  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+fi
 
 cargo test --lib --no-fail-fast -- --test-threads=1
+
+# Reclaim debug artifacts before linking dozens of integration test bins.
+if [[ "${CI:-}" == "true" ]]; then
+  "${ROOT}/scripts/sidecar-target-prune.sh" --force || true
+  df -h || true
+fi
+
 cargo test --tests --no-fail-fast -- --test-threads=1
 
 "${ROOT}/scripts/sidecar-target-prune.sh"

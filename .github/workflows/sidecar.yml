@@ -21,14 +21,33 @@ on:
 jobs:
   fast-gate:
     runs-on: ubuntu-latest
-    # rustc 1.98+ defaults to rust-lld; parallel link of many integration
-    # test binaries has bus-errored on ubuntu-latest (SIGBUS / exit 101).
-    # Prefer system ld.bfd and cap rustc parallelism to keep the gate stable.
+    # rustc 1.98 defaults to self-contained rust-lld. Parallel link of many
+    # large integration-test bins has SIGBUS'd on ubuntu-latest. Replace
+    # sidecar/.cargo fuse-ld=lld, disable self-contained lld, force ld.bfd,
+    # serialize rustc jobs, and shrink debuginfo so the runner does not
+    # ENOSPC while linking ~60 test binaries after a green --lib pass.
     env:
-      CARGO_BUILD_JOBS: "2"
-      RUSTFLAGS: "-C link-arg=-fuse-ld=bfd"
+      CARGO_BUILD_JOBS: "1"
+      CARGO_INCREMENTAL: "0"
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-self-contained=off -C link-arg=-fuse-ld=bfd -C debuginfo=1"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /usr/local/share/boost \
+            /usr/share/swift \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/graalvm \
+            /usr/local/share/powershell \
+            /usr/local/share/chromium \
+            /usr/local/lib/node_modules || true
+          sudo apt-get clean
+          df -h
 
       - name: Install system deps
         run: |
