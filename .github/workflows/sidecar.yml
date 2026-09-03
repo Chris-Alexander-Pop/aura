@@ -21,12 +21,12 @@ on:
 jobs:
   fast-gate:
     runs-on: ubuntu-latest
-    # rustc 1.98+ defaults to rust-lld; parallel link of many integration
-    # test binaries has bus-errored on ubuntu-latest (SIGBUS / exit 101).
-    # Prefer system ld.bfd and cap rustc parallelism to keep the gate stable.
+    # sidecar/.cargo/config.toml forces -fuse-ld=lld for local Arch. On
+    # ubuntu-latest, rust-lld (rustc 1.98 self-contained + that flag) SIGBUS
+    # while linking many large integration-test bins. Rewrite the cargo
+    # config in CI to system ld.bfd and serialize rustc jobs.
     env:
-      CARGO_BUILD_JOBS: "2"
-      RUSTFLAGS: "-C link-arg=-fuse-ld=bfd"
+      CARGO_BUILD_JOBS: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +36,13 @@ jobs:
           sudo apt-get install -y pkg-config libssl-dev ripgrep jq binutils
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Use system bfd linker for CI
+        run: |
+          mkdir -p sidecar/.cargo
+          python3 -c 'from pathlib import Path; Path("sidecar/.cargo/config.toml").write_text("# CI-only override (see .github/workflows/sidecar.yml).\n# Do not force LLD: rust-lld SIGBUS'\''es under parallel GHA links.\n[build]\nincremental = false\n\n[target.x86_64-unknown-linux-gnu]\nrustflags = [\n  \"-C\", \"linker-features=-lld\",\n  \"-C\", \"link-arg=-fuse-ld=bfd\",\n]\n", encoding="utf-8")'
+          echo "CI cargo linker config:"
+          cat sidecar/.cargo/config.toml
 
       - name: Fast sidecar gate
         run: ./scripts/sidecar-test-fast.sh

@@ -18,9 +18,12 @@ source "${ROOT}/scripts/rust-cache-env.sh"
 
 cd "${ROOT}/sidecar"
 
-# Cap parallel rustc/link jobs. Unlimited parallelism + rust-lld has
-# SIGBUS'd on GitHub Actions while linking many integration test bins.
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+# On CI, cap parallel rustc/link jobs. Unlimited parallelism + rust-lld has
+# SIGBUS'd on GitHub Actions while linking many integration-test bins.
+# The workflow also rewrites sidecar/.cargo/config.toml off LLD.
+if [[ "${CI:-}" == "true" ]]; then
+  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
+fi
 
 cargo test --lib --no-fail-fast -- --test-threads=1
 cargo test --tests --no-fail-fast -- --test-threads=1
