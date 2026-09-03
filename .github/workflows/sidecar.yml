@@ -21,14 +21,22 @@ on:
 jobs:
   fast-gate:
     runs-on: ubuntu-latest
-    # rust-lld (self-contained + sidecar/.cargo fuse-ld=lld) SIGBUS'es on
-    # ubuntu-latest while linking many large integration-test binaries
-    # (LLVM parallelFor), including under rustc 1.97.1. Rewrite cargo
-    # config to the system bfd linker and serialize rustc jobs.
+    # rustc 1.98 rust-lld SIGBUS'es under parallel integration-test linking.
+    # sidecar/.cargo/config.toml pins -fuse-ld=lld for local Arch builds;
+    # rewrite that config in CI, force system ld.bfd, serialize jobs, and
+    # shrink debuginfo so ubuntu-latest does not run out of disk.
     env:
-      CARGO_BUILD_JOBS: 1
+      CARGO_BUILD_JOBS: "1"
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Free runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost /usr/share/swift || true
+          df -h /
 
       - name: Install system deps
         run: |
@@ -46,8 +54,10 @@ jobs:
             'incremental = false' \
             '' \
             '[target.x86_64-unknown-linux-gnu]' \
-            'rustflags = ["-C", "link-self-contained=off"]' \
+            'rustflags = ["-C", "link-self-contained=off", "-C", "link-arg=-fuse-ld=bfd"]' \
             > sidecar/.cargo/config.toml
+          cat sidecar/.cargo/config.toml
+          df -h /
 
       - name: Fast sidecar gate
         run: ./scripts/sidecar-test-fast.sh
