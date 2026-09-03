@@ -18,6 +18,14 @@ source "${ROOT}/scripts/rust-cache-env.sh"
 
 cd "${ROOT}/sidecar"
 
+# CI (and CI-like runs): avoid rustc 1.98 rust-lld SIGBUS under heavy
+# parallel linking of integration-test binaries. Local Arch keeps LLD via
+# sidecar/.cargo/config.toml unless the caller overrides these.
+if [[ "${CI:-}" == "true" ]]; then
+  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
+  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS-}"
+fi
+
 cargo test --lib --no-fail-fast -- --test-threads=1
 cargo test --tests --no-fail-fast -- --test-threads=1
 

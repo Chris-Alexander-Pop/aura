@@ -21,13 +21,19 @@ on:
 jobs:
   fast-gate:
     runs-on: ubuntu-latest
+    # rustc 1.98.0 rust-lld SIGBUS'es when many large integration-test
+    # binaries link in parallel (LLVM parallelFor). Cap jobs and clear the
+    # repo .cargo fuse-ld=lld override so CI uses the system bfd linker.
+    env:
+      CARGO_BUILD_JOBS: 2
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: ""
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libssl-dev ripgrep jq lld
+          sudo apt-get install -y pkg-config libssl-dev ripgrep jq
 
       - uses: dtolnay/rust-toolchain@stable
 
