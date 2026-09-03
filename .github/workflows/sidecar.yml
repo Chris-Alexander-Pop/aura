@@ -22,13 +22,14 @@ jobs:
   fast-gate:
     runs-on: ubuntu-latest
     # rustc 1.98 defaults to self-contained rust-lld (-B…/gcc-ld -fuse-ld=lld).
-    # That rust-lld SIGBUS'es (LLVM parallelFor) when linking many large
-    # integration-test binaries on ubuntu-latest. Override target rustflags
-    # (replaces sidecar/.cargo fuse-ld=lld) and turn self-contained linking
-    # off so the system bfd linker is used; serialize rustc jobs.
+    # That rust-lld SIGBUS'es (LLVM parallelFor) linking many large
+    # integration-test binaries on ubuntu-latest. Replace sidecar/.cargo's
+    # fuse-ld=lld target rustflags, turn self-contained linking off, and
+    # force system ld.bfd. Serialize rustc jobs and prune between cargo
+    # phases to avoid runner disk exhaustion during parallel test-bin links.
     env:
-      CARGO_BUILD_JOBS: 1
-      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-self-contained=off"
+      CARGO_BUILD_JOBS: "1"
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-self-contained=off -C link-arg=-fuse-ld=bfd"
     steps:
       - uses: actions/checkout@v4
 
