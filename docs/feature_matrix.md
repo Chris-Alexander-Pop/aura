@@ -5,7 +5,7 @@
 ## Where the roadmap lives
 
 - **Product direction and per-area specs:** [todo.md](../todo.md) and [docs/roadmap/README.md](roadmap/README.md) (and files under [docs/roadmap/](roadmap/)).
-- **Quickshell/Caelestia → AGS context:** [docs/MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md) and [docs/COMPONENT_MAPPING.md](COMPONENT_MAPPING.md) for legacy module mapping, not a live parity table.
+- **Stack / component map:** [docs/MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md) and [docs/COMPONENT_MAPPING.md](COMPONENT_MAPPING.md).
 
 ## At a glance
 

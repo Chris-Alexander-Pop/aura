@@ -8,7 +8,7 @@ Aligns with **session** entries in [../feature_matrix.md](../feature_matrix.md) 
 
 ## Current baseline
 
-`hyprlock`, `swaylock`, or **Kitty+script**-class lockers may be external today; Aura’s role is **integration, defaults, and UI spec**. Caelestia’s **session** module is the UX reference. [lock-panel] is partly operational (OS level), partly shell.
+`hyprlock`, `swaylock`, or **Kitty+script**-class lockers may be external today; Aura’s role is **integration, defaults, and UI spec**. [lock-panel] is partly operational (OS level), partly shell.
 
 ## Goals
 

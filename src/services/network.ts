@@ -18,7 +18,7 @@ class NetworkService extends GObject.Object {
         return await sidecar.scanNetworks();
     }
 
-    // Helper to match Caelestia's Network.qml logic
+    // Connect via sidecar (NM / keyring first)
     async connectToNetwork(ssid: string, password?: string) {
         // For now, assume simple connection or use sidecar's future connect method
         // sidecar.connectNetwork(ssid, password)

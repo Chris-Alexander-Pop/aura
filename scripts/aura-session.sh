@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Aura session autostart — Hyprland exec-once (replaces caelestia shell -d).
+# Aura session autostart — Hyprland exec-once.
 set -euo pipefail
 
 AURA_DIR="${AURA_DIR:-$HOME/.config/ags}"

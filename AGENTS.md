@@ -11,7 +11,7 @@ Concise operating manual for humans and AI assistants working in this repository
 | React panels | `ui/` (Vite) | **Default bar**, control center, calendar, dropdown — `ui/dist` in WebKit |
 | Backend | `sidecar/` | `ags-sidecar` — JSON-RPC, services under `src/services/` |
 
-Docs: `docs/MIGRATION_STRATEGY.md`, `docs/COMPONENT_MAPPING.md` (legacy mapping); `todo.md` and `docs/roadmap/` (product); `docs/feature_matrix.md` (shallow planning + implementation snapshot); **`docs/ARCHITECTURE_DECISIONS.md`** (resolved stack/product choices); **`docs/BACKEND_TODO.md`** (sidecar implementation checklist).
+Docs: `docs/MIGRATION_STRATEGY.md`, `docs/COMPONENT_MAPPING.md` (stack / component map); `todo.md` and `docs/roadmap/` (product); `docs/feature_matrix.md` (shallow planning + implementation snapshot); **`docs/ARCHITECTURE_DECISIONS.md`** (resolved stack/product choices); **`docs/BACKEND_TODO.md`** (sidecar implementation checklist).
 
 ## Launch and verify
 

@@ -1,4 +1,4 @@
-/** Shared Wi‑Fi connect helpers — Caelestia-style (try saved profile first). */
+/** Shared Wi‑Fi connect helpers (try saved profile first). */
 
 export class NetworkConnectError extends Error {
   readonly needsPassword: boolean

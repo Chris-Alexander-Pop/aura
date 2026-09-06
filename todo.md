@@ -9,13 +9,13 @@ Voice control system
 Multitasking system
 Fix (swap) FN key bs
 
-Caelestia-style sidebar w/:
+Sidebar w/:
 Size and position and colour etc.. configurable
 Tile grouping / organization / expandable
 Window/workspace viewer w/ better integration for all the special panels
 Task manager system, hook into wayland
 Organizeable / configurable app tile system w/ popup
-Caelestia-like Wifi tile (organized better?, put into the actual wifi/bt/battery tile group?)
+Wifi tile (organized better?, put into the actual wifi/bt/battery tile group?)
 Battery tile with actually working power profiles and such
 Calendar tile to view upcoming tasks / date and time / open calendar panel
 Power / logout / etc.. tile

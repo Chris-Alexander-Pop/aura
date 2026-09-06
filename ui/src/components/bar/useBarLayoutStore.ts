@@ -21,7 +21,7 @@ export const HIDDEN_BAR_SECTIONS = new Set<BarSectionId>(["launcher", "tray", "c
 /** Pinned above the vertical fill (workspaces + focused window). */
 export const TOP_BAR_SECTIONS = new Set<BarSectionId>(["workspaces", "runningApps"])
 
-/** Caelestia-like fixed strip: no ad hoc reorder or expandable utility drawer. */
+/** Fixed strip: no ad hoc reorder or expandable utility drawer. */
 export const DEFAULT_BAR_SECTION_ORDER: BarSectionId[] = [
   "workspaces",
   "runningApps",

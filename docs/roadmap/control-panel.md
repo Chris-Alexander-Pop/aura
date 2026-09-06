@@ -2,16 +2,16 @@
 
 ## Summary
 
-The **control center** in Caelestia is the main place for connectivity, media, system status, and power. In Aura, many **sidecar services** already exist under `sidecar/src/services/` (see [../feature_matrix.md](../feature_matrix.md) for a shallow index), but the **React** control center is still mostly **stubbed**—see [`ui/src/pages/ControlCenter.tsx`](../../ui/src/pages/ControlCenter.tsx): nav and stub copy are aligned with **this** roadmap; **keybinds** have no sidecar service yet. This document specifies a **revamped, modular** control panel: package intelligence, full network/Bluetooth/device flows, working audio with fallbacks, performance and power policy, keybind management, security and VPN, productivity controls, automations, unified system settings, and a dedicated **notification** view.
+The **control center** is the main place for connectivity, media, system status, and power. Many **sidecar services** already exist under `sidecar/src/services/` (see [../feature_matrix.md](../feature_matrix.md) for a shallow index), but the **React** control center is still mostly **stubbed**—see [`ui/src/pages/ControlCenter.tsx`](../../ui/src/pages/ControlCenter.tsx): nav and stub copy are aligned with **this** roadmap; **keybinds** have no sidecar service yet. This document specifies a **revamped, modular** control panel: package intelligence, full network/Bluetooth/device flows, working audio with fallbacks, performance and power policy, keybind management, security and VPN, productivity controls, automations, unified system settings, and a dedicated **notification** view.
 
 Primary implementation home is expected to be the **`ui/`** Vite app loaded in webview windows (see [AGENTS.md](../../AGENTS.md)), backed by `ags-sidecar` JSON-RPC, with `ags msg` for show/hide.
 
 ## Current baseline
 
-- **Planning and stack snapshot:** [../feature_matrix.md](../feature_matrix.md) (replaces the old Caelestia parity table; product detail stays here in `docs/roadmap/`).
+- **Planning and stack snapshot:** [../feature_matrix.md](../feature_matrix.md) (product detail stays here in `docs/roadmap/`).
 - **Bar (GTK):** see `src/widget/bar/` — on-monitor widgets; separate from the web control center.
 - **Control Center (`ui/`):** route `/control-center` in [`ui/src/main.tsx`](../../ui/src/main.tsx), page [`ControlCenter.tsx`](../../ui/src/pages/ControlCenter.tsx). Grouped **nav** matches the sections below (including **VPN** and **System settings**); only some panes (e.g. **Network** partial) have live sidecar data—rest are roadmap stubs. **Keybinds** tab: UI only until a sidecar service exists.
-- **Migration context:** [../MIGRATION_STRATEGY.md](../MIGRATION_STRATEGY.md), [../COMPONENT_MAPPING.md](../COMPONENT_MAPPING.md).
+- **Stack / component map:** [../MIGRATION_STRATEGY.md](../MIGRATION_STRATEGY.md), [../COMPONENT_MAPPING.md](../COMPONENT_MAPPING.md).
 
 ## Goals
 

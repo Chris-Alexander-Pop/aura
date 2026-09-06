@@ -6,7 +6,7 @@ A **DevOps** surface in Aura to **view and manage** deployments and infrastructu
 
 ## Current baseline
 
-[../feature_matrix.md](../feature_matrix.md) lists **DevOps** with a sidecar service and client `getDevopsStatus` in [`src/lib/sidecar.ts`](../../src/lib/sidecar.ts); **UI** is not implemented. [../COMPONENT_MAPPING.md](../COMPONENT_MAPPING.md) may map legacy Caelestia `devops/`.
+[../feature_matrix.md](../feature_matrix.md) lists **DevOps** with a sidecar service and client `getDevopsStatus` in [`src/lib/sidecar.ts`](../../src/lib/sidecar.ts); **UI** is not implemented. See [../COMPONENT_MAPPING.md](../COMPONENT_MAPPING.md) for service locations.
 
 ## Goals
 

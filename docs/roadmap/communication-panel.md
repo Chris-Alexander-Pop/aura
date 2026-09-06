@@ -2,11 +2,11 @@
 
 ## Summary
 
-A **unified communication** hub on Linux with a **Beeper**-like goal: **one inbox** for multiple chat networks (Matrix, Signal, WhatsApp via bridges where legal, SMS, email, etc.), with sane notifications and search. Full parity with commercial “all-in-one” apps is unlikely in v1; the roadmap prioritizes **pluggable backends** and a **Caelestia-consistent** UI in `ui/`, driven by sidecar or external daemons over stable APIs.
+A **unified communication** hub on Linux with a **Beeper**-like goal: **one inbox** for multiple chat networks (Matrix, Signal, WhatsApp via bridges where legal, SMS, email, etc.), with sane notifications and search. Full parity with commercial “all-in-one” apps is unlikely in v1; the roadmap prioritizes **pluggable backends** and a consistent UI in `ui/`, driven by sidecar or external daemons over stable APIs.
 
 ## Current baseline
 
-Not a dedicated row in [../feature_matrix.md](../feature_matrix.md); may align with future “Communication” or general `ui/` routing. Caelestia legacy may have no direct equivalent—treat as **greenfield** with strong privacy review.
+Not a dedicated row in [../feature_matrix.md](../feature_matrix.md); may align with future “Communication” or general `ui/` routing. Treat as **greenfield** with strong privacy review.
 
 ## Goals
 

@@ -46,4 +46,4 @@ HTTP is POST-only with `X-Aura-Token` from `GET /api/meta`. Details: [sidecar/RE
 
 ## License
 
-[MIT](LICENSE). Aura is an original AGS / React / Rust implementation. The control-center layout and hover-flyout feel take after [Caelestia](https://github.com/caelestia-dots/shell); the color tokens are [Catppuccin Mocha](https://github.com/catppuccin/catppuccin) (also MIT). Early `docs/MIGRATION_STRATEGY.md` notes are historical planning, not a source import.
+[MIT](LICENSE). Color tokens are [Catppuccin Mocha](https://github.com/catppuccin/catppuccin) (also MIT).

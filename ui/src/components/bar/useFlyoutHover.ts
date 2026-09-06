@@ -11,7 +11,7 @@ export type StatusFlyoutId =
 
 const CLOSE_MS = 220
 
-/** Caelestia-like hover: open on icon enter, grace period when moving into panel */
+/** Hover: open on icon enter, grace period when moving into panel */
 export function useFlyoutHover() {
   const [active, setActive] = useState<StatusFlyoutId | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)

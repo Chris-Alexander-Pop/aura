@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Clipboard history picker (fuzzel + cliphist; replaces caelestia clipboard).
+# Clipboard history picker (fuzzel + cliphist).
 set -euo pipefail
 
 mode="${1:-}"

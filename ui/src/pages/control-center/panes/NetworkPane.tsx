@@ -96,7 +96,7 @@ export function NetworkPane() {
     }
   }
 
-  /** Caelestia path: always try saved NM profile / keyring first. */
+  /** Always try saved NM profile / keyring first. */
   const onApActivate = (ap: { ssid: string; security: string; active: boolean }) => {
     if (ap.active) return
     if (!wifiOn) return

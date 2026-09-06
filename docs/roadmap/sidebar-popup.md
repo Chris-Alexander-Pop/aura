@@ -4,7 +4,7 @@
 
 A **small floating or anchored popup** associated with the sidebar (or bar) for **immediate hardware controls**: **brightness** and **volume**, with **per-device** selection (laptop panel vs external monitor audio, HDMI vs Bluetooth headphones). Minimal chrome, large hit targets, and **persistence** of last-used device where sensible.
 
-Likely **GTK-near** for latency (OSD-style) or a **lightweight** webview; must stay consistent with Caelestia **visual language** while allowing **theme** sync from Aura.
+Likely **GTK-near** for latency (OSD-style) or a **lightweight** webview; keep visual language consistent with the rest of Aura and allow **theme** sync.
 
 ## Current baseline
 

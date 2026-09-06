@@ -30,7 +30,7 @@ description: >-
 
 - `todo.md` and `docs/roadmap/` — what to build, per area.
 - `docs/feature_matrix.md` — lean stack / implementation snapshot; use `docs/roadmap/` for product detail.
-- `docs/COMPONENT_MAPPING.md` — legacy Caelestia → this repo mapping.
+- `docs/COMPONENT_MAPPING.md` — where bar, panels, and sidecar services live.
 
 ## Anti-pattern
 

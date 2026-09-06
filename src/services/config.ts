@@ -2,15 +2,13 @@ import GLib from "gi://GLib";
 // import { Utils } from "ags"; // Utils import varies by version, using GLib for now to be safe
 
 // TODO: Implement proper persistence (readFile/writeFile)
-// For now, mirroring the structure found in Caelestia
 class ConfigService {
-    // Network Drafts (from Network.qml)
     private _networkDrafts: Record<string, any> = {};
 
     get networkDrafts() { return this._networkDrafts; }
     set networkDrafts(v) { this._networkDrafts = v; this.save(); }
 
-    // Bar Config (from BarConfig.qml)
+    // Bar layout defaults
     bar = {
         position: 'top',
         height: 48,
@@ -21,7 +19,7 @@ class ConfigService {
         workspaces: { perMonitorWorkspaces: false }
     }
 
-    // Appearance (from Appearance.qml)
+    // Spacing / padding defaults
     appearance = {
         padding: { large: 12, normal: 8, small: 4 },
         spacing: { normal: 8 }

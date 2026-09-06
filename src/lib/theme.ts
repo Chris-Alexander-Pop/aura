@@ -1,4 +1,4 @@
-// Caelestia-style design tokens — Catppuccin Mocha + Material 3
+// Design tokens — Catppuccin Mocha + Material 3
 
 export const colors = {
     // Catppuccin Mocha base

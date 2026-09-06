@@ -213,7 +213,7 @@ For each service: **(a)** integration **(b)** typed responses **(c)** fixture te
 
 ### 2.7 VPN (`vpn.rs`) — P1
 
-- [~] State machine (OpenConnect/OpenVPN/WireGuard; not full Caelestia port)
+- [~] State machine (OpenConnect/OpenVPN/WireGuard)
 - [x] `Vpn.GetProfiles` from config dir + defaults
 - [x] `Vpn.Connect` / `Disconnect` (allowlist, `AURA_VPN_DRY_RUN`, deny-list in tests)
 - [x] `Vpn.GetStatus` (+ optional interface/IP)

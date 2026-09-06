@@ -8,7 +8,7 @@ Backend pieces exist in the sidecar ([`calendar.rs`](../../sidecar/src/services/
 
 ## Current baseline
 
-[../feature_matrix.md](../feature_matrix.md): **Calendar** and **Fitness** backends are “backend ready,” UI not implemented. Legacy Caelestia had a `calendar/` module as reference.
+[../feature_matrix.md](../feature_matrix.md): **Calendar** and **Fitness** backends are “backend ready,” UI not implemented.
 
 ## Goals
 
@@ -40,7 +40,7 @@ Link calendar to **workouts**, **sleep blocks**, or **fasting** windows—pullin
 ## Dependencies
 
 - [../feature_matrix.md](../feature_matrix.md) calendar and fitness rows.
-- [../MIGRATION_STRATEGY.md](../MIGRATION_STRATEGY.md) for legacy mapping.
+- [../MIGRATION_STRATEGY.md](../MIGRATION_STRATEGY.md) for stack notes.
 - [sidebar.md](./sidebar.md) calendar tile; [control-panel.md](./control-panel.md) for notification channel.
 
 ## Open questions

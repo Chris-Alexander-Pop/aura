@@ -11,10 +11,10 @@
 Ship the **next daily-use backend vertical slices** so Control Center panes stop being “best effort” stubs:
 
 1. **Real notification feed** (Freedesktop D-Bus → sidecar history → WebSocket → UI).
-2. **Hyprland keybind introspection** (read/validate; safe writes behind backups — not a full Caelestia editor).
+2. **Hyprland keybind introspection** (read/validate; safe writes behind backups — not a full visual editor).
 3. **Hardened aggregates** already called from `ui/src/lib/api.ts`: `Logs.Get`, `Security.GetStatus`, `Performance.GetMetrics`.
 
-Hyprland file policy: Aura-owned fragments live under **`hypr/`** (see `hypr/README.md`). Keybind RPC writes only to `~/.config/ags/hypr/hyprland/aura-keybinds.conf` — never mutate the user's main Caelestia/Hypr config.
+Hyprland file policy: Aura-owned fragments live under **`hypr/`** (see `hypr/README.md`). Keybind RPC writes only to `~/.config/ags/hypr/hyprland/aura-keybinds.conf` — never mutate the user's main Hyprland config.
 
 ---
 
@@ -84,7 +84,7 @@ sequenceDiagram
 | B.1 Config discovery | Resolve Hyprland config: `HYPRLAND_CONFIG`, then `~/.config/hypr/hyprland.conf`, merge `source =` includes (depth cap 8). |
 | B.2 Parse binds | Extract `bind`, `bindl`, `bindr`, `binde`, `bindm` → `{ combo, action, flags?, file, line }`; unit tests with fixtures from `hyprlandKeybindReference.ts` samples. |
 | B.3 RPC — read | `Keybinds.List` (optional `category` filter), `Keybinds.GetCategories`, `Keybinds.Validate` (duplicate combos, unknown dispatch tokens against allowlist). |
-| B.4 RPC — write (careful) | `Keybinds.Export` → JSON; `Keybinds.Import` / `Set` / `Unset` write only to **`~/.config/ags/hypr/hyprland/aura-keybinds.conf`** (create dir), never mutate Caelestia main config; backup previous file to `.bak.<timestamp>`. |
+| B.4 RPC — write (careful) | `Keybinds.Export` → JSON; `Keybinds.Import` / `Set` / `Unset` write only to **`~/.config/ags/hypr/hyprland/aura-keybinds.conf`** (create dir), never mutate the main Hyprland config; backup previous file to `.bak.<timestamp>`. |
 | B.5 Reload | `Keybinds.Reload` → `hyprctl reload` (errors surfaced). |
 | B.6 Hyprland doc | `hypr/README.md` + `scripts/aura-hypr-link.sh`; source `execs-aura.conf` and `aura-keybinds.conf` from live `hyprland.conf`. |
 | B.7 UI (minimal) | Keep Keybinds pane as **reference** in v1; optional “Load live binds” button calling `Keybinds.List` (read-only table) — skip full editor. |
@@ -178,7 +178,7 @@ Work **one ID per PR** or sequential commits; do not skip tests for A/B.
 |------|------------|
 | D-Bus unavailable in CI | All notification RPCs return empty/stored state without panic |
 | Hyprland config not present on dev machine | Parser tests use fixtures; runtime returns clear error |
-| Accidental edit of Caelestia hypr config | Writes only to `~/.config/ags/hypr/hyprland/aura-keybinds.conf` |
+| Accidental edit of the main Hyprland config | Writes only to `~/.config/ags/hypr/hyprland/aura-keybinds.conf` |
 | Notification ID mismatch across daemon/sidecar | Store server-assigned ids from Notify return; document dismiss limitations |
 
 ---

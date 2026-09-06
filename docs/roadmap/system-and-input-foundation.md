@@ -10,7 +10,7 @@ These capabilities span **Hyprland**, **system services**, and the Aura stack ([
 
 Aura today is strongest on **bar widgets** (battery, clock, workspaces per [../feature_matrix.md](../feature_matrix.md)). **Control center**, **notifications**, and **OSD** UIs are largely unrealized in the matrix; notification handling is explicitly partial. Network, Bluetooth, audio, VPN, and similar services exist in `sidecar` but lack completed React/GTK surfaces.
 
-This roadmap group is the **underpinning** so those panels and global shortcuts behave predictably before or while revamping Caelestia-style layouts elsewhere in this folder.
+This roadmap group is the **underpinning** so those panels and global shortcuts behave predictably before or while revamping layouts elsewhere in this folder.
 
 ## Goals
 

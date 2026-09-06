@@ -1,14 +1,14 @@
-# Caelestia-style sidebar (roadmap)
+# Sidebar (roadmap)
 
 ## Summary
 
-The **sidebar** is a primary **Caelestia-inspired** surface: persistent or dismissible, tile-based, and information-dense. This roadmap keeps that **look and feel** while making **geometry, palette, and tile sets user-configurable**, and deepening integration with **workspaces, windows, and special panels** (control center, calendar, etc.).
+The **sidebar** is a primary surface: persistent or dismissible, tile-based, and information-dense. This roadmap keeps that **look and feel** while making **geometry, palette, and tile sets user-configurable**, and deepening integration with **workspaces, windows, and special panels** (control center, calendar, etc.).
 
 Implementation may combine GTK shell chrome in [`src/widget/`](../../src/widget/) with React content in [`ui/`](../../ui/) loaded in a webview window, coordinated via `ags msg` and the sidecar (see [AGENTS.md](../../AGENTS.md)).
 
 ## Current baseline
 
-The [feature matrix](../feature_matrix.md) shows **bar** pieces implemented; a full **control center / sidebar** product UI is not. Sidecar services for power, network, Bluetooth, calendar, and more exist for when the UI lands. Legacy Caelestia modules in Quickshell are the **UX reference**, not the implementation.
+The [feature matrix](../feature_matrix.md) shows **bar** pieces implemented; a full **control center / sidebar** product UI is not. Sidecar services for power, network, Bluetooth, calendar, and more exist for when the UI lands.
 
 ## Goals
 
@@ -32,7 +32,7 @@ A **live** view of workspaces and windows (Hyprland-aware) with quick focus, mov
 
 **Pinned applications** as tiles with icon, launch, and optional **context popup** (new window, close all, workspace move). Fully **reorderable** and matching the same config system as other tiles.
 
-### Caelestia-like Wifi tile (organized better?, put into the actual wifi/bt/battery tile group?)
+### Wifi tile (organized better?, put into the actual wifi/bt/battery tile group?)
 
 A **connectivity cluster**: Wi-Fi, Bluetooth, and battery as a **single logical group** (or clearly linked sub-tiles) to reduce hunting. Wi-Fi sub-UI should stay **scannable** (signal, SSID, security) and defer deep config to [control-panel.md](./control-panel.md).
 

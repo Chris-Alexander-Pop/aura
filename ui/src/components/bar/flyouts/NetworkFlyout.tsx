@@ -126,7 +126,7 @@ export default function NetworkFlyout() {
     await invalidateNetwork()
   }
 
-  /** Caelestia path: try NM/keyring first; only then ask for a password. */
+  /** Try NM/keyring first; only then ask for a password. */
   const tryConnect = async (ssid: string, pass?: string) => {
     setConnectingToSsid(ssid)
     setConnectError(null)

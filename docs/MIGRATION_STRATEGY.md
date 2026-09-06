@@ -1,57 +1,39 @@
-# Caelestia to AGS Migration Strategy
+# Aura stack strategy
 
 ## Executive Summary
-This document outlines the strategic approach for migrating the Caelestia shell from a Quickshell/QML codebase to an AGS/TypeScript + Rust Sidecar architecture. The primary goal is to maintain 100% feature parity ("literally everything") whilst improving performance, type safety, and maintainability.
 
-## Architectural Shift
+Aura is an AGS/TypeScript + Rust sidecar desktop shell. The stack is chosen for type safety, a stable JSON-RPC contract, and a split between GTK chrome and React panels.
 
-| Feature | Legacy (Caelestia/Quickshell) | New (AGS/Rust) | Benefit |
-| :--- | :--- | :--- | :--- |
-| **Frontend Language** | QML (JavaScript) | TypeScript (GJS) | Strong static typing, easier refactoring. |
-| **UI Framework** | QtQuick | GTK3 (via AGS) | Native GTK integration, CSS styling (Tailwind). |
-| **Backend Logic** | QML `Process` / Shell Scripts | Rust Sidecar (Binary) | High performance, memory safety, proper concurrency. |
-| **IPC** | Stdout parsing / ad-hoc signals | JSON-RPC (Stdio/Unix Socket) | Structured, type-safe communication. |
-| **Styling** | QML Properties | TailwindCSS | Industry standard styling, easier theming. |
+## Layers
 
-## Migration Phases
+| Feature | Implementation | Benefit |
+| :--- | :--- | :--- |
+| **Shell chrome** | TypeScript (GJS) via AGS / GTK4 | Layer-shell windows, `ags msg` |
+| **Panels** | React in WebKit (`ui/`) | Dense settings UIs without GTK layout pain |
+| **Backend** | Rust sidecar (`ags-sidecar`) | Concurrency, allowlisted exec, tests |
+| **IPC** | JSON-RPC (stdio + POST HTTP on loopback) | Typed contracts between GTK, UI, and services |
+| **Styling** | TailwindCSS + Catppuccin Mocha tokens | Shared palette across GTK CSS and Vite |
 
-### Phase 0: Discovery & Documentation (Current)
-- Audit existing codebase.
-- Map every QML file to a planned TypeScript component or Rust service.
-- Define the JSON-RPC API spec.
+## Build order (historical)
 
-### Phase 1: The "Brain" (Rust Sidecar)
-Before writing any UI, we must build the backend services that power the shell. Reliability is key here.
-- **Project Setup**: Cargo workspace.
-- **Core Services**:
-    - **VPN**: Port the complex state machine from `VPN.qml` (OpenConnect/OpenVPN management).
-    - **Audio**: Pipewire integration (replacing `pw-cli` shell calls).
-    - **Power**: Battery monitoring and TLP/Power-Profile-Daemon control.
-    - **Network**: NetworkManager wrapper.
-- **Testing**: Unit / integration testing is important to ensure that the sidecar works as intended and to prevent regressions
-- **Deliverable**: A standalone `ags-sidecar` binary that can be queried via CLI (e.g., `ags-sidecar client get-volume`).
+### Phase 1: Sidecar
 
-### Phase 2: Foundation (AGS Setup)
-- Initialize AGS with `bun` and `typescript`.
-- Configure `tailwind.config.js` with the Caelestia color palette.
-- Implement the `SidecarClient` class in TypeScript to bridge the UI with the Rust binary.
+Core services (VPN, audio, power, network) behind JSON-RPC. Deliverable: `ags-sidecar` with a CLI/client for smoke queries.
 
-### Phase 3: "Pixel Perfect" UI Porting
-Porting components one by one, ensuring they look effectively identical.
-1.  **Status Bar**: The anchor of the shell. Workspaces, clock, tray.
-2.  **Notification Center**: Replicating the distinct notifications look.
-3.  **Control Center**: interactable sliders and toggles backed by the Sidecar.
-4.  **App Launcher**: Fast, keyboard-centric searching.
+### Phase 2: AGS host
 
-### Phase 4: Validation & Cutover
-- **Parallel Run**: Run `ags -b debug` alongside Caelestia to compare visually.
-- **Stress Test**: Hammer the RPC interface to ensure no lag.
-- **Cutover**: Disable Caelestia autostart, enable AGS.
+`app.ts`, Tailwind → `style/style.css`, `SidecarClient` in TypeScript.
+
+### Phase 3: Surfaces
+
+Status bar, notification/control center, launcher, OSD — React in WebKit by default; GTK for OSD and hosts.
+
+### Phase 4: Hardening
+
+RPC stress, sidecar auto-restart on disconnect, polkit for privileged actions (VPN, packages).
 
 ## Risk Management
-- **Risk**: "GTK theming is harder than QML".
-    - **Mitigation**: Use TailwindCSS purely; avoid complex GTK CSS where possible.
-- **Risk**: "Rust sidecar crashes taking down shell features".
-    - **Mitigation**: AGS should auto-restart the sidecar, or handle disconnects gracefully (grey out widgets).
-- **Risk**: "VPN sudo permissions".
-    - **Mitigation**: Use `polkit` properly or configure `sudoers` for specific commands (as Caelestia did), but orchestrated safely by Rust.
+
+- **GTK theming is awkward** — prefer Tailwind utilities; keep GTK CSS small.
+- **Sidecar crash** — AGS restarts the binary; widgets grey out on disconnect.
+- **Privileged commands** — polkit / allowlisted helpers, not ad-hoc sudo from the UI.

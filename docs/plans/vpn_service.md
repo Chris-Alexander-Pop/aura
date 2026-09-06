@@ -8,7 +8,7 @@
 
 ## Goal
 
-Port **Caelestia VPN state machine** into `vpn.rs`:
+Implement the VPN state machine in `vpn.rs`:
 
 1. `Vpn.GetProfiles` from config dir.
 2. `Vpn.Connect` / `Vpn.Disconnect` — OpenConnect/OpenVPN/WireGuard with polkit/sudo wrapper.
