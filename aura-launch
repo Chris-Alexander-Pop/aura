@@ -3,9 +3,6 @@
 
 export PATH="$HOME/.bun/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
 
-killall qs quickshell caelestia 2>/dev/null || true
-sleep 0.3
-
 notify-send "Aura" "Launching Aura (dev watch)…" \
     --urgency=normal \
     --expire-time=4000 \
