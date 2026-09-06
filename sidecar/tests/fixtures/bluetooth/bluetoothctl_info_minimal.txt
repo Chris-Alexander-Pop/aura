@@ -1,0 +1,6 @@
+Device 11:22:33:44:55:66 (public)
+	Name: Unknown Device
+	Alias: Unknown Device
+	Paired: no
+	Connected: no
+	Trusted: no

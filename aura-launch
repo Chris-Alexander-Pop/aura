@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# aura-launch — dev helper: open foot terminal running ./aura (full build + watch)
+
+export PATH="$HOME/.bun/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+
+killall qs quickshell caelestia 2>/dev/null || true
+sleep 0.3
+
+notify-send "Aura" "Launching Aura (dev watch)…" \
+    --urgency=normal \
+    --expire-time=4000 \
+    2>/dev/null || true
+
+exec foot --title "Aura Launcher" bash -c "export PATH=\"$HOME/.bun/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:\$PATH\"; ~/.config/ags/aura; echo; echo 'Aura exited. Press Enter to close.'; read"

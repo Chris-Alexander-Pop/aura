@@ -1,0 +1,33 @@
+Sink #47
+	State: RUNNING
+	Name: alsa_output.pci-0000_00_1f.3.analog-stereo
+	Description: Headphones
+	Driver: PipeWire
+	Sample Specification: float32le 2ch 48000Hz
+	Channel Map: front-left,front-right
+	Owner Module: 4294967295
+	Mute: no
+	Volume: front-left: 32768 /  50% / -18.06 dB,   front-right: 32768 /  50% / -18.06 dB
+	        balance 0.00
+	Base Volume: 65536 / 100% / 0.00 dB
+	Monitor Source: alsa_output.pci-0000_00_1f.3.analog-stereo.monitor
+	Latency: 0 usec, configured 0 usec
+	Flags: HARDWARE DECIBEL_VOLUME LATENCY 
+	Properties:
+		alsa.card = "0"
+		device.description = "Headphones"
+		node.name = "alsa_output.pci-0000_00_1f.3.analog-stereo"
+		media.class = "Audio/Sink"
+
+Sink #55
+	State: SUSPENDED
+	Name: alsa_output.hdmi-stereo
+	Description: HDMI / DisplayPort
+	Driver: PipeWire
+	Sample Specification: s16le 2ch 48000Hz
+	Mute: no
+	Volume: front-left: 0 /   0% / -inf dB,   front-right: 0 /   0% / -inf dB
+	Flags: HARDWARE 
+	Properties:
+		device.description = "HDMI / DisplayPort"
+		media.class = "Audio/Sink"

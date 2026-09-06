@@ -1,0 +1,7 @@
+Display 1
+I2C bus:             /dev/i2c-7
+DRM connector:       card1-HDMI-A-1
+
+Display 2
+I2C bus:             /dev/i2c-8
+DRM connector:       card0-DP-2

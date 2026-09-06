@@ -1,0 +1,27 @@
+{
+  "current_condition": [
+    {
+      "temp_C": "10",
+      "temp_F": "50",
+      "FeelsLikeC": "9",
+      "FeelsLikeF": "48",
+      "humidity": "55",
+      "weatherDesc": [{ "value": "Clear" }],
+      "weatherCode": "113"
+    }
+  ],
+  "weather": [
+    {
+      "date": "2026-06-08",
+      "hourly": [{ "tempC": "12", "weatherCode": "116" }]
+    },
+    {
+      "date": "2026-06-09",
+      "hourly": [{ "tempC": "14", "weatherCode": "119" }]
+    },
+    {
+      "date": "2026-06-10",
+      "hourly": [{ "tempC": "11", "weatherCode": "200" }]
+    }
+  ]
+}

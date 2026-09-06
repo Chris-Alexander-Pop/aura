@@ -1,0 +1,4 @@
+Filesystem       1B-blocks       Used  Available Use% Mounted on
+/dev/nvme0n1p2 100000000000 50000000000 50000000000  50% /
+tmpfs            8000000000          0  8000000000   0% /dev/shm
+/dev/nvme0n1p1    512000000    100000000   412000000  20% /boot

@@ -1,0 +1,48 @@
+[package]
+name = "ags-sidecar"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ags_sidecar"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ags-sidecar"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+chrono = "0.4"
+hyprland = "0.4.0-alpha.2"
+jsonrpc-core = "18.0"
+sysinfo = "0.29"
+regex = "1.10"
+zbus = { version = "3.15", features = ["tokio"] }
+reqwest = { version = "0.11", features = ["json"] }
+notify = "6.0"
+thiserror = "1.0"
+futures = "0.3"
+futures-util = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+lazy_static = "1.4"
+async-trait = "0.1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+quick-xml = { version = "0.31", features = ["serialize"] }
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+tokio-tungstenite = "0.21"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+
+[dev-dependencies]
+regex = "1.10"
+tempfile = "3"
+tokio-test = "0.4"
+wiremock = "0.6"

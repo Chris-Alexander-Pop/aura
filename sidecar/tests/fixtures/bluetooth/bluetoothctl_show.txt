@@ -1,0 +1,9 @@
+Controller AA:BB:CC:DD:EE:00 (public)
+	Name: My-PC
+	Alias: My-PC
+	Class: 0x007c010c
+	Powered: yes
+	Discoverable: no
+	DiscoverableTimeout: 0x000000b4
+	Pairable: yes
+	Discovering: no

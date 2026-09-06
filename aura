@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+# Aura - AGS development launcher
+# Builds sidecar, optionally watches Rust, runs frontend watch + AGS
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SIDECAR_DIR="$SCRIPT_DIR/sidecar"
+
+RUST_WATCH_PID=""
+BACKGROUND=false
+BG_LAUNCHED=false
+KILL_ONLY=false
+LOG_FILE="${AURA_LOG:-/tmp/aura-dev.log}"
+PID_FILE="${AURA_PID_FILE:-/tmp/aura-dev.pid}"
+
+cleanup() {
+    local exit_code=$?
+    if [ "$BG_LAUNCHED" = true ]; then
+        exit $exit_code
+    fi
+    echo ""
+    if [ -n "$RUST_WATCH_PID" ] && kill -0 "$RUST_WATCH_PID" 2>/dev/null; then
+        kill "$RUST_WATCH_PID" 2>/dev/null || true
+        wait "$RUST_WATCH_PID" 2>/dev/null || true
+    fi
+    exit $exit_code
+}
+trap cleanup EXIT INT TERM
+
+RUNNER="bun"
+if ! command -v bun &> /dev/null; then
+    RUNNER="npm"
+fi
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+print_header() {
+    echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║${NC}  ${CYAN}Aura · AGS Development${NC}                                    ${BLUE}║${NC}"
+    echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+kill_session() {
+    echo -e "${CYAN}Stopping Aura --bg session...${NC}"
+
+    if [ ! -f "$PID_FILE" ]; then
+        echo -e "${YELLOW}⚠${NC} No PID file ($PID_FILE). ./aura --kill only stops a background session started with --bg."
+        return 0
+    fi
+
+    while read -r pid; do
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+        fi
+    done < "$PID_FILE"
+    rm -f "$PID_FILE"
+
+    sleep 0.5
+    echo -e "${GREEN}✓${NC} Aura --bg session stopped"
+}
+
+check_dependencies() {
+    local missing=0
+
+    if ! command -v cargo &> /dev/null; then
+        echo -e "${RED}✗${NC} cargo not found"; missing=1
+    else
+        echo -e "${GREEN}✓${NC} cargo found"
+    fi
+
+    if ! command -v ags &> /dev/null; then
+        echo -e "${RED}✗${NC} ags not found"; missing=1
+    else
+        echo -e "${GREEN}✓${NC} ags found"
+    fi
+
+    if ! command -v cargo-watch &> /dev/null; then
+        echo -e "${YELLOW}⚠${NC} cargo-watch not found (--no-rust-watch or: cargo install cargo-watch)"
+        CARGO_WATCH_AVAILABLE=false
+    else
+        echo -e "${GREEN}✓${NC} cargo-watch found"
+        CARGO_WATCH_AVAILABLE=true
+    fi
+
+    if [ "$RUNNER" = "npm" ] && ! command -v npm &> /dev/null; then
+        echo -e "${RED}✗${NC} npm not found"; missing=1
+    elif [ "$RUNNER" = "bun" ] && ! command -v bun &> /dev/null; then
+        echo -e "${RED}✗${NC} bun not found"; missing=1
+    else
+        echo -e "${GREEN}✓${NC} JS runtime: $RUNNER"
+    fi
+
+    local astal_missing=()
+    for f in AstalTray-0.1.typelib AstalMpris-0.1.typelib; do
+        if [ ! -f "/usr/lib/girepository-1.0/$f" ]; then
+            astal_missing+=("${f%-0.1.typelib}")
+        fi
+    done
+    if [ ${#astal_missing[@]} -gt 0 ]; then
+        echo -e "${RED}✗${NC} Missing GObject introspection: ${astal_missing[*]}"
+        echo -e "  ${YELLOW}Install:${NC} yay -S libastal-tray-git libastal-mpris-git"
+        missing=1
+    else
+        echo -e "${GREEN}✓${NC} Astal typelibs (tray, mpris)"
+    fi
+
+    if [ $missing -eq 1 ]; then
+        echo -e "\n${RED}Missing required dependencies.${NC}"
+        exit 1
+    fi
+}
+
+build_sidecar() {
+    local mode=${1:-release}
+    echo -e "\n${CYAN}📦 Building sidecar (${mode})...${NC}"
+    cd "$SIDECAR_DIR"
+    if [ "$mode" = "release" ]; then
+        cargo build --release
+    else
+        cargo build
+    fi
+    echo -e "${GREEN}✓${NC} Sidecar built"
+    cd "$SCRIPT_DIR"
+}
+
+build_ui() {
+    echo -e "\n${CYAN}⚛️  Building React UI...${NC}"
+    cd "$SCRIPT_DIR/ui"
+    $RUNNER run build
+    echo -e "${GREEN}✓${NC} React UI built → ui/dist"
+    cd "$SCRIPT_DIR"
+}
+
+show_usage() {
+    echo "Usage: aura [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --debug         Sidecar in debug mode (symbols, slower)"
+    echo "  --release       Sidecar in release mode [default]"
+    echo "  --no-rust-watch Do not auto-watch Rust"
+    echo "  --no-ui-build   Skip React UI build (use existing dist)"
+    echo "  --bg            Run watch + AGS in background (log: /tmp/aura-dev.log)"
+    echo "                  Crash dumps: ~/.local/share/aura/crashes/ (AURA_CRASH_DIR)"
+    echo "  --kill          Stop a ./aura --bg session (PIDs in \$AURA_PID_FILE only)"
+    echo "  --help, -h      Show this help"
+}
+
+BUILD_MODE="release"
+START_RUST_WATCH=true
+BUILD_UI=true
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --release)       BUILD_MODE="release"; shift ;;
+        --debug)         BUILD_MODE="debug"; shift ;;
+        --no-rust-watch) START_RUST_WATCH=false; shift ;;
+        --no-ui-build)   BUILD_UI=false; shift ;;
+        --bg)            BACKGROUND=true; shift ;;
+        --kill)          KILL_ONLY=true; shift ;;
+        --help|-h)       show_usage; exit 0 ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            show_usage; exit 1
+            ;;
+    esac
+done
+
+if [ "$KILL_ONLY" = true ]; then
+    kill_session
+    exit 0
+fi
+
+print_header
+
+echo -e "${CYAN}Checking dependencies...${NC}"
+check_dependencies
+
+if [ -x "$SCRIPT_DIR/scripts/sidecar-target-prune.sh" ]; then
+    "$SCRIPT_DIR/scripts/sidecar-target-prune.sh" --coverage-only >/dev/null 2>&1 || true
+    "$SCRIPT_DIR/scripts/sidecar-target-prune.sh" >/dev/null 2>&1 || true
+fi
+
+echo -e "\n${CYAN}Building sidecar...${NC}"
+build_sidecar "$BUILD_MODE"
+
+export AURA_SIDECAR="${SIDECAR_DIR}/target/${BUILD_MODE}/ags-sidecar"
+
+if [ "$BUILD_UI" = true ]; then
+    build_ui
+fi
+
+if [ "$START_RUST_WATCH" = true ] && [ "$CARGO_WATCH_AVAILABLE" = true ]; then
+    echo -e "\n${CYAN}🦀 Starting Rust watch (background)...${NC}"
+    if [ "$BACKGROUND" = true ]; then
+        (
+            cd "$SIDECAR_DIR"
+            if [ "$BUILD_MODE" = "release" ]; then
+                exec cargo watch -x 'build --release'
+            else
+                exec cargo watch -x 'build'
+            fi
+        ) >>"$LOG_FILE" 2>&1 &
+        RUST_WATCH_PID=$!
+        disown "$RUST_WATCH_PID" 2>/dev/null || true
+    else
+        (
+            cd "$SIDECAR_DIR"
+            if [ "$BUILD_MODE" = "release" ]; then
+                exec cargo watch -x 'build --release'
+            else
+                exec cargo watch -x 'build'
+            fi
+        ) &
+        RUST_WATCH_PID=$!
+    fi
+    echo -e "${GREEN}✓${NC} cargo-watch PID $RUST_WATCH_PID"
+fi
+
+cd "$SCRIPT_DIR"
+
+if [ "$BACKGROUND" = true ]; then
+    echo -e "\n${CYAN}Starting frontend watch + AGS (background)...${NC}"
+    nohup $RUNNER run watch >>"$LOG_FILE" 2>&1 &
+    WATCH_PID=$!
+    BG_LAUNCHED=true
+    {
+        echo "$WATCH_PID"
+        [ -n "$RUST_WATCH_PID" ] && echo "$RUST_WATCH_PID"
+    } > "$PID_FILE"
+    echo -e "${GREEN}✓${NC} Aura running in background"
+    echo -e "  Watch PID: ${WATCH_PID}"
+    [ -n "$RUST_WATCH_PID" ] && echo -e "  Rust watch PID: ${RUST_WATCH_PID}"
+    echo -e "  Log: ${LOG_FILE}"
+    echo -e "  Crash dumps: ${AURA_CRASH_DIR:-$HOME/.local/share/aura/crashes}"
+    echo -e "  Stop: ${CYAN}aura --kill${NC}"
+    exit 0
+fi
+
+echo -e "\n${CYAN}Starting frontend watch + AGS...${NC}"
+echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"
+
+$RUNNER run watch

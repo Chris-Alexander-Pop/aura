@@ -1,0 +1,11 @@
+method call sender=:1.42 -> dest=org.freedesktop.Notifications serial=2 path=/org/freedesktop/Notifications; interface=org.freedesktop.Notifications; member=Notify
+   string "firefox"
+   uint32 0
+   string "dialog-information"
+   string "Page loaded"
+   string "example.com finished loading"
+   array [
+   ]
+   array [
+   ]
+   int32 -1

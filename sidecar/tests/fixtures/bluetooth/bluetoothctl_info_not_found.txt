@@ -1,0 +1,2 @@
+Device FF:FF:FF:FF:FF:FF not available
+Device not found

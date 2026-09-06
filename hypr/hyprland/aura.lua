@@ -1,0 +1,2 @@
+-- Deprecated stub. Aura binds live in keybinds.lua; optional RPC overrides in
+-- aura-overrides.lua. Kept so old `require("…/aura")` paths do not error.

@@ -1,0 +1,6 @@
+[*] Enumerating subdomains for example.com
+
+www.example.com
+api.example.com
+
+noise line without domain

@@ -1,0 +1,244 @@
+diff --git a/src/ui/Dialog.cpp b/src/ui/Dialog.cpp
+index bec6947..fe6e5e5 100644
+--- a/src/ui/Dialog.cpp
++++ b/src/ui/Dialog.cpp
+@@ -113,7 +113,28 @@ void CDialog::showStatus(CSharedPointer<IElement>& wrap, bool& shown, bool show)
+     } else if (!show && shown) {
+         m_statusContainer->removeChild(wrap);
+         shown = false;
++    } else {
++        return;
+     }
++    syncWindowHeight();
++}
++
++void CDialog::syncWindowHeight() {
++    if (!m_window || m_baseHeight <= 0)
++        return;
++
++    constexpr double STATUS_LINE = 18.0;
++    constexpr double STATUS_GAP  = 2.0;
++    int              lines       = 0;
++    if (m_infoShown)
++        ++lines;
++    if (m_errShown)
++        ++lines;
++    if (m_capsShown)
++        ++lines;
++
++    const double extra = lines > 0 ? STATUS_GAP + (double)lines * (STATUS_LINE + STATUS_GAP) : 0.0;
++    m_window->setSize({m_windowWidth, m_baseHeight + extra});
+ }
+ 
+ void CDialog::setInfo(const std::string& text) {
+@@ -144,12 +165,34 @@ void CDialog::build() {
+         detailRows += m_req.details.size();
+     }
+     const double extraForDetails = detailRows > 0 ? (double)detailRows * 8.0 : 0.0;
+-    const double targetHeight    = (double)cfg.windowHeight + extraForDetails;
++
++    // Size the window to content so vertical centering stays tight (not a tall box with dead space).
++    constexpr double OUTER_MARGIN = 6.0;
++    constexpr double GAP          = 2.0;
++    double           contentH     = OUTER_MARGIN;
++    contentH += 18; // title
++    if (m_req.identities.size() > 1)
++        contentH += GAP + 28;
++    contentH += GAP + 14; // prompt
++    if (!m_req.command.empty())
++        contentH += GAP + 30; // command pill
++    contentH += GAP + 36; // password field
++    contentH += GAP + 28; // buttons
++    contentH += OUTER_MARGIN;
++
++    m_windowWidth = (double)cfg.windowWidth;
++    m_baseHeight  = contentH + extraForDetails;
++
++    // status lines (info / error / caps lock) are added dynamically after fingerprint failure.
++    constexpr double STATUS_LINE      = 18.0;
++    constexpr double STATUS_GAP       = 2.0;
++    const double     maxStatusBlock   = STATUS_GAP + 3.0 * (STATUS_LINE + STATUS_GAP);
++    const double     initialHeight    = m_baseHeight;
+ 
+     m_window = CWindowBuilder::begin()
+-                   ->preferredSize({(double)cfg.windowWidth, targetHeight})
+-                   ->minSize({460.0, targetHeight})
+-                   ->maxSize({600.0, targetHeight})
++                   ->preferredSize({m_windowWidth, initialHeight})
++                   ->minSize({m_windowWidth, initialHeight})
++                   ->maxSize({m_windowWidth, m_baseHeight + maxStatusBlock})
+-                   ->appTitle("Authentication Required")
++                   ->appTitle("Auth Required")
+                    ->appClass("hyprpolkitagent")
+                    ->commence();
+@@ -177,8 +220,8 @@ void CDialog::build() {
+ 
+     m_window->m_rootElement->addChild(CRectangleBuilder::begin()->color([] { return g_pAgent->backend()->getPalette()->m_colors.background; })->commence());
+ 
+-    auto outer = CColumnLayoutBuilder::begin()->size({CDynamicSize::HT_SIZE_PERCENT, CDynamicSize::HT_SIZE_AUTO, {0.88F, 0.0F}})->gap(12)->commence();
+-    outer->setMargin(20);
++    auto outer = CColumnLayoutBuilder::begin()->size({CDynamicSize::HT_SIZE_PERCENT, CDynamicSize::HT_SIZE_AUTO, {0.98F, 0.0F}})->gap(2)->commence();
++    outer->setMargin(3);
+     outer->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
+     outer->setPositionFlag(IElement::HT_POSITION_FLAG_CENTER, true);
+     m_window->m_rootElement->addChild(outer);
+@@ -190,45 +233,35 @@ void CDialog::build() {
+         wrap->addChild(CTextBuilder::begin()
+-                           ->text(std::string{"Authentication Required"})
++                           ->text(std::string{"Auth Required"})
+                            ->fontSize({CFontSize::HT_FONT_H2})
+-                           ->color([] { return g_pAgent->backend()->getPalette()->m_colors.text; })
++                           ->color([] { return g_pAgent->backend()->getPalette()->m_colors.accent; })
+                            ->commence());
+         outer->addChild(wrap);
+     }
+ 
+-    {
++    if (m_req.identities.size() > 1) {
+         auto wrap = CRowLayoutBuilder::begin()->commence();
+         wrap->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
+         wrap->setPositionFlag(IElement::HT_POSITION_FLAG_HCENTER, true);
+ 
+-        if (m_req.identities.size() > 1) {
+-            auto                     cb = CComboboxBuilder::begin();
+-            std::vector<std::string> items;
+-            for (const auto& id : m_req.identities)
+-                items.push_back(id.display);
+-            cb->items(std::move(items));
+-            const std::string preferred = "unix-user:" + std::to_string(::geteuid());
+-            int               sel       = 0;
+-            for (size_t i = 0; i < m_req.identities.size(); i++) {
+-                if (m_req.identities[i].raw == preferred) {
+-                    sel = (int)i;
+-                    break;
+-                }
++        auto                     cb = CComboboxBuilder::begin();
++        std::vector<std::string> items;
++        for (const auto& id : m_req.identities)
++            items.push_back(id.display);
++        cb->items(std::move(items));
++        const std::string preferred = "unix-user:" + std::to_string(::geteuid());
++        int               sel       = 0;
++        for (size_t i = 0; i < m_req.identities.size(); i++) {
++            if (m_req.identities[i].raw == preferred) {
++                sel = (int)i;
++                break;
+             }
+-            cb->currentItem((size_t)sel);
+-            cb->onChanged([this](CSharedPointer<CComboboxElement>, size_t idx) {
+-                if (idx < m_req.identities.size())
+-                    g_pAgent->selectIdentity(m_req.identities[idx].raw);
+-            });
+-            wrap->addChild(cb->commence());
+-        } else {
+-            const std::string display = m_req.identities.empty() ? "" : m_req.identities[0].display;
+-            wrap->addChild(CTextBuilder::begin()
+-                               ->text(std::string{"for "} + display)
+-                               ->fontSize({CFontSize::HT_FONT_SMALL})
+-                               ->clampSize({(double)cfg.passwordFieldWidth, -1.0})
+-                               ->color([] { return g_pAgent->backend()->getPalette()->m_colors.text.darken(0.3); })
+-                               ->commence());
+         }
++        cb->currentItem((size_t)sel);
++        cb->onChanged([this](CSharedPointer<CComboboxElement>, size_t idx) {
++            if (idx < m_req.identities.size())
++                g_pAgent->selectIdentity(m_req.identities[idx].raw);
++        });
++        wrap->addChild(cb->commence());
+         outer->addChild(wrap);
+     }
+ 
+@@ -265,21 +298,25 @@ void CDialog::build() {
+ 
+         const auto palette = g_pAgent->backend()->getPalette();
+         auto       box     = CRectangleBuilder::begin()
+-                       ->color([] { return g_pAgent->backend()->getPalette()->m_colors.alternateBase; })
++                       ->color([] { return g_pAgent->backend()->getPalette()->m_colors.base; })
++                       ->borderColor([] { return g_pAgent->backend()->getPalette()->m_colors.alternateBase; })
++                       ->borderThickness(1)
+                        ->rounding(palette->m_vars.bigRounding)
+                        ->size(CDynamicSize{CDynamicSize::HT_SIZE_AUTO, CDynamicSize::HT_SIZE_AUTO, {}})
+                        ->commence();
+ 
+         auto inner = CRowLayoutBuilder::begin()->gap(0)->commence();
+-        inner->setMargin(12);
++        inner->setMargin(8);
+         inner->addChild(CTextBuilder::begin()
+                             ->text(std::string{"$ "})
+                             ->fontFamily(std::string{palette->m_vars.fontFamilyMonospace})
++                            ->fontSize({CFontSize::HT_FONT_SMALL})
+                             ->color([] { return g_pAgent->backend()->getPalette()->m_colors.accent; })
+                             ->commence());
+         inner->addChild(CTextBuilder::begin()
+                             ->text(std::string{cmd})
+                             ->fontFamily(std::string{palette->m_vars.fontFamilyMonospace})
++                            ->fontSize({CFontSize::HT_FONT_SMALL})
+                             ->clampSize({(double)cfg.passwordFieldWidth, -1.0})
+                             ->color([] { return g_pAgent->backend()->getPalette()->m_colors.text; })
+                             ->commence());
+@@ -299,7 +336,7 @@ void CDialog::build() {
+ 
+     // wraps are only attached when their label has text, so empty labels reserve no space
+     {
+-        auto statusCol = CColumnLayoutBuilder::begin()->gap(4)->commence();
++        auto statusCol = CColumnLayoutBuilder::begin()->gap(2)->commence();
+         statusCol->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
+         statusCol->setPositionFlag(IElement::HT_POSITION_FLAG_HCENTER, true);
+         outer->addChild(statusCol);
+@@ -313,9 +350,24 @@ void CDialog::build() {
+             return w;
+         };
+ 
+-        m_capsLockLabel = CTextBuilder::begin()->text(std::string{""})->fontSize({CFontSize::HT_FONT_SMALL})->color([] { return CHyprColor{1.0F, 0.75F, 0.2F, 1.F}; })->commence();
+-        m_errorLabel    = CTextBuilder::begin()->text(std::string{""})->color([] { return CHyprColor{0.9F, 0.4F, 0.4F, 1.F}; })->commence();
+-        m_infoLabel     = CTextBuilder::begin()->text(std::string{""})->color([] { return g_pAgent->backend()->getPalette()->m_colors.text.darken(0.4); })->commence();
++        m_capsLockLabel = CTextBuilder::begin()
++                              ->text(std::string{""})
++                              ->fontSize({CFontSize::HT_FONT_SMALL})
++                              ->clampSize({(double)cfg.passwordFieldWidth, -1.0})
++                              ->color([] { return CHyprColor{1.0F, 0.75F, 0.2F, 1.F}; })
++                              ->commence();
++        m_errorLabel = CTextBuilder::begin()
++                           ->text(std::string{""})
++                           ->fontSize({CFontSize::HT_FONT_SMALL})
++                           ->clampSize({(double)cfg.passwordFieldWidth, -1.0})
++                           ->color([] { return CHyprColor{0.9F, 0.4F, 0.4F, 1.F}; })
++                           ->commence();
++        m_infoLabel = CTextBuilder::begin()
++                          ->text(std::string{""})
++                          ->fontSize({CFontSize::HT_FONT_SMALL})
++                          ->clampSize({(double)cfg.passwordFieldWidth, -1.0})
++                          ->color([] { return g_pAgent->backend()->getPalette()->m_colors.text.darken(0.4); })
++                          ->commence();
+ 
+         m_capsWrap = makeWrap(m_capsLockLabel);
+         m_errWrap  = makeWrap(m_errorLabel);
+@@ -323,8 +375,7 @@ void CDialog::build() {
+     }
+ 
+     {
+-        auto btnRow = CRowLayoutBuilder::begin()->gap(10)->commence();
+-        btnRow->setMargin(8);
++        auto btnRow = CRowLayoutBuilder::begin()->gap(8)->commence();
+         btnRow->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
+         btnRow->setPositionFlag(IElement::HT_POSITION_FLAG_HCENTER, true);
+ 
+diff --git a/src/ui/Dialog.hpp b/src/ui/Dialog.hpp
+index c8ff2b8..9c24f63 100644
+--- a/src/ui/Dialog.hpp
++++ b/src/ui/Dialog.hpp
+@@ -30,6 +30,7 @@ class CDialog {
+     void                                                            build();
+     void                                                            buildPasswordField();
+     void                                                            showStatus(Hyprutils::Memory::CSharedPointer<Hyprtoolkit::IElement>& wrap, bool& shown, bool show);
++    void                                                            syncWindowHeight();
+ 
+     Hyprutils::Memory::CSharedPointer<Hyprtoolkit::IBackend>        m_backend;
+     Hyprutils::Memory::CSharedPointer<Hyprtoolkit::IWindow>         m_window;
+@@ -60,4 +61,6 @@ class CDialog {
+     bool                                                            m_errShown       = false;
+     bool                                                            m_infoShown      = false;
+     std::string                                                     m_promptText     = "Password";
++    double                                                          m_baseHeight     = 0;
++    double                                                          m_windowWidth    = 0;
+ };

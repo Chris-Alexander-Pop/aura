@@ -1,0 +1,229 @@
+/* iOS-Style Control Center */
+
+:root {
+  --font-size-summary: 13px;
+  --font-size-body: 11px;
+  --notification-icon-size: 32px;
+  --notification-app-icon-size: 11px;
+  --notification-group-icon-size: 16px;
+}
+
+* {
+  font-family: "JetBrainsMono Nerd Font", "Roboto", sans-serif;
+}
+
+.control-center {
+  background: rgba(24, 24, 37, 0.95);
+  border-radius: 16px;
+  border: 1px solid #313244;
+  box-shadow: 0 0 20px rgba(0,0,0,0.7);
+  padding: 12px;
+}
+
+/* Top Status Bar */
+.widget-label {
+  margin: 5px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: #cdd6f4;
+  background: #1e1e2e;
+  border-radius: 12px;
+  border: 1px solid #313244;
+}
+
+.widget-label > label {
+  color: #cdd6f4;
+}
+
+/* Button Grid */
+.widget-buttons-grid {
+  padding: 0;
+  margin: 10px 0;
+  background: transparent;
+  font-size: 0.8rem;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild {
+  padding: 0;
+  margin: 0;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild > button {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-radius: 10px;
+  margin: 3px;
+  padding: 4px 0;
+  border: 1px solid #313244;
+  min-width: 52px;
+  min-height: 52px;
+  font-size: 0.75rem;
+}
+
+.widget-buttons-grid > flowbox > flowboxchild > button:hover {
+  background: #313244;
+  color: #cba6f7;
+  border: 1px solid #cba6f7;
+}
+
+/* Sliders */
+.widget-volume,
+.widget-backlight {
+  background: #1e1e2e;
+  padding: 8px;
+  margin: 5px 0;
+  border-radius: 12px;
+  border: 1px solid #313244;
+}
+
+.widget-volume > box > button {
+  background: #89b4fa;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  padding: 5px 10px;
+  color: #11111b;
+}
+
+.widget-volume > box > scale,
+.widget-backlight > scale {
+  background: #313244;
+  border-radius: 8px;
+  margin-left: 10px;
+  min-height: 8px;
+}
+
+.widget-volume > box > scale slider,
+.widget-backlight > scale slider {
+  background: #cdd6f4;
+  border-radius: 50%;
+  min-height: 20px;
+  min-width: 20px;
+  box-shadow: none;
+}
+
+.widget-volume > box > scale highlight,
+.widget-backlight > scale highlight {
+  background: #89b4fa;
+  border-radius: 8px;
+}
+
+/* Media Player */
+.widget-mpris {
+  background: #1e1e2e;
+  padding: 10px;
+  margin: 10px 0;
+  border-radius: 12px;
+  border: 1px solid #313244;
+  color: #cdd6f4;
+}
+
+.widget-mpris-title {
+    font-size: 0.85rem;
+    font-weight: 800;
+}
+
+.widget-mpris-subtitle {
+    font-size: 0.72rem;
+}
+
+/* Notifications */
+.notification-row {
+  margin: 0 0 8px 0;
+}
+
+.notification-content {
+  background: #1e1e2e;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #313244;
+}
+
+.summary,
+.notification-row .notification-background .notification .notification-default-action .notification-content .text-box .summary {
+  color: #89b4fa;
+  font-size: var(--font-size-summary);
+  font-weight: 700;
+}
+
+.time,
+.notification-row .notification-background .notification .notification-default-action .notification-content .text-box .time {
+  color: #a6adc8;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.body,
+.notification-row .notification-background .notification .notification-default-action .notification-content .text-box .body,
+notificationwindow .text-box label.body,
+.control-center .text-box label.body {
+  color: #bac2de;
+  font-size: var(--font-size-body);
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+/* Body sometimes renders as an unclassified label */
+notificationwindow .text-box label:not(.summary):not(.time),
+.control-center .text-box label:not(.summary):not(.time) {
+  font-size: var(--font-size-body);
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+notificationwindow .notification-content .image,
+.notification-row .notification-background .notification .notification-default-action .notification-content .image {
+  -gtk-icon-size: var(--notification-icon-size);
+  margin: 2px 10px 2px 0;
+}
+
+notificationwindow .notification-content .app-icon,
+.notification-row .notification-background .notification .notification-default-action .notification-content .app-icon {
+  -gtk-icon-size: var(--notification-app-icon-size);
+  margin: 2px 8px 2px 0;
+}
+
+.close-button {
+  background: #f38ba8;
+  color: #11111b;
+  border-radius: 50%;
+  padding: 0;
+  margin-top: 4px;
+  margin-right: 4px;
+  min-width: 12px;
+  min-height: 12px;
+}
+
+/* Toast / notification action chips (Reply, etc.) */
+.notification-row .notification-background .notification .notification-alt-actions {
+  padding: 2px;
+}
+
+.notification-row .notification-background .notification .notification-action {
+  margin: 2px;
+  padding: 0;
+}
+
+.notification-row .notification-background .notification .notification-action > button,
+.control-center .control-center-list .notification .notification-action > button {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  border-radius: 8px;
+  background: #313244;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+}
+
+.notification-row .notification-background .notification .notification-action > button:hover,
+.control-center .control-center-list .notification .notification-action > button:hover {
+  background: #45475a;
+  color: #cba6f7;
+  border-color: #cba6f7;
+}
+
+.notification-row .notification-background .notification .notification-default-action .notification-content .inline-reply .inline-reply-button {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+}

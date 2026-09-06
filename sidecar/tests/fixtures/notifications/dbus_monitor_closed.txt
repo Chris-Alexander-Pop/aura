@@ -1,0 +1,3 @@
+signal sender=:1.42 -> dest=(null destination) serial=3 path=/org/freedesktop/Notifications; interface=org.freedesktop.Notifications; member=NotificationClosed
+   uint32 9001
+   uint32 2

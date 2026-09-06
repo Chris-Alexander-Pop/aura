@@ -1,0 +1,9 @@
+Status: active
+
+     To                         Action      From
+     --                         ------      ----
+ALLOW IN tcp 22
+ALLOW IN tcp 80
+header only line
+ALLOW IN
+DENY OUT udp 53

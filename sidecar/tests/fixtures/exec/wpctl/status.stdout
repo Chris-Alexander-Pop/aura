@@ -1,0 +1,14 @@
+PipeWire 'pipewire-0' [v1.2.0]
+ └─ Clients:
+        ...
+
+Audio
+ ├ Devices:
+ │  
+ ├ Sinks:
+ │  ●   47. Headphones [vol: 0.50 MUTED]
+ │      55. HDMI / DisplayPort [vol: 0.00]
+ ├ Sources:
+ │  ●   50. Built-in Microphone [vol: 1.00]
+ ├ Sink Inputs:
+ │  

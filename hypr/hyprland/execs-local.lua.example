@@ -1,0 +1,21 @@
+-- Copy to execs-local.lua (gitignored). Loaded by execs.lua.
+-- `before` runs immediately before aura-session.sh; `after` runs at the end.
+
+local M = {}
+
+function M.before(v)
+  -- HDMI / dGPU cold-plug before the shell comes up.
+  -- hl.exec_cmd("bash -c '" .. v.hypr .. "/scripts/reinit-hdmi-boot.sh'")
+end
+
+function M.after(v)
+  -- Waydroid, nearby-share, phone sync, trash policy, etc.
+  -- hl.exec_cmd("systemctl --user start waydroid-session.service")
+  -- hl.exec_cmd(v.hypr .. "/scripts/waydroid-hypr-size-sync.sh")
+  -- hl.exec_cmd(v.hypr .. "/scripts/watch-monitor-events.sh")
+  -- hl.exec_cmd("valent --gapplication-service")
+  -- hl.exec_cmd("rquickshare")
+  -- hl.exec_cmd("trash-empty 30")
+end
+
+return M

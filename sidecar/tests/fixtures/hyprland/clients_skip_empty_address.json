@@ -1,0 +1,10 @@
+[
+  { "address": "", "title": "Hidden", "class": "x", "workspace": { "id": 1 } },
+  {
+    "address": "0xbeef",
+    "title": "Visible",
+    "class": "kitty",
+    "workspace": { "id": 2, "name": "2" },
+    "floating": true
+  }
+]

@@ -1,0 +1,2 @@
+NAME   FSTYPE FSVER LABEL UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+sda1   ext4   1.0         00000000-0000-0000-0000-000000000000  100G   5%     /

@@ -1,0 +1,7 @@
+{
+  "address": "0x1a2b3c",
+  "title": "Mozilla Firefox",
+  "class": "firefox",
+  "workspace": { "id": 1, "name": "1" },
+  "floating": false
+}

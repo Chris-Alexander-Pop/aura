@@ -1,0 +1,91 @@
+/* Catppuccin palettes — applied via html[data-theme="…"] */
+
+[data-theme="dark"],
+[data-theme="catppuccin-mocha"],
+html:not([data-theme]) {
+  --c-crust: 17 17 27;
+  --c-mantle: 24 24 37;
+  --c-base: 30 30 46;
+  --c-surface0: 49 50 68;
+  --c-surface1: 69 71 90;
+  --c-surface2: 88 91 112;
+  --c-overlay0: 108 112 134;
+  --c-overlay1: 127 132 156;
+  --c-overlay2: 147 153 178;
+  --c-subtext0: 166 173 200;
+  --c-subtext1: 186 194 222;
+  --c-text: 205 214 244;
+  --c-lavender: 180 190 254;
+  --c-blue: 137 180 250;
+  --c-sapphire: 116 199 236;
+  --c-sky: 137 220 235;
+  --c-teal: 148 226 213;
+  --c-green: 166 227 161;
+  --c-yellow: 249 226 175;
+  --c-peach: 250 179 135;
+  --c-maroon: 235 160 172;
+  --c-red: 243 139 168;
+  --c-mauve: 203 166 247;
+  --c-pink: 245 194 231;
+  --c-flamingo: 242 205 205;
+  --c-rosewater: 245 224 220;
+}
+
+[data-theme="light"],
+[data-theme="catppuccin-latte"] {
+  --c-crust: 220 224 232;
+  --c-mantle: 230 233 239;
+  --c-base: 239 241 245;
+  --c-surface0: 204 208 218;
+  --c-surface1: 188 192 204;
+  --c-surface2: 172 176 190;
+  --c-overlay0: 156 160 176;
+  --c-overlay1: 140 143 161;
+  --c-overlay2: 124 127 147;
+  --c-subtext0: 108 111 133;
+  --c-subtext1: 92 95 119;
+  --c-text: 76 79 105;
+  --c-lavender: 114 135 253;
+  --c-blue: 30 102 245;
+  --c-sapphire: 32 159 181;
+  --c-sky: 4 165 229;
+  --c-teal: 23 148 166;
+  --c-green: 64 160 43;
+  --c-yellow: 223 142 29;
+  --c-peach: 254 100 11;
+  --c-maroon: 230 69 83;
+  --c-red: 210 15 57;
+  --c-mauve: 136 57 239;
+  --c-pink: 234 118 203;
+  --c-flamingo: 221 120 120;
+  --c-rosewater: 220 138 120;
+}
+
+[data-theme="catppuccin-frappe"] {
+  --c-crust: 35 38 52;
+  --c-mantle: 41 44 60;
+  --c-base: 48 52 70;
+  --c-surface0: 65 69 89;
+  --c-surface1: 81 87 109;
+  --c-surface2: 98 104 128;
+  --c-overlay0: 115 121 148;
+  --c-overlay1: 131 137 165;
+  --c-overlay2: 148 154 183;
+  --c-subtext0: 165 173 203;
+  --c-subtext1: 181 191 226;
+  --c-text: 198 208 245;
+  --c-lavender: 183 189 248;
+  --c-blue: 140 170 238;
+  --c-sapphire: 125 207 255;
+  --c-sky: 145 215 244;
+  --c-teal: 129 200 190;
+  --c-green: 166 209 137;
+  --c-yellow: 229 200 144;
+  --c-peach: 239 159 118;
+  --c-maroon: 235 160 172;
+  --c-red: 238 153 160;
+  --c-mauve: 202 158 230;
+  --c-pink: 244 184 228;
+  --c-flamingo: 238 190 190;
+  --c-rosewater: 242 213 207;
+}

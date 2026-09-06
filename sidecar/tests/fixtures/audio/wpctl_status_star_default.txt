@@ -1,0 +1,7 @@
+PipeWire 'pipewire-0' [v1.2.0]
+Audio
+ ├ Sinks:
+ │  *   33. USB Speakers [vol: 0.80]
+ │      44. Built-in Audio [vol: 0.40 MUTED]
+ ├ Sources:
+ │  *   51. USB Microphone [vol: 0.90]

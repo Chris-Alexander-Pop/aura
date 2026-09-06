@@ -1,0 +1,12 @@
+---
+description: Vite React UI embedded in WebKit — ui/ package
+globs: ui/**/*.ts,ui/**/*.tsx
+alwaysApply: false
+---
+
+# React UI (`ui/`)
+
+- **Build**: `npm run build` from `ui/` (or `./aura`, which builds UI by default). Output: `ui/dist` for WebKit loads.
+- **Stack**: Vite + React; Tailwind config is **`ui/tailwind.config.js`** — separate from the root shell Tailwind (`tailwind.config.js` + `style/input.css`).
+- **Backend calls**: prefer `ui/src/lib/api.ts` and related helpers; keep fetch/WebSocket patterns consistent with the sidecar HTTP surface expected by `src/widget/webview/`.
+- **Pages**: `ui/src/pages/` map to overlay experiences (control center, sidebar, etc.); coordinate renames with the corresponding `*Window.tsx` if routes or entrypoints change.

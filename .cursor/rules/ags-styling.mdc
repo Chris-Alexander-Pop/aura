@@ -1,0 +1,13 @@
+---
+description: Shell Tailwind/CSS — style/ and root tailwind.config.js
+globs: style/**,tailwind.config.js
+alwaysApply: false
+---
+
+# Shell styling (root)
+
+- **Input → output**: `style/input.css` → `style/style.css` via `bun run build:css` / `bun run watch:css` (see root `package.json`).
+- **Config**: `tailwind.config.js` at repo root — drives the AGS-loaded stylesheet referenced in `app.ts` (`css: "./style/style.css"`).
+- **Not the same as**: `ui/tailwind.config.js` (Vite React bundle). Editing the wrong file leaves one surface unstaged.
+
+After changing utilities or `@apply`, ensure `style/style.css` is regenerated before judging appearance under `ags run`.

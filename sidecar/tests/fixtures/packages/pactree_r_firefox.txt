@@ -1,0 +1,4 @@
+firefox
+├──glib2
+├──gtk3
+└──libpulse

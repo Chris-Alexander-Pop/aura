@@ -1,0 +1,1141 @@
+{
+  "mappings": [
+    {
+      "cmd": [
+        "wpctl",
+        "status"
+      ],
+      "stdout": "wpctl/status.stdout"
+    },
+    {
+      "cmd": [
+        "wpctl",
+        "set-default"
+      ],
+      "stdout": "wpctl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "wpctl",
+        "set-volume"
+      ],
+      "stdout": "wpctl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "wpctl",
+        "set-mute"
+      ],
+      "stdout": "wpctl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "pactl",
+        "list",
+        "sink-inputs"
+      ],
+      "stdout": "pactl/list_sink-inputs.stdout"
+    },
+    {
+      "cmd": [
+        "pactl",
+        "list",
+        "sinks"
+      ],
+      "stdout": "pactl/list_sinks.stdout"
+    },
+    {
+      "cmd": [
+        "pw-dump"
+      ],
+      "stdout": "pw-dump/_.stdout"
+    },
+    {
+      "cmd": [
+        "playerctl",
+        "-l"
+      ],
+      "stdout": "playerctl/list.stdout"
+    },
+    {
+      "cmd": [
+        "playerctl",
+        "-a",
+        "status"
+      ],
+      "stdout": "playerctl/status.stdout"
+    },
+    {
+      "cmd": [
+        "dbus-send"
+      ],
+      "stdout": "dbus-send/ok.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "radio",
+        "wifi"
+      ],
+      "stdout": "nmcli/radio_wifi.stdout"
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "radio",
+        "wifi",
+        "on"
+      ],
+      "stdout": "nmcli/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "radio",
+        "wifi",
+        "off"
+      ],
+      "stdout": "nmcli/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "dev",
+        "wifi",
+        "rescan"
+      ],
+      "stdout": "nmcli/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "-g",
+        "ACTIVE,SIGNAL,FREQ,SSID,BSSID,SECURITY",
+        "d",
+        "w"
+      ],
+      "stdout": "nmcli/dev_wifi_list.stdout"
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "-t",
+        "-f",
+        "NAME,UUID,TYPE,AUTOCONNECT",
+        "connection",
+        "show"
+      ],
+      "stdout": "nmcli/connection_show.stdout"
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "-t",
+        "-f",
+        "NAME,DEVICE,TYPE",
+        "c",
+        "show",
+        "--active"
+      ],
+      "stdout": "nmcli/active_connections.stdout"
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "-t",
+        "-f",
+        "ACTIVE,SSID",
+        "dev",
+        "wifi"
+      ],
+      "stdout": "nmcli/dev_wifi_active.stdout"
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "-t",
+        "-f",
+        "DEVICE,TYPE,STATE",
+        "device"
+      ],
+      "stdout": "nmcli/device_list.stdout"
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "-t",
+        "-f",
+        "DEVICE,TYPE,STATE",
+        "device",
+        "status"
+      ],
+      "stdout": "nmcli/device_list.stdout"
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "connection",
+        "down"
+      ],
+      "stdout": "nmcli/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "connection",
+        "delete"
+      ],
+      "stdout": "nmcli/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "dev",
+        "wifi",
+        "connect"
+      ],
+      "stdout": "nmcli/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "nmcli",
+        "connection",
+        "up"
+      ],
+      "stdout": "nmcli/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "which",
+        "grim"
+      ],
+      "stdout": "which/grim.stdout"
+    },
+    {
+      "cmd": [
+        "which",
+        "slurp"
+      ],
+      "stdout": "which/slurp.stdout"
+    },
+    {
+      "cmd": [
+        "which",
+        "wl-copy"
+      ],
+      "stdout": "which/wl-copy.stdout"
+    },
+    {
+      "cmd": [
+        "which",
+        "wf-recorder"
+      ],
+      "stdout": "which/wf-recorder.stdout"
+    },
+    {
+      "cmd": [
+        "grim",
+        "-"
+      ],
+      "stdout": "grim/dash.stdout"
+    },
+    {
+      "cmd": [
+        "slurp"
+      ],
+      "stdout": "slurp/region.stdout"
+    },
+    {
+      "cmd": [
+        "gtk-launch"
+      ],
+      "stdout": "gtk-launch/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "grim"
+      ],
+      "stdout": "grim/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "wf-recorder"
+      ],
+      "stdout": "wf-recorder/ok.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "pkill",
+        "-x",
+        "wf-recorder"
+      ],
+      "stdout": "pkill/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "ip",
+        "-o",
+        "addr",
+        "show"
+      ],
+      "stdout": "ip/addr_show.stdout"
+    },
+    {
+      "cmd": [
+        "ip",
+        "link"
+      ],
+      "stdout": "ip/link.stdout"
+    },
+    {
+      "cmd": [
+        "pgrep",
+        "-x",
+        "openconnect"
+      ],
+      "stdout": "pgrep/empty.stdout",
+      "exit": 1
+    },
+    {
+      "cmd": [
+        "pgrep",
+        "-x",
+        "openvpn"
+      ],
+      "stdout": "pgrep/empty.stdout",
+      "exit": 1
+    },
+    {
+      "cmd": [
+        "wg",
+        "show"
+      ],
+      "stdout": "wg/show.stdout"
+    },
+    {
+      "cmd": [
+        "sudo"
+      ],
+      "stdout": "sudo/ok.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "wg-quick"
+      ],
+      "stdout": "wg-quick/ok.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "openconnect"
+      ],
+      "stdout": "openconnect/ok.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "journalctl"
+      ],
+      "stdout": "journalctl/json.stdout"
+    },
+    {
+      "cmd": [
+        "journalctl",
+        "-n"
+      ],
+      "stdout": "journalctl/plain.stdout"
+    },
+    {
+      "cmd": [
+        "journalctl",
+        "--grep"
+      ],
+      "stdout": "journalctl/plain.stdout"
+    },
+    {
+      "cmd": [
+        "pacman",
+        "-Q"
+      ],
+      "stdout": "pacman/query.stdout"
+    },
+    {
+      "cmd": [
+        "pacman",
+        "-Qu"
+      ],
+      "stdout": "pacman/upgrades.stdout"
+    },
+    {
+      "cmd": [
+        "pacman",
+        "-Ss"
+      ],
+      "stdout": "pacman/search.stdout"
+    },
+    {
+      "cmd": [
+        "bluetoothctl",
+        "list"
+      ],
+      "stdout": "bluetoothctl/list.stdout"
+    },
+    {
+      "cmd": [
+        "bluetoothctl",
+        "show"
+      ],
+      "stdout": "bluetoothctl/show.stdout"
+    },
+    {
+      "cmd": [
+        "bluetoothctl",
+        "devices"
+      ],
+      "stdout": "bluetoothctl/devices.stdout"
+    },
+    {
+      "cmd": [
+        "bluetoothctl",
+        "info"
+      ],
+      "stdout": "bluetoothctl/info.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "df",
+        "-BG"
+      ],
+      "stdout": "df/bg.stdout"
+    },
+    {
+      "cmd": [
+        "pacman",
+        "-Qi",
+        "pacman"
+      ],
+      "stdout": "pacman/qi_pacman.stdout"
+    },
+    {
+      "cmd": [
+        "pactree",
+        "-r",
+        "pacman"
+      ],
+      "stdout": "pactree/r_pacman.stdout"
+    },
+    {
+      "cmd": [
+        "docker",
+        "images",
+        "--format",
+        "{{.ID}}|{{.Repository}}|{{.Tag}}|{{.Size}}"
+      ],
+      "stdout": "docker/images_format.stdout"
+    },
+    {
+      "cmd": [
+        "docker",
+        "ps",
+        "-a",
+        "--format",
+        "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}"
+      ],
+      "stdout": "docker/ps_a_format.stdout"
+    },
+    {
+      "cmd": [
+        "docker",
+        "stats",
+        "--no-stream",
+        "--format",
+        "{{.Container}}|{{.CPUPerc}}|{{.MemUsage}}"
+      ],
+      "stdout": "docker/stats_format.stdout"
+    },
+    {
+      "cmd": [
+        "podman",
+        "ps",
+        "-a",
+        "--format",
+        "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}"
+      ],
+      "stdout": "podman/ps_a_format.stdout"
+    },
+    {
+      "cmd": [
+        "kubectl",
+        "get",
+        "pods",
+        "-o",
+        "json"
+      ],
+      "stdout": "kubectl/get_pods_json.stdout"
+    },
+    {
+      "cmd": [
+        "systemctl",
+        "list-timers",
+        "--no-pager",
+        "--no-legend"
+      ],
+      "stdout": "systemctl/list_timers.stdout"
+    },
+    {
+      "cmd": [
+        "crontab",
+        "-l"
+      ],
+      "stdout": "crontab/l.stdout"
+    },
+    {
+      "cmd": [
+        "which",
+        "docker"
+      ],
+      "stdout": "which/docker.stdout"
+    },
+    {
+      "cmd": [
+        "which",
+        "podman"
+      ],
+      "stdout": "which/podman.stdout"
+    },
+    {
+      "cmd": [
+        "which",
+        "kubectl"
+      ],
+      "stdout": "which/kubectl.stdout"
+    },
+    {
+      "cmd": [
+        "which",
+        "git"
+      ],
+      "stdout": "which/git.stdout"
+    },
+    {
+      "cmd": [
+        "git",
+        "-C",
+        "/home/user/.config/ags/sidecar",
+        "branch",
+        "--show-current"
+      ],
+      "stdout": "git/branch_current.stdout"
+    },
+    {
+      "cmd": [
+        "git",
+        "-C",
+        "/home/user/.config/ags/sidecar",
+        "status",
+        "--porcelain"
+      ],
+      "stdout": "git/status_porcelain.stdout"
+    },
+    {
+      "cmd": [
+        "dbus-send",
+        "--session",
+        "--print-reply",
+        "--dest=org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus.ListNames"
+      ],
+      "stdout": "dbus-send/list_names.stdout"
+    },
+    {
+      "cmd": [
+        "pactl"
+      ],
+      "stdout": "pactl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "playerctl"
+      ],
+      "stdout": "playerctl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "easyeffects"
+      ],
+      "stdout": "easyeffects/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "pw-loopback"
+      ],
+      "stdout": "pw-loopback/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "nvidia-smi",
+        "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
+        "--format=csv,noheader,nounits"
+      ],
+      "stdout": "nvidia-smi/query.stdout"
+    },
+    {
+      "cmd": [
+        "cat",
+        "/proc/net/dev"
+      ],
+      "stdout": "cat/proc_net_dev.stdout"
+    },
+    {
+      "cmd": [
+        "nproc"
+      ],
+      "stdout": "nproc/_.stdout"
+    },
+    {
+      "cmd": [
+        "wg",
+        "show"
+      ],
+      "stdout": "wg/show.stdout"
+    },
+    {
+      "cmd": [
+        "pkill",
+        "-SIGINT",
+        "openconnect"
+      ],
+      "stdout": "pkill/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "pkill",
+        "-SIGINT",
+        "openvpn"
+      ],
+      "stdout": "pkill/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "ufw",
+        "status"
+      ],
+      "stdout": "ufw/status.stdout"
+    },
+    {
+      "cmd": [
+        "ufw",
+        "status",
+        "numbered"
+      ],
+      "stdout": "ufw/status_numbered.stdout"
+    },
+    {
+      "cmd": [
+        "ss",
+        "-tnp"
+      ],
+      "stdout": "ss/tnp.stdout"
+    },
+    {
+      "cmd": [
+        "ss",
+        "-tuln"
+      ],
+      "stdout": "ss/tuln.stdout"
+    },
+    {
+      "cmd": [
+        "lsblk",
+        "-f"
+      ],
+      "stdout": "lsblk/f.stdout"
+    },
+    {
+      "cmd": [
+        "fprintd-list"
+      ],
+      "stdout": "fprintd-list/_.stdout"
+    },
+    {
+      "cmd": [
+        "systemctl",
+        "is-active",
+        "sshd"
+      ],
+      "stdout": "systemctl/is_active_sshd.stdout"
+    },
+    {
+      "cmd": [
+        "systemctl",
+        "is-active",
+        "power-profiles-daemon.service"
+      ],
+      "stdout": "systemctl/is_active_power_profiles_daemon.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "systemctl",
+        "is-enabled",
+        "sshd"
+      ],
+      "stdout": "systemctl/is_enabled_sshd.stdout"
+    },
+    {
+      "cmd": [
+        "grep",
+        "Failed password",
+        "/var/log/auth.log"
+      ],
+      "stdout": "grep/failed_auth.stdout"
+    },
+    {
+      "cmd": [
+        "grep",
+        "Failed password",
+        "/var/log/secure"
+      ],
+      "stdout": "grep/failed_auth.stdout"
+    },
+    {
+      "cmd": [
+        "grep",
+        "sudo",
+        "/var/log/auth.log"
+      ],
+      "stdout": "grep/sudo_auth.stdout"
+    },
+    {
+      "cmd": [
+        "command",
+        "-v",
+        "ufw"
+      ],
+      "stdout": "command/v_ufw.stdout"
+    },
+    {
+      "cmd": [
+        "command",
+        "-v",
+        "firewall-cmd"
+      ],
+      "stdout": "command/v_ufw.stdout",
+      "exit": 1
+    },
+    {
+      "cmd": [
+        "command",
+        "-v",
+        "clamscan"
+      ],
+      "stdout": "command/v_ufw.stdout"
+    },
+    {
+      "cmd": [
+        "command",
+        "-v",
+        "fprintd-list"
+      ],
+      "stdout": "command/v_ufw.stdout"
+    },
+    {
+      "cmd": [
+        "notify-send"
+      ],
+      "stdout": "notify-send/_.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "chage",
+        "-l"
+      ],
+      "stdout": "chage/l.stdout"
+    },
+    {
+      "cmd": [
+        "passwd",
+        "-S"
+      ],
+      "stdout": "passwd/S_chris.stdout"
+    },
+    {
+      "cmd": [
+        "firewall-cmd",
+        "--state"
+      ],
+      "stdout": "firewall-cmd/state.stdout",
+      "exit": 1
+    },
+    {
+      "cmd": [
+        "which",
+        "powerprofilesctl"
+      ],
+      "stdout": "which/powerprofilesctl.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "powerprofilesctl",
+        "get"
+      ],
+      "stdout": "powerprofilesctl/get.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "powerprofilesctl",
+        "set"
+      ],
+      "stdout": "powerprofilesctl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "which",
+        "pkexec"
+      ],
+      "stdout": "which/pkexec.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "pkexec"
+      ],
+      "stdout": "pkexec/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "hyprctl",
+        "reload"
+      ],
+      "stdout": "hyprctl/reload.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "hyprctl",
+        "-j",
+        "workspaces"
+      ],
+      "stdout": "hyprctl/j_workspaces.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "hyprctl",
+        "-j",
+        "activeworkspace"
+      ],
+      "stdout": "hyprctl/j_activeworkspace.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "hyprctl",
+        "-j",
+        "clients"
+      ],
+      "stdout": "hyprctl/j_clients.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "hyprctl",
+        "-j",
+        "activewindow"
+      ],
+      "stdout": "hyprctl/j_activewindow.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "hyprctl",
+        "-j",
+        "monitors"
+      ],
+      "stdout": "hyprctl/j_monitors.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "systemctl",
+        "list-units",
+        "--type=service",
+        "--no-pager",
+        "--no-legend"
+      ],
+      "stdout": "systemctl/list_units_services.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "systemctl",
+        "start"
+      ],
+      "stdout": "systemctl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "systemctl",
+        "stop"
+      ],
+      "stdout": "systemctl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "systemctl",
+        "restart"
+      ],
+      "stdout": "systemctl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "kill"
+      ],
+      "stdout": "kill/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "renice"
+      ],
+      "stdout": "renice/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "which",
+        "hyprlock"
+      ],
+      "stdout": "which/hyprlock.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "hyprlock"
+      ],
+      "stdout": "hyprlock/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "ags"
+      ],
+      "stdout": "ags/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "kitty"
+      ],
+      "stdout": "kitty/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "sh"
+      ],
+      "stdout": "sh/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "loginctl"
+      ],
+      "stdout": "loginctl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "firefox"
+      ],
+      "stdout": "firefox/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "cursor"
+      ],
+      "stdout": "cursor/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "spotify"
+      ],
+      "stdout": "spotify/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "discord"
+      ],
+      "stdout": "discord/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "pacman",
+        "-Ql",
+        "pacman"
+      ],
+      "stdout": "pacman/ql_pacman.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "flatpak",
+        "list",
+        "--columns=application"
+      ],
+      "stdout": "flatpak/list.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "which",
+        "rclone"
+      ],
+      "stdout": "which/rclone.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "rclone",
+        "listremotes"
+      ],
+      "stdout": "rclone/listremotes.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "which",
+        "telegram"
+      ],
+      "stdout": "which/telegram.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "which",
+        "discord"
+      ],
+      "stdout": "which/discord.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "telegram"
+      ],
+      "stdout": "telegram/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "yay",
+        "-Qm"
+      ],
+      "stdout": "yay/qm.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "fprintd-verify"
+      ],
+      "stdout": "fprintd-verify/_.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "brightnessctl",
+        "-l"
+      ],
+      "stdout": "brightnessctl/list.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "brightnessctl",
+        "-m"
+      ],
+      "stdout": "brightnessctl/m.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "brightnessctl",
+        "-d"
+      ],
+      "stdout": "brightnessctl/m.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "ddcutil",
+        "detect",
+        "--brief"
+      ],
+      "stdout": "ddcutil/detect.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "bluetoothctl"
+      ],
+      "stdout": "bluetoothctl/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "ufw"
+      ],
+      "stdout": "ufw/empty.stdout",
+      "exit": 0
+    },
+    {
+      "cmd": [
+        "asdbctl"
+      ],
+      "stdout": "asdbctl/empty.stdout",
+      "exit": 1
+    },
+    {
+      "cmd": [
+        "ddcutil"
+      ],
+      "stdout": "ddcutil/empty.stdout",
+      "exit": 0
+    }
+  ]
+}

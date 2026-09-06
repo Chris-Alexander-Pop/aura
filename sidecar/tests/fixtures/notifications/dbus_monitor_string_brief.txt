@@ -1,0 +1,11 @@
+method call sender=:1.55 -> dest=org.freedesktop.Notifications serial=5 path=/org/freedesktop/Notifications; interface=org.freedesktop.Notifications; member=Notify
+   string brief-app
+   uint32 0
+   string brief-icon
+   string Brief summary
+   string Brief body text
+   array [
+   ]
+   array [
+   ]
+   int32 -1

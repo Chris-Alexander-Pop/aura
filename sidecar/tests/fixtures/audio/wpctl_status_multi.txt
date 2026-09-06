@@ -1,0 +1,7 @@
+Audio
+ ├ Devices:
+ ├ Sinks:
+ │      46. HDMI Output [vol: 1.00]
+ │  ●   47. Speakers [vol: 0.75]
+ ├ Sources:
+ │  ●   48. Webcam Mic [vol: 0.80]

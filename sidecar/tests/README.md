@@ -1,0 +1,115 @@
+# Sidecar integration tests
+
+Integration tests call the in-process `ServiceRegistry` (no HTTP server, no live sidecar binary). They still run on your real machine and may invoke subprocesses for **read-only** RPC handlers (e.g. `nmcli`, `pactl`, sysfs).
+
+## Safety rules (live dev machine)
+
+When adding or extending tests:
+
+1. **No power or session actions** — do not call `Session.*`, `Power.SetProfile`, suspend/reboot/logout helpers, etc.
+2. **No package changes** — no `Packages.Install`, `Remove`, `Upgrade`, `Update`, or AUR install RPCs.
+3. **No privileged network mutations** — no `Network.Connect`, `Disconnect`, `Forget`, or `ToggleWifi` in default tests. Mocked coverage uses `ExecFixtureGuard` only; **`Network.ToggleWifi` must never be exercised in automated tests** (it can disable your radio). When `AURA_EXEC_FIXTURE_DIR` is set, missing fixtures **fail** instead of falling through to real `nmcli`.
+4. **No Hyprland side effects** — no `Hyprland.Dispatch`, `Keybinds.Reload`, or keybind writes (`Keybinds.Set` / `Unset` / `Import`).
+5. **No killing or controlling user processes** — no `Process.Kill`, `Performance.KillProcess`, or systemd service start/stop/restart RPCs.
+6. **No extra host-mutating scanners in the default fast gate** — `Security.ScanPorts` and firewall mutators stay on the deny-list.
+7. **Prefer read-only RPCs** — `Get*`, `List*`, `Scan*` (read-only), and shape assertions on returned JSON.
+8. **Storage** — `Storage.Set` / `Delete` are allowed only against a **temporary** DB via `AURA_STORAGE_DB` (see `storage_scan_namespace_round_trip` in `integration_test.rs`).
+9. **Destructive or host-mutating RPCs** must use `call_method_unchecked` only inside `#[ignore]` tests with a comment explaining isolation (fixture paths, temp dirs, etc.).
+
+The harness enforces this: `call_method` / `call_rpc` panic if a blocklisted method is used. See `tests/common/mod.rs` (`is_denied_rpc_method`).
+
+### Process-global state (serialize parallel tests)
+
+Some handlers keep in-process state shared across all tests in one `cargo test` process:
+
+| Lock | Module | Why |
+|------|--------|-----|
+| `gamemode_test_lock()` | `GameMode.*` | `GAMEMODE_ENABLED` static; call `reset_gamemode_state_for_tests()` after acquiring |
+| `automation_test_lock()` | automation storage | SQLite + cron tick side effects |
+| `launcher_test_lock()` | launcher | `AURA_LAUNCHER_DESKTOP_DIRS` override |
+
+Acquire the lock at the start of each affected test (see `gamemode_rpc_shapes.rs`, `automation_storage_test.rs`).
+
+## HTTP / WebSocket server tests
+
+`tests/server_http_test.rs` exercises `server.rs` and push delivery via `notify.rs`:
+
+- The Axum app is started in-process with `server::bind_ephemeral()` → `127.0.0.1:0` (OS-assigned port).
+- **Never binds :9080**, so an `ags-sidecar` you already have running for Hyprland/AGS is unaffected.
+- Only read-safe RPCs are called over HTTP (`Sidecar.GetVersion`, `Storage.Get` with `AURA_STORAGE_DB` pointing at a temp file). RPC is **POST** with `X-Aura-Token` from `/api/meta`.
+- WebSocket test connects to `/ws?token=…`, then `notify::emit` — no destructive RPCs.
+
+## Running
+
+### Fast gate (default CI / pre-push)
+
+Unit tests, golden CLI contracts, manifest parity, HTTP server, and integration tests **without** `#[ignore]` slow host sweeps:
+
+```bash
+./scripts/sidecar-test-fast.sh
+```
+
+Equivalent manual run from `sidecar/`:
+
+```bash
+cargo test --lib
+cargo test --tests
+```
+
+## Layout
+
+| File pattern | Purpose |
+|--------------|---------|
+| `integration_contracts.rs` | Golden CLI fixture parsers (no RPC) |
+| `rpc_contract_test.rs` | Manifest / API contract parity |
+| `server_http_test.rs` | Axum HTTP + WebSocket push |
+| `integration_test.rs` | P0 smoke, storage helpers, readonly gap sweeps |
+| `{service}_rpc_shapes.rs` | Read-only `Service.Method` JSON shape tests |
+| `{service}_storage_test.rs` | Mutating CRUD via temp DB (`call_method_unchecked`) |
+| `hyprland_internal_test.rs` | Dispatch allowlist + socket2 event parsing (no compositor) |
+| `security_*.rs` | Security service contracts and RPC guards |
+
+`readonly_gap_methods_resolve` covers the **fast** readonly gap set (`READONLY_GAP_FAST`). The **slow** set (`READONLY_GAP_SLOW_HOST`, subprocess/HTTP/docker/journalctl/pacman/security) is in:
+
+```bash
+cargo test --test integration_test readonly_gap_methods_resolve_slow_host -- --ignored --nocapture
+```
+
+### Full suite (including slow host sweep)
+
+```bash
+cd sidecar
+cargo test
+cargo test --test integration_test readonly_gap_methods_resolve_slow_host -- --ignored
+```
+
+## Subprocess fixtures (`AURA_EXEC_FIXTURE_DIR`)
+
+Integration tests that exercise RPC handlers calling `exec_command` / `run_allowlisted` should use [`ExecFixtureGuard`](common/mod.rs) (sets `AURA_EXEC_FIXTURE_DIR` to `tests/fixtures/exec/`). Fixture lookup uses `manifest.json` and `{binary}/{args}.stdout` files — never rely on live `nmcli`, `wpctl`, or `grim` in coverage runs.
+
+## Coverage goals
+
+| Target | Role |
+|--------|------|
+| **85% line/region/function (core)** | Enforced by `./scripts/sidecar-coverage-gate.sh` |
+| **Fast gate** | `./scripts/sidecar-test-fast.sh` — no slow host sweep |
+| **Full coverage run** | `./scripts/sidecar-coverage.sh` — LCOV + HTML (see script) |
+
+```bash
+./scripts/sidecar-coverage.sh --summary-only   # quick total %
+./scripts/sidecar-coverage.sh                  # LCOV + HTML under sidecar/target/coverage/
+./scripts/sidecar-coverage-gate.sh             # fail when any core metric < 85%
+SIDECAR_COVERAGE_MIN=70 ./scripts/sidecar-coverage-gate.sh   # override threshold
+```
+
+See `sidecar/README.md` for `cargo-llvm-cov` install steps.
+
+## Test authoring: one test, one branch
+
+When raising coverage toward 90%, prefer **small tests that hit one decision branch** rather than large integration loops:
+
+- **Unit / contract** — parser or helper with a fixture under `tests/fixtures/` (`integration_contracts.rs`, `#[cfg(test)]` in the service module).
+- **Integration shape** — one `#[tokio::test]` per RPC in `tests/{service}_rpc_shapes.rs` with explicit JSON field assertions.
+- **Bulk resolve loops** — only for panic-free smoke; split slow host batches into `#[ignore]` (see `readonly_gap_methods_resolve_slow_host`).
+
+Avoid duplicating the same branch in both a fixture unit test and a 70-method host sweep unless the integration path adds real wiring value.

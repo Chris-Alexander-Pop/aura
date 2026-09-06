@@ -1,0 +1,10 @@
+PipeWire 'pipewire-0' [v1.2.0]
+
+Audio
+ ├ Sinks:
+ │  ●   47. Headphones [vol: 0.50]
+ ├ Sources:
+ │  ●   50. Built-in Microphone [vol: 1.00]
+Video
+ ├ Sinks:
+ │  *   99. HDMI Output [vol: 1.00]

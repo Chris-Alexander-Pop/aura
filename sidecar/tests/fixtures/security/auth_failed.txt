@@ -1,0 +1,1 @@
+Mar 28 10:00:00 host sshd[1]: Failed password for root from 10.0.0.1 port 22 ssh2

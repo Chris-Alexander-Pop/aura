@@ -1,0 +1,5 @@
+PipeWire 'pipewire-0' [v1.2.0]
+Audio
+ ├ Sinks:
+ │  ●   12. HDMI Output
+ ├ Sources:

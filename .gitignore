@@ -1,0 +1,41 @@
+# Dependencies / build output
+node_modules/
+@girs/
+**/target/
+ui/dist/
+hypr/dist/
+*.tsbuildinfo
+
+# Secrets, credentials, VPN payloads
+.env
+.env.*
+!.env.example
+*.ovpn
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+.personal-cloud.yaml
+/vpn/
+/extensions/
+
+# Machine-specific compositor / host layout (copy the .example files)
+hypr/hyprland/monitors-local.lua
+hypr/hyprland/execs-local.lua
+*-local.lua
+*-local.conf
+
+# Crash dumps / debug noise
+crash-logs/
+dev-dumps/
+journal/
+*.log
+hs_err_pid*
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

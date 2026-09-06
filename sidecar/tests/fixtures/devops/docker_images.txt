@@ -1,0 +1,3 @@
+sha256:abc|nginx|latest|142MB
+sha256:def|ags-sidecar|dev|88MB
+badline

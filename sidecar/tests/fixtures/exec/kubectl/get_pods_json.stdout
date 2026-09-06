@@ -1,0 +1,14 @@
+{
+  "apiVersion": "v1",
+  "kind": "PodList",
+  "items": [
+    {
+      "metadata": { "name": "nginx-abc", "namespace": "default" },
+      "status": { "phase": "Running" }
+    },
+    {
+      "metadata": { "name": "sidecar-job", "namespace": "aura" },
+      "status": { "phase": "Pending" }
+    }
+  ]
+}

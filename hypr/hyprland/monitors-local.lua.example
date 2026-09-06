@@ -1,0 +1,23 @@
+-- Copy to monitors-local.lua (gitignored) and replace the descriptions
+-- with `hyprctl monitors` output for this machine.
+
+hl.monitor({
+  output = "desc:Example Panel 0x0000",
+  mode = "3840x2160@60",
+  position = "0x0",
+  scale = 1.5,
+})
+
+hl.monitor({
+  output = "desc:Example Display EXAMPLESERIAL",
+  mode = "2560x1440",
+  position = "2560x0",
+  scale = 1.0,
+})
+
+hl.monitor({
+  output = "",
+  mode = "preferred",
+  position = "auto",
+  scale = 1,
+})

@@ -1,0 +1,29 @@
+---
+description: Aura AGS repo layout — GTK shell, React webviews, Rust sidecar, IPC
+alwaysApply: true
+---
+
+# Architecture
+
+- **Entry**: `app.ts` — CSS, per-monitor windows, `requestHandler` for `ags msg` (`toggle` / `show` / `hide` + window name).
+- **Default bar**: React in WebKit (`src/widget/webview/BarWebViewWindow.tsx` + `ui/src/pages/BarStrip.tsx`). GTK bar (`src/widget/bar/`) only when `AURA_GTK_BAR=1`.
+- **GTK layer**: `src/widget/` — OSD, launcher host, WebKit shells (`control-center`, `dropdown`, `calendar`, media popup).
+- **React layer**: `ui/` — Vite app; build output `ui/dist`. API: `ui/src/lib/api.ts` (POST + `X-Aura-Token`).
+- **Sidecar**: `sidecar/` — JSON-RPC, services under `src/services/`. Tests: `sidecar/tests/`.
+- **Bridge**: `src/lib/sidecar.ts` spawns the binary; `globalThis.sidecar` is set from `app.ts`.
+
+## Sidecar binary location
+
+1. `AURA_SIDECAR` (absolute path) — `./aura` exports this
+2. `$XDG_CONFIG_HOME/ags/sidecar/target/{release,debug}/ags-sidecar`
+
+A clone outside `~/.config/ags` must set `AURA_SIDECAR` or place the binary on the XDG path.
+
+## Docs
+
+- `todo.md`, `docs/roadmap/README.md` — product scope
+- `docs/ARCHITECTURE_DECISIONS.md` — stack choices (React bar default)
+- `SECURITY.md` — localhost HTTP threat model
+- `hypr/README.md` — compositor Lua; `execs-local.lua` / `monitors-local.lua` are gitignored
+
+Human/agent playbook: `AGENTS.md`.

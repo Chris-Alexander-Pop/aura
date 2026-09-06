@@ -1,0 +1,4 @@
+Filesystem     1G-blocks  Used Available Use% Mounted on
+/dev/nvme0n1p2     500G  200G      300G  40% /
+/dev/sda1          100G   80G       20G  80% /data
+tmpfs               16G    0G       16G   0% /run

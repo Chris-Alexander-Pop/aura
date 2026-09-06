@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Firefox
+GenericName=Web Browser
+Comment=Browse the web
+Exec=firefox %u
+Icon=firefox
+Categories=Network;WebBrowser;
+Keywords=browser;web;

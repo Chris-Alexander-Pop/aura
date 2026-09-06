@@ -1,0 +1,1337 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Aura Sidecar API",
+    "version": "0.1.0",
+    "description": "HTTP bridge for ags-sidecar JSON-RPC methods (300 registered). RPC is POST-only with header `X-Aura-Token` (from `GET /api/meta`). Path example: `/api/Power.GetBatteryState`. Push: WebSocket `/ws?token=…`. Interactive docs: `/docs`. Loopback bind only."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9080",
+      "description": "Default local bind (DEFAULT_HTTP_ADDR)"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Meta"
+    },
+    {
+      "name": "RPC"
+    },
+    {
+      "name": "Appearance"
+    },
+    {
+      "name": "Apps"
+    },
+    {
+      "name": "Audio"
+    },
+    {
+      "name": "Aura"
+    },
+    {
+      "name": "Automation"
+    },
+    {
+      "name": "Bluetooth"
+    },
+    {
+      "name": "Brightness"
+    },
+    {
+      "name": "Calendar"
+    },
+    {
+      "name": "Capture"
+    },
+    {
+      "name": "Communication"
+    },
+    {
+      "name": "Crash"
+    },
+    {
+      "name": "Dashboard"
+    },
+    {
+      "name": "DevOps"
+    },
+    {
+      "name": "Fitness"
+    },
+    {
+      "name": "GameMode"
+    },
+    {
+      "name": "Hyprland"
+    },
+    {
+      "name": "Keybinds"
+    },
+    {
+      "name": "Launcher"
+    },
+    {
+      "name": "Lock"
+    },
+    {
+      "name": "Logs"
+    },
+    {
+      "name": "Media"
+    },
+    {
+      "name": "Network"
+    },
+    {
+      "name": "Notifications"
+    },
+    {
+      "name": "Packages"
+    },
+    {
+      "name": "Performance"
+    },
+    {
+      "name": "Power"
+    },
+    {
+      "name": "Process"
+    },
+    {
+      "name": "Productivity"
+    },
+    {
+      "name": "Security"
+    },
+    {
+      "name": "Session"
+    },
+    {
+      "name": "Settings"
+    },
+    {
+      "name": "Sidebar"
+    },
+    {
+      "name": "Sidecar"
+    },
+    {
+      "name": "Sleep"
+    },
+    {
+      "name": "Storage"
+    },
+    {
+      "name": "System"
+    },
+    {
+      "name": "Todos"
+    },
+    {
+      "name": "Tray"
+    },
+    {
+      "name": "Vault"
+    },
+    {
+      "name": "Vicinae"
+    },
+    {
+      "name": "Vpn"
+    },
+    {
+      "name": "Weather"
+    }
+  ],
+  "paths": {
+    "/api/meta": {
+      "get": {
+        "operationId": "getMeta",
+        "tags": [
+          "Meta"
+        ],
+        "summary": "Server metadata",
+        "description": "Sidecar version, loaded extras, and the HTTP RPC token for this process.",
+        "responses": {
+          "200": {
+            "description": "Meta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "version",
+                    "http_token"
+                  ],
+                  "properties": {
+                    "version": {
+                      "type": "string"
+                    },
+                    "extensions": {
+                      "type": "array"
+                    },
+                    "http_token": {
+                      "type": "string",
+                      "description": "Send as X-Aura-Token on POST /api/{method} and as ?token= on /ws"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/{method}": {
+      "get": {
+        "operationId": "callRpcGetRejected",
+        "tags": [
+          "RPC"
+        ],
+        "summary": "Rejected — RPC is POST-only",
+        "parameters": [
+          {
+            "name": "method",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Appearance.GetNightLight",
+                "Appearance.GetTheme",
+                "Appearance.SetNightLight",
+                "Appearance.SetTheme",
+                "Apps.Launch",
+                "Audio.CreateLoopback",
+                "Audio.CreateNullSink",
+                "Audio.Effects.GetPresets",
+                "Audio.Effects.GetStatus",
+                "Audio.Effects.LoadPreset",
+                "Audio.Effects.Reset",
+                "Audio.Effects.SavePreset",
+                "Audio.Effects.SetEqBand",
+                "Audio.Effects.SetMicGain",
+                "Audio.Effects.SetNoiseGate",
+                "Audio.Effects.SetNoiseSuppression",
+                "Audio.Effects.Start",
+                "Audio.Effects.Stop",
+                "Audio.GetDevices",
+                "Audio.GetStreams",
+                "Audio.Media.GetPlayers",
+                "Audio.Media.Next",
+                "Audio.Media.PlayPause",
+                "Audio.Media.Previous",
+                "Audio.Profiles.ApplyScenario",
+                "Audio.Profiles.Delete",
+                "Audio.Profiles.GetCurrent",
+                "Audio.Profiles.List",
+                "Audio.Profiles.Load",
+                "Audio.Profiles.Save",
+                "Audio.Refresh",
+                "Audio.RouteStream",
+                "Audio.SetDefaultDevice",
+                "Audio.SetSinkMute",
+                "Audio.SetSinkVolume",
+                "Audio.SetSourceMute",
+                "Audio.SetSourceVolume",
+                "Audio.SetStreamMute",
+                "Audio.SetStreamVolume",
+                "Aura.ToggleWindow",
+                "Automation.CreateScript",
+                "Automation.CreateWorkflow",
+                "Automation.DeleteWorkflow",
+                "Automation.DisableWorkflow",
+                "Automation.EnableWorkflow",
+                "Automation.GetActions",
+                "Automation.GetScripts",
+                "Automation.GetTriggers",
+                "Automation.GetWorkflowHistory",
+                "Automation.GetWorkflows",
+                "Automation.ListRules",
+                "Automation.RunScript",
+                "Automation.RunWorkflow",
+                "Automation.Trigger",
+                "Automation.UpdateWorkflow",
+                "Bluetooth.Connect",
+                "Bluetooth.Disconnect",
+                "Bluetooth.GetAdapters",
+                "Bluetooth.GetDeviceInfo",
+                "Bluetooth.GetDevices",
+                "Bluetooth.Pair",
+                "Bluetooth.Remove",
+                "Bluetooth.Scan",
+                "Bluetooth.SetAdapterDiscoverable",
+                "Bluetooth.SetAdapterPower",
+                "Bluetooth.StopScan",
+                "Brightness.Get",
+                "Brightness.Set",
+                "Calendar.CreateEvent",
+                "Calendar.DeleteEvent",
+                "Calendar.ExportIcs",
+                "Calendar.GetCalendars",
+                "Calendar.GetEvents",
+                "Calendar.GetUpcomingEvents",
+                "Calendar.GoogleAuthStatus",
+                "Calendar.GoogleDisconnect",
+                "Calendar.GoogleStartAuth",
+                "Calendar.ImportIcs",
+                "Calendar.SetReminder",
+                "Calendar.SyncCalDav",
+                "Calendar.SyncCalendars",
+                "Calendar.UpdateEvent",
+                "Capture.ListDevices",
+                "Capture.RecordStart",
+                "Capture.RecordStop",
+                "Capture.Screenshot",
+                "Communication.GetActiveCalls",
+                "Communication.GetCommunicationApps",
+                "Communication.GetContacts",
+                "Communication.GetConversations",
+                "Communication.GetMessages",
+                "Communication.GetNotificationSettings",
+                "Communication.GetUnread",
+                "Communication.ImportUnread",
+                "Communication.LaunchApp",
+                "Communication.MarkRead",
+                "Communication.MuteNotifications",
+                "Communication.SendMessage",
+                "Communication.SetNotificationSettings",
+                "Crash.Report",
+                "Dashboard.GetQuickStatus",
+                "DevOps.GetContainerLogs",
+                "DevOps.GetCronJobs",
+                "DevOps.GetDockerContainers",
+                "DevOps.GetDockerImages",
+                "DevOps.GetDockerStats",
+                "DevOps.GetGitRepos",
+                "DevOps.GetGitStatus",
+                "DevOps.GetKubernetesPods",
+                "DevOps.GetPodmanContainers",
+                "DevOps.GetStatus",
+                "DevOps.GetSystemdTimers",
+                "DevOps.PullImage",
+                "DevOps.RemoveImage",
+                "DevOps.RestartContainer",
+                "DevOps.StartContainer",
+                "DevOps.StopContainer",
+                "Fitness.GetActivity",
+                "Fitness.GetDevices",
+                "Fitness.GetGoals",
+                "Fitness.GetHeartRate",
+                "Fitness.GetSleep",
+                "Fitness.GetSteps",
+                "Fitness.GetWorkoutHistory",
+                "Fitness.SetGoal",
+                "Fitness.StartWorkout",
+                "Fitness.StopWorkout",
+                "Fitness.SyncDevice",
+                "GameMode.Disable",
+                "GameMode.Enable",
+                "GameMode.IsEnabled",
+                "GameMode.Toggle",
+                "Hyprland.Dispatch",
+                "Hyprland.GetActiveWindow",
+                "Hyprland.GetActiveWorkspace",
+                "Hyprland.GetBarSnapshot",
+                "Hyprland.GetClients",
+                "Hyprland.GetMonitors",
+                "Hyprland.GetWorkspaces",
+                "Keybinds.Export",
+                "Keybinds.GetCategories",
+                "Keybinds.Import",
+                "Keybinds.List",
+                "Keybinds.Reload",
+                "Keybinds.Set",
+                "Keybinds.Unset",
+                "Keybinds.Validate",
+                "Launcher.Pin",
+                "Launcher.Query",
+                "Launcher.Recent",
+                "Launcher.Run",
+                "Launcher.VicinaeQuery",
+                "Lock.GetConfig",
+                "Lock.SetConfig",
+                "Lock.TestFingerprint",
+                "Logs.ClearLogs",
+                "Logs.ExportLogs",
+                "Logs.FilterLogs",
+                "Logs.FollowLogs",
+                "Logs.Get",
+                "Logs.GetApplicationLogs",
+                "Logs.GetLogLevels",
+                "Logs.GetLogServices",
+                "Logs.GetSystemLogs",
+                "Logs.SearchLogs",
+                "Media.GetNowPlaying",
+                "Network.Connect",
+                "Network.Disconnect",
+                "Network.Forget",
+                "Network.GetStatus",
+                "Network.ListSaved",
+                "Network.ScanNetworks",
+                "Network.ToggleWifi",
+                "Notifications.ClearAll",
+                "Notifications.Dismiss",
+                "Notifications.Get",
+                "Notifications.GetDnd",
+                "Notifications.GetRules",
+                "Notifications.InvokeAction",
+                "Notifications.List",
+                "Notifications.SetDnd",
+                "Notifications.SetRules",
+                "Packages.GetAurPackages",
+                "Packages.GetAutoUpdatePolicy",
+                "Packages.GetFlatpakPackages",
+                "Packages.GetInstalled",
+                "Packages.GetPackageDependencies",
+                "Packages.GetPackageFiles",
+                "Packages.GetPackageInfo",
+                "Packages.GetReverseDependencies",
+                "Packages.GetSnapPackages",
+                "Packages.GetTransactionHistory",
+                "Packages.GetUpgradable",
+                "Packages.Install",
+                "Packages.InstallAur",
+                "Packages.Remove",
+                "Packages.Search",
+                "Packages.Update",
+                "Packages.Upgrade",
+                "Performance.ApplyPreset",
+                "Performance.GetCpuStats",
+                "Performance.GetDiskStats",
+                "Performance.GetGpuStats",
+                "Performance.GetMemoryStats",
+                "Performance.GetMetrics",
+                "Performance.GetNetworkStats",
+                "Performance.GetProcesses",
+                "Performance.GetSystemdServices",
+                "Performance.KillProcess",
+                "Performance.RestartService",
+                "Performance.SetCpuFrequency",
+                "Performance.SetCpuGovernor",
+                "Performance.SetProcessPriority",
+                "Performance.StartService",
+                "Performance.StopService",
+                "Power.GetBatteryState",
+                "Power.GetProfile",
+                "Power.SetProfile",
+                "Process.Kill",
+                "Process.ListTop",
+                "Productivity.CancelTimer",
+                "Productivity.CreatePomodoro",
+                "Productivity.CreateTask",
+                "Productivity.CreateTimer",
+                "Productivity.DeleteTask",
+                "Productivity.GetAppUsage",
+                "Productivity.GetFocusModeStatus",
+                "Productivity.GetPomodoroStatus",
+                "Productivity.GetScreenTime",
+                "Productivity.GetStats",
+                "Productivity.GetTasks",
+                "Productivity.GetTimers",
+                "Productivity.SetFocusMode",
+                "Productivity.UpdateTask",
+                "Security.AddFirewallRule",
+                "Security.DisableFirewall",
+                "Security.EnableFirewall",
+                "Security.GetCertificates",
+                "Security.GetEncryptionStatus",
+                "Security.GetFailedLogins",
+                "Security.GetFirewallRules",
+                "Security.GetFirewallStatus",
+                "Security.GetKeyringStatus",
+                "Security.GetPasswordPolicy",
+                "Security.GetSshConnections",
+                "Security.GetSshStatus",
+                "Security.GetStatus",
+                "Security.GetSudoLogs",
+                "Security.GetVpnConnections",
+                "Security.ListFingerprints",
+                "Security.RemoveFirewallRule",
+                "Security.RunClamScan",
+                "Security.ScanPorts",
+                "Session.Lock",
+                "Session.Logout",
+                "Session.PowerOff",
+                "Session.Reboot",
+                "Session.Suspend",
+                "Settings.Get",
+                "Settings.GetSchema",
+                "Settings.Reset",
+                "Settings.Set",
+                "Sidebar.GetTileData",
+                "Sidecar.GetVersion",
+                "Sleep.GetInhibitors",
+                "Sleep.Inhibit",
+                "Storage.Delete",
+                "Storage.Get",
+                "Storage.ListKeys",
+                "Storage.ScanNamespace",
+                "Storage.Set",
+                "System.GetStats",
+                "Todos.Create",
+                "Todos.CreateProject",
+                "Todos.Delete",
+                "Todos.List",
+                "Todos.ListProjects",
+                "Todos.ParseDueDate",
+                "Todos.Update",
+                "Tray.Activate",
+                "Tray.List",
+                "Tray.SecondaryActivate",
+                "Vault.Backup.Status",
+                "Vault.GetEntry",
+                "Vault.List",
+                "Vault.SetEntry",
+                "Vicinae.Exec",
+                "Vpn.Connect",
+                "Vpn.Disconnect",
+                "Vpn.GetProfiles",
+                "Vpn.GetStatus",
+                "Weather.AddLocation",
+                "Weather.Get",
+                "Weather.GetAlerts",
+                "Weather.GetForecast",
+                "Weather.GetHourly",
+                "Weather.GetLocations",
+                "Weather.RemoveLocation",
+                "Weather.SetLocation",
+                "Weather.SetUnits"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "405": {
+            "description": "GET is not accepted for RPC",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "method_not_allowed"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "callRpcPost",
+        "tags": [
+          "RPC"
+        ],
+        "summary": "Invoke RPC",
+        "description": "Requires header X-Aura-Token (from GET /api/meta). Empty body for parameterless methods.",
+        "parameters": [
+          {
+            "name": "method",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Appearance.GetNightLight",
+                "Appearance.GetTheme",
+                "Appearance.SetNightLight",
+                "Appearance.SetTheme",
+                "Apps.Launch",
+                "Audio.CreateLoopback",
+                "Audio.CreateNullSink",
+                "Audio.Effects.GetPresets",
+                "Audio.Effects.GetStatus",
+                "Audio.Effects.LoadPreset",
+                "Audio.Effects.Reset",
+                "Audio.Effects.SavePreset",
+                "Audio.Effects.SetEqBand",
+                "Audio.Effects.SetMicGain",
+                "Audio.Effects.SetNoiseGate",
+                "Audio.Effects.SetNoiseSuppression",
+                "Audio.Effects.Start",
+                "Audio.Effects.Stop",
+                "Audio.GetDevices",
+                "Audio.GetStreams",
+                "Audio.Media.GetPlayers",
+                "Audio.Media.Next",
+                "Audio.Media.PlayPause",
+                "Audio.Media.Previous",
+                "Audio.Profiles.ApplyScenario",
+                "Audio.Profiles.Delete",
+                "Audio.Profiles.GetCurrent",
+                "Audio.Profiles.List",
+                "Audio.Profiles.Load",
+                "Audio.Profiles.Save",
+                "Audio.Refresh",
+                "Audio.RouteStream",
+                "Audio.SetDefaultDevice",
+                "Audio.SetSinkMute",
+                "Audio.SetSinkVolume",
+                "Audio.SetSourceMute",
+                "Audio.SetSourceVolume",
+                "Audio.SetStreamMute",
+                "Audio.SetStreamVolume",
+                "Aura.ToggleWindow",
+                "Automation.CreateScript",
+                "Automation.CreateWorkflow",
+                "Automation.DeleteWorkflow",
+                "Automation.DisableWorkflow",
+                "Automation.EnableWorkflow",
+                "Automation.GetActions",
+                "Automation.GetScripts",
+                "Automation.GetTriggers",
+                "Automation.GetWorkflowHistory",
+                "Automation.GetWorkflows",
+                "Automation.ListRules",
+                "Automation.RunScript",
+                "Automation.RunWorkflow",
+                "Automation.Trigger",
+                "Automation.UpdateWorkflow",
+                "Bluetooth.Connect",
+                "Bluetooth.Disconnect",
+                "Bluetooth.GetAdapters",
+                "Bluetooth.GetDeviceInfo",
+                "Bluetooth.GetDevices",
+                "Bluetooth.Pair",
+                "Bluetooth.Remove",
+                "Bluetooth.Scan",
+                "Bluetooth.SetAdapterDiscoverable",
+                "Bluetooth.SetAdapterPower",
+                "Bluetooth.StopScan",
+                "Brightness.Get",
+                "Brightness.Set",
+                "Calendar.CreateEvent",
+                "Calendar.DeleteEvent",
+                "Calendar.ExportIcs",
+                "Calendar.GetCalendars",
+                "Calendar.GetEvents",
+                "Calendar.GetUpcomingEvents",
+                "Calendar.GoogleAuthStatus",
+                "Calendar.GoogleDisconnect",
+                "Calendar.GoogleStartAuth",
+                "Calendar.ImportIcs",
+                "Calendar.SetReminder",
+                "Calendar.SyncCalDav",
+                "Calendar.SyncCalendars",
+                "Calendar.UpdateEvent",
+                "Capture.ListDevices",
+                "Capture.RecordStart",
+                "Capture.RecordStop",
+                "Capture.Screenshot",
+                "Communication.GetActiveCalls",
+                "Communication.GetCommunicationApps",
+                "Communication.GetContacts",
+                "Communication.GetConversations",
+                "Communication.GetMessages",
+                "Communication.GetNotificationSettings",
+                "Communication.GetUnread",
+                "Communication.ImportUnread",
+                "Communication.LaunchApp",
+                "Communication.MarkRead",
+                "Communication.MuteNotifications",
+                "Communication.SendMessage",
+                "Communication.SetNotificationSettings",
+                "Crash.Report",
+                "Dashboard.GetQuickStatus",
+                "DevOps.GetContainerLogs",
+                "DevOps.GetCronJobs",
+                "DevOps.GetDockerContainers",
+                "DevOps.GetDockerImages",
+                "DevOps.GetDockerStats",
+                "DevOps.GetGitRepos",
+                "DevOps.GetGitStatus",
+                "DevOps.GetKubernetesPods",
+                "DevOps.GetPodmanContainers",
+                "DevOps.GetStatus",
+                "DevOps.GetSystemdTimers",
+                "DevOps.PullImage",
+                "DevOps.RemoveImage",
+                "DevOps.RestartContainer",
+                "DevOps.StartContainer",
+                "DevOps.StopContainer",
+                "Fitness.GetActivity",
+                "Fitness.GetDevices",
+                "Fitness.GetGoals",
+                "Fitness.GetHeartRate",
+                "Fitness.GetSleep",
+                "Fitness.GetSteps",
+                "Fitness.GetWorkoutHistory",
+                "Fitness.SetGoal",
+                "Fitness.StartWorkout",
+                "Fitness.StopWorkout",
+                "Fitness.SyncDevice",
+                "GameMode.Disable",
+                "GameMode.Enable",
+                "GameMode.IsEnabled",
+                "GameMode.Toggle",
+                "Hyprland.Dispatch",
+                "Hyprland.GetActiveWindow",
+                "Hyprland.GetActiveWorkspace",
+                "Hyprland.GetBarSnapshot",
+                "Hyprland.GetClients",
+                "Hyprland.GetMonitors",
+                "Hyprland.GetWorkspaces",
+                "Keybinds.Export",
+                "Keybinds.GetCategories",
+                "Keybinds.Import",
+                "Keybinds.List",
+                "Keybinds.Reload",
+                "Keybinds.Set",
+                "Keybinds.Unset",
+                "Keybinds.Validate",
+                "Launcher.Pin",
+                "Launcher.Query",
+                "Launcher.Recent",
+                "Launcher.Run",
+                "Launcher.VicinaeQuery",
+                "Lock.GetConfig",
+                "Lock.SetConfig",
+                "Lock.TestFingerprint",
+                "Logs.ClearLogs",
+                "Logs.ExportLogs",
+                "Logs.FilterLogs",
+                "Logs.FollowLogs",
+                "Logs.Get",
+                "Logs.GetApplicationLogs",
+                "Logs.GetLogLevels",
+                "Logs.GetLogServices",
+                "Logs.GetSystemLogs",
+                "Logs.SearchLogs",
+                "Media.GetNowPlaying",
+                "Network.Connect",
+                "Network.Disconnect",
+                "Network.Forget",
+                "Network.GetStatus",
+                "Network.ListSaved",
+                "Network.ScanNetworks",
+                "Network.ToggleWifi",
+                "Notifications.ClearAll",
+                "Notifications.Dismiss",
+                "Notifications.Get",
+                "Notifications.GetDnd",
+                "Notifications.GetRules",
+                "Notifications.InvokeAction",
+                "Notifications.List",
+                "Notifications.SetDnd",
+                "Notifications.SetRules",
+                "Packages.GetAurPackages",
+                "Packages.GetAutoUpdatePolicy",
+                "Packages.GetFlatpakPackages",
+                "Packages.GetInstalled",
+                "Packages.GetPackageDependencies",
+                "Packages.GetPackageFiles",
+                "Packages.GetPackageInfo",
+                "Packages.GetReverseDependencies",
+                "Packages.GetSnapPackages",
+                "Packages.GetTransactionHistory",
+                "Packages.GetUpgradable",
+                "Packages.Install",
+                "Packages.InstallAur",
+                "Packages.Remove",
+                "Packages.Search",
+                "Packages.Update",
+                "Packages.Upgrade",
+                "Performance.ApplyPreset",
+                "Performance.GetCpuStats",
+                "Performance.GetDiskStats",
+                "Performance.GetGpuStats",
+                "Performance.GetMemoryStats",
+                "Performance.GetMetrics",
+                "Performance.GetNetworkStats",
+                "Performance.GetProcesses",
+                "Performance.GetSystemdServices",
+                "Performance.KillProcess",
+                "Performance.RestartService",
+                "Performance.SetCpuFrequency",
+                "Performance.SetCpuGovernor",
+                "Performance.SetProcessPriority",
+                "Performance.StartService",
+                "Performance.StopService",
+                "Power.GetBatteryState",
+                "Power.GetProfile",
+                "Power.SetProfile",
+                "Process.Kill",
+                "Process.ListTop",
+                "Productivity.CancelTimer",
+                "Productivity.CreatePomodoro",
+                "Productivity.CreateTask",
+                "Productivity.CreateTimer",
+                "Productivity.DeleteTask",
+                "Productivity.GetAppUsage",
+                "Productivity.GetFocusModeStatus",
+                "Productivity.GetPomodoroStatus",
+                "Productivity.GetScreenTime",
+                "Productivity.GetStats",
+                "Productivity.GetTasks",
+                "Productivity.GetTimers",
+                "Productivity.SetFocusMode",
+                "Productivity.UpdateTask",
+                "Security.AddFirewallRule",
+                "Security.DisableFirewall",
+                "Security.EnableFirewall",
+                "Security.GetCertificates",
+                "Security.GetEncryptionStatus",
+                "Security.GetFailedLogins",
+                "Security.GetFirewallRules",
+                "Security.GetFirewallStatus",
+                "Security.GetKeyringStatus",
+                "Security.GetPasswordPolicy",
+                "Security.GetSshConnections",
+                "Security.GetSshStatus",
+                "Security.GetStatus",
+                "Security.GetSudoLogs",
+                "Security.GetVpnConnections",
+                "Security.ListFingerprints",
+                "Security.RemoveFirewallRule",
+                "Security.RunClamScan",
+                "Security.ScanPorts",
+                "Session.Lock",
+                "Session.Logout",
+                "Session.PowerOff",
+                "Session.Reboot",
+                "Session.Suspend",
+                "Settings.Get",
+                "Settings.GetSchema",
+                "Settings.Reset",
+                "Settings.Set",
+                "Sidebar.GetTileData",
+                "Sidecar.GetVersion",
+                "Sleep.GetInhibitors",
+                "Sleep.Inhibit",
+                "Storage.Delete",
+                "Storage.Get",
+                "Storage.ListKeys",
+                "Storage.ScanNamespace",
+                "Storage.Set",
+                "System.GetStats",
+                "Todos.Create",
+                "Todos.CreateProject",
+                "Todos.Delete",
+                "Todos.List",
+                "Todos.ListProjects",
+                "Todos.ParseDueDate",
+                "Todos.Update",
+                "Tray.Activate",
+                "Tray.List",
+                "Tray.SecondaryActivate",
+                "Vault.Backup.Status",
+                "Vault.GetEntry",
+                "Vault.List",
+                "Vault.SetEntry",
+                "Vicinae.Exec",
+                "Vpn.Connect",
+                "Vpn.Disconnect",
+                "Vpn.GetProfiles",
+                "Vpn.GetStatus",
+                "Weather.AddLocation",
+                "Weather.Get",
+                "Weather.GetAlerts",
+                "Weather.GetForecast",
+                "Weather.GetHourly",
+                "Weather.GetLocations",
+                "Weather.RemoveLocation",
+                "Weather.SetLocation",
+                "Weather.SetUnits"
+              ]
+            },
+            "example": "Storage.Set"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Method-specific parameters"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "RPC success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "data"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "data": {
+                      "description": "Method-specific result"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid X-Aura-Token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "unauthorized"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Non-loopback Origin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "forbidden_origin"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "GET is not accepted for RPC",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "method_not_allowed"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown method",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "method_not_found"
+                      ]
+                    },
+                    "method": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Handler error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-rpc-methods": [
+    "Appearance.GetNightLight",
+    "Appearance.GetTheme",
+    "Appearance.SetNightLight",
+    "Appearance.SetTheme",
+    "Apps.Launch",
+    "Audio.CreateLoopback",
+    "Audio.CreateNullSink",
+    "Audio.Effects.GetPresets",
+    "Audio.Effects.GetStatus",
+    "Audio.Effects.LoadPreset",
+    "Audio.Effects.Reset",
+    "Audio.Effects.SavePreset",
+    "Audio.Effects.SetEqBand",
+    "Audio.Effects.SetMicGain",
+    "Audio.Effects.SetNoiseGate",
+    "Audio.Effects.SetNoiseSuppression",
+    "Audio.Effects.Start",
+    "Audio.Effects.Stop",
+    "Audio.GetDevices",
+    "Audio.GetStreams",
+    "Audio.Media.GetPlayers",
+    "Audio.Media.Next",
+    "Audio.Media.PlayPause",
+    "Audio.Media.Previous",
+    "Audio.Profiles.ApplyScenario",
+    "Audio.Profiles.Delete",
+    "Audio.Profiles.GetCurrent",
+    "Audio.Profiles.List",
+    "Audio.Profiles.Load",
+    "Audio.Profiles.Save",
+    "Audio.Refresh",
+    "Audio.RouteStream",
+    "Audio.SetDefaultDevice",
+    "Audio.SetSinkMute",
+    "Audio.SetSinkVolume",
+    "Audio.SetSourceMute",
+    "Audio.SetSourceVolume",
+    "Audio.SetStreamMute",
+    "Audio.SetStreamVolume",
+    "Aura.ToggleWindow",
+    "Automation.CreateScript",
+    "Automation.CreateWorkflow",
+    "Automation.DeleteWorkflow",
+    "Automation.DisableWorkflow",
+    "Automation.EnableWorkflow",
+    "Automation.GetActions",
+    "Automation.GetScripts",
+    "Automation.GetTriggers",
+    "Automation.GetWorkflowHistory",
+    "Automation.GetWorkflows",
+    "Automation.ListRules",
+    "Automation.RunScript",
+    "Automation.RunWorkflow",
+    "Automation.Trigger",
+    "Automation.UpdateWorkflow",
+    "Bluetooth.Connect",
+    "Bluetooth.Disconnect",
+    "Bluetooth.GetAdapters",
+    "Bluetooth.GetDeviceInfo",
+    "Bluetooth.GetDevices",
+    "Bluetooth.Pair",
+    "Bluetooth.Remove",
+    "Bluetooth.Scan",
+    "Bluetooth.SetAdapterDiscoverable",
+    "Bluetooth.SetAdapterPower",
+    "Bluetooth.StopScan",
+    "Brightness.Get",
+    "Brightness.Set",
+    "Calendar.CreateEvent",
+    "Calendar.DeleteEvent",
+    "Calendar.ExportIcs",
+    "Calendar.GetCalendars",
+    "Calendar.GetEvents",
+    "Calendar.GetUpcomingEvents",
+    "Calendar.GoogleAuthStatus",
+    "Calendar.GoogleDisconnect",
+    "Calendar.GoogleStartAuth",
+    "Calendar.ImportIcs",
+    "Calendar.SetReminder",
+    "Calendar.SyncCalDav",
+    "Calendar.SyncCalendars",
+    "Calendar.UpdateEvent",
+    "Capture.ListDevices",
+    "Capture.RecordStart",
+    "Capture.RecordStop",
+    "Capture.Screenshot",
+    "Communication.GetActiveCalls",
+    "Communication.GetCommunicationApps",
+    "Communication.GetContacts",
+    "Communication.GetConversations",
+    "Communication.GetMessages",
+    "Communication.GetNotificationSettings",
+    "Communication.GetUnread",
+    "Communication.ImportUnread",
+    "Communication.LaunchApp",
+    "Communication.MarkRead",
+    "Communication.MuteNotifications",
+    "Communication.SendMessage",
+    "Communication.SetNotificationSettings",
+    "Crash.Report",
+    "Dashboard.GetQuickStatus",
+    "DevOps.GetContainerLogs",
+    "DevOps.GetCronJobs",
+    "DevOps.GetDockerContainers",
+    "DevOps.GetDockerImages",
+    "DevOps.GetDockerStats",
+    "DevOps.GetGitRepos",
+    "DevOps.GetGitStatus",
+    "DevOps.GetKubernetesPods",
+    "DevOps.GetPodmanContainers",
+    "DevOps.GetStatus",
+    "DevOps.GetSystemdTimers",
+    "DevOps.PullImage",
+    "DevOps.RemoveImage",
+    "DevOps.RestartContainer",
+    "DevOps.StartContainer",
+    "DevOps.StopContainer",
+    "Fitness.GetActivity",
+    "Fitness.GetDevices",
+    "Fitness.GetGoals",
+    "Fitness.GetHeartRate",
+    "Fitness.GetSleep",
+    "Fitness.GetSteps",
+    "Fitness.GetWorkoutHistory",
+    "Fitness.SetGoal",
+    "Fitness.StartWorkout",
+    "Fitness.StopWorkout",
+    "Fitness.SyncDevice",
+    "GameMode.Disable",
+    "GameMode.Enable",
+    "GameMode.IsEnabled",
+    "GameMode.Toggle",
+    "Hyprland.Dispatch",
+    "Hyprland.GetActiveWindow",
+    "Hyprland.GetActiveWorkspace",
+    "Hyprland.GetBarSnapshot",
+    "Hyprland.GetClients",
+    "Hyprland.GetMonitors",
+    "Hyprland.GetWorkspaces",
+    "Keybinds.Export",
+    "Keybinds.GetCategories",
+    "Keybinds.Import",
+    "Keybinds.List",
+    "Keybinds.Reload",
+    "Keybinds.Set",
+    "Keybinds.Unset",
+    "Keybinds.Validate",
+    "Launcher.Pin",
+    "Launcher.Query",
+    "Launcher.Recent",
+    "Launcher.Run",
+    "Launcher.VicinaeQuery",
+    "Lock.GetConfig",
+    "Lock.SetConfig",
+    "Lock.TestFingerprint",
+    "Logs.ClearLogs",
+    "Logs.ExportLogs",
+    "Logs.FilterLogs",
+    "Logs.FollowLogs",
+    "Logs.Get",
+    "Logs.GetApplicationLogs",
+    "Logs.GetLogLevels",
+    "Logs.GetLogServices",
+    "Logs.GetSystemLogs",
+    "Logs.SearchLogs",
+    "Media.GetNowPlaying",
+    "Network.Connect",
+    "Network.Disconnect",
+    "Network.Forget",
+    "Network.GetStatus",
+    "Network.ListSaved",
+    "Network.ScanNetworks",
+    "Network.ToggleWifi",
+    "Notifications.ClearAll",
+    "Notifications.Dismiss",
+    "Notifications.Get",
+    "Notifications.GetDnd",
+    "Notifications.GetRules",
+    "Notifications.InvokeAction",
+    "Notifications.List",
+    "Notifications.SetDnd",
+    "Notifications.SetRules",
+    "Packages.GetAurPackages",
+    "Packages.GetAutoUpdatePolicy",
+    "Packages.GetFlatpakPackages",
+    "Packages.GetInstalled",
+    "Packages.GetPackageDependencies",
+    "Packages.GetPackageFiles",
+    "Packages.GetPackageInfo",
+    "Packages.GetReverseDependencies",
+    "Packages.GetSnapPackages",
+    "Packages.GetTransactionHistory",
+    "Packages.GetUpgradable",
+    "Packages.Install",
+    "Packages.InstallAur",
+    "Packages.Remove",
+    "Packages.Search",
+    "Packages.Update",
+    "Packages.Upgrade",
+    "Performance.ApplyPreset",
+    "Performance.GetCpuStats",
+    "Performance.GetDiskStats",
+    "Performance.GetGpuStats",
+    "Performance.GetMemoryStats",
+    "Performance.GetMetrics",
+    "Performance.GetNetworkStats",
+    "Performance.GetProcesses",
+    "Performance.GetSystemdServices",
+    "Performance.KillProcess",
+    "Performance.RestartService",
+    "Performance.SetCpuFrequency",
+    "Performance.SetCpuGovernor",
+    "Performance.SetProcessPriority",
+    "Performance.StartService",
+    "Performance.StopService",
+    "Power.GetBatteryState",
+    "Power.GetProfile",
+    "Power.SetProfile",
+    "Process.Kill",
+    "Process.ListTop",
+    "Productivity.CancelTimer",
+    "Productivity.CreatePomodoro",
+    "Productivity.CreateTask",
+    "Productivity.CreateTimer",
+    "Productivity.DeleteTask",
+    "Productivity.GetAppUsage",
+    "Productivity.GetFocusModeStatus",
+    "Productivity.GetPomodoroStatus",
+    "Productivity.GetScreenTime",
+    "Productivity.GetStats",
+    "Productivity.GetTasks",
+    "Productivity.GetTimers",
+    "Productivity.SetFocusMode",
+    "Productivity.UpdateTask",
+    "Security.AddFirewallRule",
+    "Security.DisableFirewall",
+    "Security.EnableFirewall",
+    "Security.GetCertificates",
+    "Security.GetEncryptionStatus",
+    "Security.GetFailedLogins",
+    "Security.GetFirewallRules",
+    "Security.GetFirewallStatus",
+    "Security.GetKeyringStatus",
+    "Security.GetPasswordPolicy",
+    "Security.GetSshConnections",
+    "Security.GetSshStatus",
+    "Security.GetStatus",
+    "Security.GetSudoLogs",
+    "Security.GetVpnConnections",
+    "Security.ListFingerprints",
+    "Security.RemoveFirewallRule",
+    "Security.RunClamScan",
+    "Security.ScanPorts",
+    "Session.Lock",
+    "Session.Logout",
+    "Session.PowerOff",
+    "Session.Reboot",
+    "Session.Suspend",
+    "Settings.Get",
+    "Settings.GetSchema",
+    "Settings.Reset",
+    "Settings.Set",
+    "Sidebar.GetTileData",
+    "Sidecar.GetVersion",
+    "Sleep.GetInhibitors",
+    "Sleep.Inhibit",
+    "Storage.Delete",
+    "Storage.Get",
+    "Storage.ListKeys",
+    "Storage.ScanNamespace",
+    "Storage.Set",
+    "System.GetStats",
+    "Todos.Create",
+    "Todos.CreateProject",
+    "Todos.Delete",
+    "Todos.List",
+    "Todos.ListProjects",
+    "Todos.ParseDueDate",
+    "Todos.Update",
+    "Tray.Activate",
+    "Tray.List",
+    "Tray.SecondaryActivate",
+    "Vault.Backup.Status",
+    "Vault.GetEntry",
+    "Vault.List",
+    "Vault.SetEntry",
+    "Vicinae.Exec",
+    "Vpn.Connect",
+    "Vpn.Disconnect",
+    "Vpn.GetProfiles",
+    "Vpn.GetStatus",
+    "Weather.AddLocation",
+    "Weather.Get",
+    "Weather.GetAlerts",
+    "Weather.GetForecast",
+    "Weather.GetHourly",
+    "Weather.GetLocations",
+    "Weather.RemoveLocation",
+    "Weather.SetLocation",
+    "Weather.SetUnits"
+  ],
+  "x-websocket": {
+    "/ws": {
+      "description": "Subscribe-only WebSocket. Server sends JSON text: `{ \"method\": \"Namespace.Event\", \"params\": { ... } }`."
+    }
+  }
+}
