@@ -46,13 +46,4 @@ HTTP is POST-only with `X-Aura-Token` from `GET /api/meta`. Details: [sidecar/RE
 
 ## License
 
-No `LICENSE` file yet — that is an explicit choice, not an accident.
-
-| Option | When it fits |
-|--------|----------------|
-| **GPL-3.0** | Conservative if this remains a Caelestia/Quickshell-inspired port (`docs/MIGRATION_STRATEGY.md`). Copyleft: derivatives must stay GPL. |
-| **MIT / Apache-2.0** | Only if you treat the tree as a clean-room rewrite you own. Weak if substantial Caelestia code/structure remains. |
-| **AGPL-3.0** | Like GPL, plus copyleft if someone offers the sidecar as a network service. Usually overkill for a localhost desktop shell. |
-| **No license** | All rights reserved. Fine while private; clones cannot legally use or redistribute. |
-
-Do not default to MIT. Pick one before a public GitHub flip.
+[MIT](LICENSE). Aura is an original AGS / React / Rust implementation. The control-center layout and hover-flyout feel take after [Caelestia](https://github.com/caelestia-dots/shell); the color tokens are [Catppuccin Mocha](https://github.com/catppuccin/catppuccin) (also MIT). Early `docs/MIGRATION_STRATEGY.md` notes are historical planning, not a source import.

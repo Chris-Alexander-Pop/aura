@@ -1,6 +1,7 @@
 {
   "name": "ags-config",
   "version": "1.0.0",
+  "license": "MIT",
   "scripts": {
     "build:css": "tailwindcss -i ./style/input.css -o ./style/style.css",
     "watch:css": "tailwindcss -i ./style/input.css -o ./style/style.css --watch",
