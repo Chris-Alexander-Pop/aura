@@ -14,7 +14,7 @@ New **`launcher.rs`** service for app search and Vicinae orchestration:
 2. `Launcher.Run` — allowlisted launch (`gtk-launch`, `xdg-open`).
 3. `Vicinae.Exec` — long-lived socket/RPC with subprocess fallback (ADR).
 4. `Launcher.Recent` / `Pin` — SQLite namespace `launcher`.
-5. Wire GTK launcher + future overpowered Vicinae flows in `todo.md`.
+5. Wire GTK launcher + future Vicinae flows (see `docs/roadmap/`).
 
 ---
 

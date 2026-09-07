@@ -1,0 +1,6 @@
+-- Copy to env-local.lua (gitignored). Pin DRM devices, VAAPI, NVIDIA vs Intel, etc.
+-- local v = require("hyprland/vars")
+--
+-- Colon-free Aquamarine paths only (no /dev/dri/by-path/pci-…):
+-- hl.env("AQ_DRM_DEVICES", v.home .. "/.local/share/dri/intel-igpu")
+-- hl.env("LIBVA_DRIVER_NAME", "iHD")

@@ -34,7 +34,7 @@
 
 **Sidecar approach (decided):** Implement a **Freedesktop Notifications D-Bus** listener (`org.freedesktop.Notifications`) so the backend works with **any** compliant daemon; Aura UI does not hard-code one brand.
 
-**Action for you:** Pick one daemon to **autostart in Hyprland** (recommend `swaync`). Until one runs, desktop notifications may appear broken—that matches the “fix notifications” todo.
+**Action for you:** Pick one daemon to **autostart in Hyprland** (recommend `swaync`). Until one runs, desktop notifications may appear broken.
 
 ---
 
@@ -43,9 +43,9 @@
 | Priority | Resolution |
 |----------|------------|
 | 1 | `AURA_SIDECAR` environment variable → absolute path to `ags-sidecar` |
-| 2 | `$XDG_CONFIG_HOME/ags/sidecar/target/release/ags-sidecar`, then `debug/` |
+| 2 | `$AURA_DIR/sidecar/target/release/ags-sidecar`, then `debug/` (`AURA_DIR` defaults to `$XDG_CONFIG_HOME/ags`) |
 
-**Dev workflow (now):** `./aura` sets `AURA_SIDECAR` to the just-built binary. Otherwise place builds under `$XDG_CONFIG_HOME/ags/sidecar/target/` or export `AURA_SIDECAR`.
+**Dev workflow (now):** `./setup` points `~/.config/ags` at this clone. `./aura` sets `AURA_SIDECAR` to the just-built binary.
 
 **Production direction:** Keep default under **`~/.config/ags`** (XDG config) so AGS and Hyprland configs stay co-located; optional `/usr/local/bin/ags-sidecar` later for packaged installs. Do **not** require the binary inside the git clone for daily use.
 
@@ -97,7 +97,7 @@ Implement in order; all are in scope, not mutually exclusive:
 
 ### What is keyd?
 
-**[keyd](https://github.com/rvaiya/keyd)** is a system-wide key remapping daemon (runs as root). It maps physical keys before they reach Hyprland/X11/Wayland—useful for **Fn-lock**, turning media keys into F-keys, or global macros. Hyprland `bind` handles compositor actions; **keyd** handles hardware/firmware quirks. Aura does not replace either; it may later sync a small keyd config snippet for FN row fixes (`todo.md`).
+**[keyd](https://github.com/rvaiya/keyd)** is a system-wide key remapping daemon (runs as root). It maps physical keys before they reach Hyprland/X11/Wayland—useful for **Fn-lock**, turning media keys into F-keys, or global macros. Hyprland `bind` handles compositor actions; **keyd** handles hardware/firmware quirks. Aura does not replace either; it may later sync a small keyd config snippet for FN row fixes.
 
 ---
 

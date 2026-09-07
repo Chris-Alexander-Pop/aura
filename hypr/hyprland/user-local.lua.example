@@ -1,0 +1,9 @@
+-- Copy to user-local.lua (gitignored). Devices, scale quirks, blur, etc.
+
+-- hl.config({
+--   xwayland = { force_zero_scaling = true },
+--   misc = { anr_missed_pings = 20 },
+--   decoration = { blur = { enabled = false }, shadow = { enabled = false } },
+-- })
+
+-- hyprctl devices  →  hl.device({ name = "…", … })

@@ -15,15 +15,15 @@ alwaysApply: true
 ## Sidecar binary location
 
 1. `AURA_SIDECAR` (absolute path) — `./aura` exports this
-2. `$XDG_CONFIG_HOME/ags/sidecar/target/{release,debug}/ags-sidecar`
+2. `$AURA_DIR/sidecar/target/{release,debug}/ags-sidecar` then `$XDG_CONFIG_HOME/ags/sidecar/target/...`
 
-A clone outside `~/.config/ags` must set `AURA_SIDECAR` or place the binary on the XDG path.
+`./setup` symlinks a clone to `~/.config/ags` so AGS and Hyprland find the tree.
 
 ## Docs
 
-- `todo.md`, `docs/roadmap/README.md` — product scope
+- `docs/roadmap/README.md` — product scope
 - `docs/ARCHITECTURE_DECISIONS.md` — stack choices (React bar default)
 - `SECURITY.md` — localhost HTTP threat model
-- `hypr/README.md` — compositor Lua; `execs-local.lua` / `monitors-local.lua` are gitignored
+- `hypr/README.md` — compositor Lua; `*-local.lua` files are gitignored
 
 Human/agent playbook: `AGENTS.md`.

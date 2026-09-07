@@ -59,10 +59,7 @@ Regenerate the OpenAPI spec after adding RPC methods:
 ## Binary resolution (GTK / `src/lib/sidecar.ts`)
 
 1. `AURA_SIDECAR` — absolute path to the binary  
-2. `$XDG_CONFIG_HOME/ags/sidecar/target/{debug,release}/ags-sidecar`  
-3. `$HOME/.config/ags/sidecar/target/{debug,release}/ags-sidecar` when `XDG_CONFIG_HOME` is unset
-
-Symlink or copy builds into `~/.config/ags/sidecar/target/` when using `~/.config/ags/aura`.
+2. `$AURA_DIR/sidecar/target/{debug,release}/ags-sidecar` then `$XDG_CONFIG_HOME/ags/sidecar/target/...` (`./setup` makes `~/.config/ags` this clone)
 
 ## Stack defaults
 

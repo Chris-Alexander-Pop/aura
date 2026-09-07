@@ -4,7 +4,7 @@
 
 ## Where the roadmap lives
 
-- **Product direction and per-area specs:** [todo.md](../todo.md) and [docs/roadmap/README.md](roadmap/README.md) (and files under [docs/roadmap/](roadmap/)).
+- **Product direction and per-area specs:** [docs/roadmap/README.md](roadmap/README.md) (and files under [docs/roadmap/](roadmap/)).
 - **Stack / component map:** [docs/MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md) and [docs/COMPONENT_MAPPING.md](COMPONENT_MAPPING.md).
 
 ## At a glance
@@ -23,9 +23,9 @@
 ## Doc flow
 
 ```text
-todo.md  →  docs/roadmap/*  (what to build)
+docs/roadmap/*  (what to build)
      ↘
 docs/feature_matrix.md  (this file: shallow stack + gaps)
      ↗
-MIGRATION_STRATEGY + COMPONENT_MAPPING  (legacy QML only)
+MIGRATION_STRATEGY + COMPONENT_MAPPING  (stack / component map)
 ```

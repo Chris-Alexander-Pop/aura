@@ -7,7 +7,8 @@
 #   ~/.config/hypr/hyprland.lua is a thin package.path stub (created/verified here).
 set -euo pipefail
 
-AURA_DIR="${AURA_DIR:-$HOME/.config/ags}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AURA_DIR="${AURA_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 HYPR_DIR="$AURA_DIR/hypr"
 MODE="${1:-}"
 
@@ -263,7 +264,7 @@ case "$MODE" in
     ;;
   --help|-h)
     echo "Usage: $0 [--check]"
-    echo "  (default) Create symlinks + XDG Lua stub from ~/.config/ags/hypr/"
+    echo "  (default) Create XDG symlinks + Lua stub from \$AURA_DIR/hypr (this clone)"
     echo "  --check   Verify symlinks and Aura Lua compositor entry"
     ;;
   "")

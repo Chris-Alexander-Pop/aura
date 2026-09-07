@@ -2,7 +2,7 @@
 
 > **Purpose:** Exhaustive backlog for `ags-sidecar` (`sidecar/`) so each item can be picked up, implemented, and verified with unit + integration tests before wiring the React/GTK UI.
 >
-> **Sources:** [todo.md](../todo.md), [docs/roadmap/](roadmap/), [feature_matrix.md](feature_matrix.md), [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md), **[ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)**, `sidecar/src/services/*`, `ui/src/lib/api.ts`, `src/lib/sidecar.ts`.
+> **Sources:** [docs/roadmap/](roadmap/), [feature_matrix.md](feature_matrix.md), [MIGRATION_STRATEGY.md](MIGRATION_STRATEGY.md), **[ARCHITECTURE_DECISIONS.md](ARCHITECTURE_DECISIONS.md)**, `sidecar/src/services/*`, `ui/src/lib/api.ts`, `src/lib/sidecar.ts`.
 >
 > **How to use:** `[x]` done · `[~]` partial or deferred · `[ ]` not done. Prefer one vertical slice per PR. Run `cd sidecar && cargo test` after each slice.
 >

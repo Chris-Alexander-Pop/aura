@@ -102,7 +102,10 @@ class SidecarService extends GObject.Object {
 
         const home = GLib.get_home_dir()
         const xdgConfig = GLib.getenv('XDG_CONFIG_HOME') || `${home}/.config`
+        const auraDir = GLib.getenv('AURA_DIR') || `${xdgConfig}/ags`
         const candidates = [
+            `${auraDir}/sidecar/target/release/ags-sidecar`,
+            `${auraDir}/sidecar/target/debug/ags-sidecar`,
             `${xdgConfig}/ags/sidecar/target/release/ags-sidecar`,
             `${xdgConfig}/ags/sidecar/target/debug/ags-sidecar`,
         ]
@@ -120,7 +123,7 @@ class SidecarService extends GObject.Object {
             const path = this._resolveSidecarPath()
             if (!path) {
                 console.error(
-                    'Sidecar binary not found. Set AURA_SIDECAR or build to ' +
+                    'Sidecar binary not found. Run ./setup, set AURA_SIDECAR, or build to ' +
                     '~/.config/ags/sidecar/target/{debug,release}/ags-sidecar'
                 )
                 return

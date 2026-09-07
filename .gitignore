@@ -24,8 +24,16 @@ hypr/dist/
 # Machine-specific compositor / host layout (copy the .example files)
 hypr/hyprland/monitors-local.lua
 hypr/hyprland/execs-local.lua
+hypr/hyprland/user-local.lua
+hypr/hyprland/env-local.lua
+hypr/hyprland/waydroid-size.lua
 *-local.lua
 *-local.conf
+
+# Personal notes (product specs live under docs/roadmap/)
+/todo.md
+/issues.md
+/docs/roadmap/secure-a-panel.md
 
 # Crash dumps / debug noise
 crash-logs/

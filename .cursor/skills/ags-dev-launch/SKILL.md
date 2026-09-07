@@ -13,6 +13,7 @@ description: >-
 
 | Goal | Command |
 |------|---------|
+| Fresh clone / not `~/.config/ags` | `./setup` (symlink, Hypr links, sidecar + UI) |
 | Full dev (release sidecar, optional cargo-watch, UI build, Tailwind + AGS) | `./aura` from repo root |
 | Same without React UI build | `./aura --no-ui-build` |
 | Same without Rust watch | `./aura --no-rust-watch` |
@@ -24,13 +25,14 @@ Ensure `bun install` at repo root and in `ui/`. `./aura` uses bun (`$RUNNER run 
 
 ## Hyprland vs repo cwd
 
-- `aura-launch` starts `foot` and runs **`~/.config/ags/aura`**, not necessarily this clone.
-- If you edit a different directory, set `AURA_SIDECAR` or run `./aura` from the tree AGS actually loads.
+- `./setup` makes `~/.config/ags` this clone (symlink if needed).
+- `aura-launch` starts `foot` and runs **`~/.config/ags/aura`**.
+- If you skip setup, set `AURA_SIDECAR` / `AURA_DIR` or run `./aura` from the tree AGS actually loads.
 
 ## Sidecar binary
 
 1. `AURA_SIDECAR` (set by `./aura` for that session)
-2. `$XDG_CONFIG_HOME/ags/sidecar/target/{release,debug}/ags-sidecar`
+2. `$AURA_DIR` then `$XDG_CONFIG_HOME/ags/sidecar/target/{release,debug}/ags-sidecar`
 
 ## What `./aura` does not do
 

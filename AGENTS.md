@@ -11,10 +11,11 @@ Concise operating manual for humans and AI assistants working in this repository
 | React panels | `ui/` (Vite) | **Default bar**, control center, calendar, dropdown — `ui/dist` in WebKit |
 | Backend | `sidecar/` | `ags-sidecar` — JSON-RPC, services under `src/services/` |
 
-Docs: `docs/MIGRATION_STRATEGY.md`, `docs/COMPONENT_MAPPING.md` (stack / component map); `todo.md` and `docs/roadmap/` (product); `docs/feature_matrix.md` (shallow planning + implementation snapshot); **`docs/ARCHITECTURE_DECISIONS.md`** (resolved stack/product choices); **`docs/BACKEND_TODO.md`** (sidecar implementation checklist).
+Docs: `docs/MIGRATION_STRATEGY.md`, `docs/COMPONENT_MAPPING.md` (stack / component map); `docs/roadmap/` (product); `docs/feature_matrix.md` (shallow planning + implementation snapshot); **`docs/ARCHITECTURE_DECISIONS.md`** (resolved stack/product choices); **`docs/BACKEND_TODO.md`** (sidecar implementation checklist).
 
 ## Launch and verify
 
+- First-time / clone elsewhere: `./setup` (symlink `~/.config/ags` → this repo, Hypr links, sidecar + UI build).
 - Full dev stack: `./aura` (sidecar build, UI build, `bun run watch`). Does not kill other user processes.
 - Frontend only: `bun run watch` (Tailwind + `ags run app.ts`). Set `AURA_SIDECAR` or build into `$XDG_CONFIG_HOME/ags/sidecar/target/`.
 - Hyprland: `aura-launch` runs `~/.config/ags/aura` in `foot`. Aura-owned Hypr fragments: `hypr/` (see below).
@@ -50,9 +51,9 @@ Full checklist: [`hypr/README.md`](hypr/README.md). Polkit: build hyprtoolkit ag
 Resolution order (see `docs/ARCHITECTURE_DECISIONS.md`):
 
 1. `AURA_SIDECAR` env var (absolute path) — **`./aura` sets this** for the session
-2. `$XDG_CONFIG_HOME/ags/sidecar/target/{release,debug}/ags-sidecar`
+2. `$AURA_DIR/sidecar/target/{release,debug}/ags-sidecar`, then `$XDG_CONFIG_HOME/ags/sidecar/target/...`
 
-A clone that is not `~/.config/ags` must set `AURA_SIDECAR` (or symlink the binary). There is no `Engineering/Productivity` fallback.
+`./setup` makes `~/.config/ags` this clone (symlink if you cloned elsewhere).
 
 **Google Calendar:** set `AURA_GOOGLE_OAUTH_CLIENT_ID` (Desktop OAuth client, Calendar API enabled). Optional `AURA_GOOGLE_OAUTH_CLIENT_SECRET`. Connect from the calendar panel; refresh tokens go in GNOME Keyring (`secret-tool`).
 

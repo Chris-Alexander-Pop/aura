@@ -61,7 +61,7 @@ M.workspace_swipe_fingers = 4
 M.gesture_fingers = 3
 M.gesture_fingers_more = 4
 
--- Blur / shadow (base; hyprland/user.lua may override)
+-- Blur / shadow (base; user-local.lua may override)
 M.blur_enabled = true
 M.blur_special_ws = false
 M.blur_popups = true
