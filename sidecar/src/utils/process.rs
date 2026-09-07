@@ -32,6 +32,15 @@ impl Default for ExecOpts {
     }
 }
 
+impl ExecOpts {
+    pub fn with_timeout(timeout: Duration) -> Self {
+        Self {
+            timeout,
+            max_output_bytes: DEFAULT_MAX_OUTPUT,
+        }
+    }
+}
+
 struct AllowlistEntry {
     binary: &'static str,
     timeout: Option<Duration>,

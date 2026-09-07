@@ -40,7 +40,16 @@ export const useWsStore = create<WsStore>((set, get) => ({
   },
 }))
 
-const WS_URL = "ws://localhost:9080/ws"
+function sidecarWsUrl(token: string): string {
+  const proto =
+    typeof window !== "undefined" && window.location.protocol === "https:" ? "wss" : "ws"
+  const host =
+    typeof window !== "undefined" && window.location.host
+      ? window.location.host
+      : "127.0.0.1:9080"
+  return `${proto}://${host}/ws?token=${encodeURIComponent(token)}`
+}
+
 let socket: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let connecting = false
@@ -53,7 +62,7 @@ export function connectWs() {
     .then((token) => {
       connecting = false
       if (socket?.readyState === WebSocket.OPEN) return
-      socket = new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`)
+      socket = new WebSocket(sidecarWsUrl(token))
 
       socket.onopen = () => {
         useWsStore.getState().setConnected(true)

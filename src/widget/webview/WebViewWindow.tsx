@@ -7,7 +7,7 @@ import { Astal, Gdk } from "ags/gtk4"
 import App from "ags/gtk4/app"
 import { attachWebViewCrashHandlers } from "../../lib/crash-log"
 
-const SIDECAR_URL = "http://localhost:9080"
+const SIDECAR_URL = "http://127.0.0.1:9080"
 
 export interface WebViewWindowOptions {
     name: string

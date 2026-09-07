@@ -17,6 +17,7 @@ import BatteryFlyout from "@/components/bar/flyouts/BatteryFlyout"
 import WindowsFlyout from "@/components/bar/flyouts/WindowsFlyout"
 import PowerFlyout from "@/components/bar/flyouts/PowerFlyout"
 import { flyoutWidthFor } from "@/lib/flyout-layout"
+import { scheduleLeaveAfterDrag } from "@/lib/panel-hover"
 import { AnimatePresence, motion } from "framer-motion"
 
 function postHover(hovered: boolean) {
@@ -71,7 +72,7 @@ export default function BarFlyout() {
             exit={{ opacity: 0, x: -Math.min(panelW, 48), y: "-50%" }}
             transition={{ type: "spring", stiffness: 520, damping: 38, mass: 0.65 }}
             onMouseEnter={() => postHover(true)}
-            onMouseLeave={() => postHover(false)}
+            onMouseLeave={(e) => scheduleLeaveAfterDrag(e, () => postHover(false))}
           >
             {content}
           </motion.div>

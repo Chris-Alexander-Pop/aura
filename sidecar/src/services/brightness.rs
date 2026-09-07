@@ -12,6 +12,10 @@ use tokio::time::{sleep, Duration, Instant};
 
 const BRIGHTNESS_SET_DEBOUNCE_MS: u64 = 8;
 const BRIGHTNESS_EMIT_DEBOUNCE_MS: u64 = 300;
+const BRIGHTNESS_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+const BRIGHTNESS_SET_TIMEOUT: Duration = Duration::from_secs(3);
+/// Must outlast logind (2s) plus brightnessctl apply timeout so HTTP can report errors.
+const BRIGHTNESS_SET_WAIT_MS: u64 = 5500;
 /// Backlight below 1% turns off the panel on some machines — never go to 0%.
 pub const BRIGHTNESS_MIN: f64 = 0.01;
 
@@ -45,12 +49,14 @@ static BRIGHTNESS_APPLY_COUNT: AtomicU64 = AtomicU64::new(0);
 struct SetRequest {
     monitor: Monitor,
     brightness: f64,
+    previous: f64,
     reply: Option<tokio::sync::oneshot::Sender<Result<f64>>>,
 }
 
 struct SetBatch {
     monitor: Monitor,
     brightness: f64,
+    previous: f64,
     waiters: Vec<tokio::sync::oneshot::Sender<Result<f64>>>,
 }
 
@@ -127,6 +133,7 @@ async fn brightness_coalescer_loop(mut rx: mpsc::UnboundedReceiver<CoalescerMsg>
                         batch = Some(SetBatch {
                             monitor: req.monitor,
                             brightness: req.brightness,
+                            previous: req.previous,
                             waiters,
                         });
                     }
@@ -149,9 +156,14 @@ async fn flush_brightness_batch(batch: SetBatch) {
     let SetBatch {
         monitor,
         brightness,
+        previous,
         waiters,
     } = batch;
     let result = apply_brightness_and_cache(&monitor, brightness).await;
+    if result.is_err() {
+        revert_cached_brightness(&monitor.name, previous).await;
+        schedule_brightness_state_emit(monitor.name.clone(), previous, false);
+    }
     for waiter in waiters {
         let reply = match &result {
             Ok(v) => Ok(*v),
@@ -161,29 +173,65 @@ async fn flush_brightness_batch(batch: SetBatch) {
     }
 }
 
+fn backlight_device_id(monitor: &Monitor) -> Option<&str> {
+    match &monitor.monitor_type {
+        MonitorType::Default { device } => Some(device.as_str()),
+        _ => None,
+    }
+}
+
+fn write_cached_brightness(monitors: &mut HashMap<String, Monitor>, name: &str, brightness: f64) {
+    let device = monitors
+        .get(name)
+        .and_then(backlight_device_id)
+        .map(str::to_string);
+    if let Some(device) = device {
+        for m in monitors.values_mut() {
+            if backlight_device_id(m) == Some(device.as_str()) {
+                m.brightness = brightness;
+            }
+        }
+        return;
+    }
+    if let Some(m) = monitors.get_mut(name) {
+        m.brightness = brightness;
+    }
+}
+
+async fn revert_cached_brightness(monitor_name: &str, previous: f64) {
+    let mut monitors = MONITORS.write().await;
+    write_cached_brightness(&mut monitors, monitor_name, previous);
+}
+
 /// Await the coalesced hardware apply (unit tests).
 #[cfg(test)]
 async fn coalesced_brightness_set(monitor: Monitor, target_brightness: f64) -> Result<f64> {
     let (tx, rx) = tokio::sync::oneshot::channel();
+    let previous = monitor.brightness;
     coalescer_sender()?
         .send(CoalescerMsg::Enqueue(SetRequest {
             monitor,
             brightness: target_brightness,
+            previous,
             reply: Some(tx),
         }))
         .map_err(|_| anyhow!("Brightness coalescer unavailable"))?;
     rx.await.map_err(|_| anyhow!("Brightness set cancelled"))?
 }
 
-/// Enqueue a set and return immediately — HTTP must not wait on `brightnessctl`.
+/// Enqueue a set and wait briefly for the coalesced hardware apply so HTTP can
+/// report permission/device errors instead of looking like a no-op.
 async fn enqueue_brightness_set(monitor: Monitor, target_brightness: f64) -> Result<f64> {
     let target_brightness = clamp_brightness(target_brightness);
     let monitor_name = monitor.name.clone();
+    let previous = monitor.brightness;
+    let (tx, rx) = tokio::sync::oneshot::channel();
     coalescer_sender()?
         .send(CoalescerMsg::Enqueue(SetRequest {
             monitor,
             brightness: target_brightness,
-            reply: None,
+            previous,
+            reply: Some(tx),
         }))
         .map_err(|_| anyhow!("Brightness coalescer unavailable"))?;
 
@@ -194,7 +242,11 @@ async fn enqueue_brightness_set(monitor: Monitor, target_brightness: f64) -> Res
         }
     }
 
-    Ok(target_brightness)
+    match tokio::time::timeout(Duration::from_millis(BRIGHTNESS_SET_WAIT_MS), rx).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(_)) => Err(anyhow!("Brightness set cancelled")),
+        Err(_) => Ok(target_brightness),
+    }
 }
 
 async fn apply_brightness_and_cache(monitor: &Monitor, target_brightness: f64) -> Result<f64> {
@@ -205,23 +257,26 @@ async fn apply_brightness_and_cache(monitor: &Monitor, target_brightness: f64) -
         m.brightness = target_brightness;
     }
 
-    schedule_brightness_state_emit(monitor.name.clone(), target_brightness);
+    schedule_brightness_state_emit(monitor.name.clone(), target_brightness, true);
     Ok(target_brightness)
 }
 
-fn schedule_brightness_state_emit(monitor: String, brightness: f64) {
+fn schedule_brightness_state_emit(monitor: String, brightness: f64, applied: bool) {
     let gen = BRIGHTNESS_EMIT_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     tokio::spawn(async move {
         sleep(Duration::from_millis(BRIGHTNESS_EMIT_DEBOUNCE_MS)).await;
         if BRIGHTNESS_EMIT_GEN.load(Ordering::SeqCst) != gen {
             return;
         }
-        osd::emit_brightness(brightness);
+        if applied {
+            osd::emit_brightness(brightness);
+        }
         notify::emit(
             "Brightness.StateChanged",
             json!({
                 "monitor": monitor,
                 "brightness": brightness,
+                "applied": applied,
             }),
         );
     });
@@ -278,8 +333,10 @@ pub fn register(registry: &mut ServiceRegistry) {
 
         if monitor_query == "all" {
             let monitors = MONITORS.read().await;
+            let has_named = monitors.keys().any(|k| k != "default");
             let list: Vec<Value> = monitors
                 .values()
+                .filter(|m| !(has_named && m.name == "default"))
                 .map(|m| {
                     json!({
                         "monitor": m.name,
@@ -479,6 +536,227 @@ pub fn parse_brightnessctl_list(output: &str) -> Vec<(String, f64)> {
     devices
 }
 
+fn brightness_probe_opts() -> process::ExecOpts {
+    process::ExecOpts::with_timeout(BRIGHTNESS_PROBE_TIMEOUT)
+}
+
+fn brightness_set_opts() -> process::ExecOpts {
+    process::ExecOpts::with_timeout(BRIGHTNESS_SET_TIMEOUT)
+}
+
+pub fn is_safe_backlight_id(name: &str) -> bool {
+    let b = name.as_bytes();
+    !b.is_empty()
+        && b.len() < 64
+        && b
+            .iter()
+            .all(|c| c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-')
+}
+
+fn sysfs_backlight_dir(device: &str) -> Option<std::path::PathBuf> {
+    if !is_safe_backlight_id(device) {
+        return None;
+    }
+    Some(std::path::PathBuf::from("/sys/class/backlight").join(device))
+}
+
+pub fn sysfs_target_brightness(frac: f64, max: u32) -> u32 {
+    if max == 0 {
+        return 0;
+    }
+    let frac = clamp_brightness(frac);
+    ((frac * max as f64).round() as u32).clamp(1, max)
+}
+
+fn parse_sysfs_u32(s: &str) -> Option<u32> {
+    s.trim().parse().ok()
+}
+
+async fn read_sysfs_device(device: &str) -> Result<f64> {
+    let dir = sysfs_backlight_dir(device).ok_or_else(|| anyhow!("invalid backlight id"))?;
+    let actual = tokio::fs::read_to_string(dir.join("brightness")).await?;
+    let max = tokio::fs::read_to_string(dir.join("max_brightness")).await?;
+    let actual = parse_sysfs_u32(&actual).ok_or_else(|| anyhow!("bad brightness sysfs"))?;
+    let max = parse_sysfs_u32(&max).ok_or_else(|| anyhow!("bad max_brightness sysfs"))?;
+    if max == 0 {
+        return Ok(BRIGHTNESS_MIN);
+    }
+    Ok(clamp_brightness(actual as f64 / max as f64))
+}
+
+fn logind_session_cache() -> &'static std::sync::Mutex<Option<String>> {
+    static CACHED: OnceLock<std::sync::Mutex<Option<String>>> = OnceLock::new();
+    CACHED.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+fn clear_logind_session_cache() {
+    if let Ok(mut guard) = logind_session_cache().lock() {
+        *guard = None;
+    }
+}
+
+async fn logind_session_object_path(conn: &zbus::Connection) -> Result<String> {
+    if let Ok(guard) = logind_session_cache().lock() {
+        if let Some(path) = guard.as_ref() {
+            return Ok(path.clone());
+        }
+    }
+
+    let path = match std::env::var("XDG_SESSION_ID") {
+        Ok(id) if !id.trim().is_empty() => {
+            use zbus::Proxy;
+            let mgr = Proxy::new(
+                conn,
+                "org.freedesktop.login1",
+                "/org/freedesktop/login1",
+                "org.freedesktop.login1.Manager",
+            )
+            .await?;
+            match mgr
+                .call::<_, _, zbus::zvariant::OwnedObjectPath>("GetSession", &(id.trim(),))
+                .await
+            {
+                Ok(obj) => obj.as_str().to_string(),
+                Err(e) => {
+                    tracing::debug!("login1 GetSession({id}): {e}");
+                    "/org/freedesktop/login1/session/auto".to_string()
+                }
+            }
+        }
+        _ => "/org/freedesktop/login1/session/auto".to_string(),
+    };
+
+    if let Ok(mut guard) = logind_session_cache().lock() {
+        *guard = Some(path.clone());
+    }
+    Ok(path)
+}
+
+async fn logind_set_on_path(
+    conn: &zbus::Connection,
+    path: &str,
+    device: &str,
+    value: u32,
+) -> Result<()> {
+    use zbus::Proxy;
+    let proxy = Proxy::new(
+        conn,
+        "org.freedesktop.login1",
+        path,
+        "org.freedesktop.login1.Session",
+    )
+    .await?;
+    let _: () = proxy
+        .call("SetBrightness", &("backlight", device, value))
+        .await
+        .map_err(|e| anyhow!("logind SetBrightness: {e}"))?;
+    Ok(())
+}
+
+async fn logind_active_graphical_session_path(conn: &zbus::Connection) -> Result<String> {
+    use zbus::Proxy;
+    let mgr = Proxy::new(
+        conn,
+        "org.freedesktop.login1",
+        "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager",
+    )
+    .await?;
+    let rows: Vec<(
+        String,
+        u32,
+        String,
+        String,
+        zbus::zvariant::OwnedObjectPath,
+    )> = mgr.call("ListSessions", &()).await?;
+    for (_id, _uid, _user, seat, path) in rows {
+        if seat.is_empty() {
+            continue;
+        }
+        let sess = Proxy::new(
+            conn,
+            "org.freedesktop.login1",
+            path.as_str(),
+            "org.freedesktop.login1.Session",
+        )
+        .await?;
+        let active: bool = sess.get_property("Active").await.unwrap_or(false);
+        let ty: String = sess.get_property("Type").await.unwrap_or_default();
+        if active && (ty == "wayland" || ty == "x11") {
+            return Ok(path.as_str().to_string());
+        }
+    }
+    Err(anyhow!("no active graphical login session"))
+}
+
+/// logind owns backlight writes for the graphical session (sysfs is root-only here).
+async fn logind_set_backlight(device: &str, value: u32) -> Result<()> {
+    use zbus::Connection;
+    let conn = Connection::system().await?;
+    let path = logind_session_object_path(&conn).await?;
+    match logind_set_on_path(&conn, &path, device, value).await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let msg = e.to_string();
+            if !msg.contains("not in foreground") && !msg.contains("SetBrightness") {
+                return Err(e);
+            }
+            tracing::debug!("logind brightness on {path} failed ({msg}); trying active session");
+            clear_logind_session_cache();
+            let alt = logind_active_graphical_session_path(&conn).await?;
+            let result = logind_set_on_path(&conn, &alt, device, value).await;
+            if result.is_ok() {
+                if let Ok(mut guard) = logind_session_cache().lock() {
+                    *guard = Some(alt);
+                }
+            }
+            result
+        }
+    }
+}
+
+async fn set_sysfs_or_logind(device: &str, frac: f64) -> Result<()> {
+    let dir = sysfs_backlight_dir(device).ok_or_else(|| anyhow!("invalid backlight id"))?;
+    let max_s = tokio::fs::read_to_string(dir.join("max_brightness")).await?;
+    let max = parse_sysfs_u32(&max_s).ok_or_else(|| anyhow!("bad max_brightness sysfs"))?;
+    let value = sysfs_target_brightness(frac, max);
+
+    match tokio::time::timeout(Duration::from_secs(2), logind_set_backlight(device, value)).await
+    {
+        Ok(Ok(())) => return Ok(()),
+        Ok(Err(e)) => {
+            tracing::debug!("logind brightness failed: {e}");
+            clear_logind_session_cache();
+        }
+        Err(_) => {
+            tracing::debug!("logind brightness timed out");
+            clear_logind_session_cache();
+        }
+    }
+
+    tokio::fs::write(dir.join("brightness"), value.to_string())
+        .await
+        .map_err(|e| anyhow!("backlight write failed: {e}"))
+}
+
+async fn list_sysfs_backlights() -> Vec<(String, f64)> {
+    let mut out = Vec::new();
+    let Ok(mut dir) = tokio::fs::read_dir("/sys/class/backlight").await else {
+        return out;
+    };
+    while let Ok(Some(ent)) = dir.next_entry().await {
+        let name = ent.file_name().to_string_lossy().into_owned();
+        if !is_safe_backlight_id(&name) {
+            continue;
+        }
+        if let Ok(frac) = read_sysfs_device(&name).await {
+            out.push((name, frac));
+        }
+    }
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
 async fn set_brightness(monitor: &Monitor, brightness: f64) -> Result<()> {
     BRIGHTNESS_APPLY_COUNT.fetch_add(1, Ordering::SeqCst);
     if std::env::var("AURA_BRIGHTNESS_DRY_RUN").ok().as_deref() == Some("1") {
@@ -491,28 +769,41 @@ async fn set_brightness(monitor: &Monitor, brightness: f64) -> Result<()> {
     match &monitor.monitor_type {
         MonitorType::AppleDisplay => {
             if *APPLE_DISPLAY_PRESENT.read().await {
-                process::exec_command_detached(&["asdbctl", "set", &rounded.to_string()]).await?;
+                process::exec_command_with_opts(
+                    &["asdbctl", "set", &rounded.to_string()],
+                    brightness_set_opts(),
+                )
+                .await?;
             }
         }
         MonitorType::DDC { bus_num } => {
-            process::exec_command(&[
-                "ddcutil",
-                "-b",
-                bus_num,
-                "setvcp",
-                "10",
-                &rounded.to_string(),
-            ])
+            process::exec_command_with_opts(
+                &[
+                    "ddcutil",
+                    "-b",
+                    bus_num,
+                    "setvcp",
+                    "10",
+                    &rounded.to_string(),
+                ],
+                brightness_set_opts(),
+            )
             .await?;
         }
         MonitorType::Default { device } => {
-            process::exec_command(&[
-                "brightnessctl",
-                "-d",
-                device,
-                "s",
-                &format!("{rounded}%"),
-            ])
+            if set_sysfs_or_logind(device, brightness).await.is_ok() {
+                return Ok(());
+            }
+            process::exec_command_with_opts(
+                &[
+                    "brightnessctl",
+                    "-d",
+                    device,
+                    "s",
+                    &format!("{rounded}%"),
+                ],
+                brightness_set_opts(),
+            )
             .await?;
         }
     }
@@ -521,7 +812,14 @@ async fn set_brightness(monitor: &Monitor, brightness: f64) -> Result<()> {
 }
 
 async fn read_brightnessctl_device(device: &str) -> Result<f64> {
-    let output = process::exec_command(&["brightnessctl", "-d", device, "-m"]).await?;
+    if let Ok(frac) = read_sysfs_device(device).await {
+        return Ok(frac);
+    }
+    let output = process::exec_command_with_opts(
+        &["brightnessctl", "-d", device, "-m"],
+        brightness_probe_opts(),
+    )
+    .await?;
     for line in output.lines() {
         if let Some((_, b)) = parse_brightnessctl_machine_line(line) {
             return Ok(b);
@@ -533,16 +831,26 @@ async fn read_brightnessctl_device(device: &str) -> Result<f64> {
 async fn detect_monitors() -> Result<()> {
     let mut monitors = HashMap::new();
 
-    let apple_check = process::exec_command(&["asdbctl", "get"]).await;
-    let apple_present = apple_check.is_ok();
+    let mut backlight_devices = list_sysfs_backlights().await;
+    let apple_present = if backlight_devices.is_empty() {
+        process::exec_command_with_opts(&["asdbctl", "get"], brightness_probe_opts())
+            .await
+            .is_ok()
+    } else {
+        false
+    };
     *APPLE_DISPLAY_PRESENT.write().await = apple_present;
-
-    let mut backlight_devices: Vec<(String, f64)> = Vec::new();
-    if let Ok(list_out) = process::exec_command(&["brightnessctl", "-l"]).await {
-        backlight_devices = parse_brightnessctl_list(&list_out);
+    if backlight_devices.is_empty() {
+        if let Ok(list_out) =
+            process::exec_command_with_opts(&["brightnessctl", "-l"], brightness_probe_opts()).await
+        {
+            backlight_devices = parse_brightnessctl_list(&list_out);
+        }
     }
     if backlight_devices.is_empty() {
-        if let Ok(m_out) = process::exec_command(&["brightnessctl", "-m"]).await {
+        if let Ok(m_out) =
+            process::exec_command_with_opts(&["brightnessctl", "-m"], brightness_probe_opts()).await
+        {
             for line in m_out.lines() {
                 if let Some((name, b)) = parse_brightnessctl_machine_line(line) {
                     backlight_devices.push((name, b));
@@ -587,7 +895,12 @@ async fn detect_monitors() -> Result<()> {
     if backlight_devices.is_empty() {
         let dry_run = std::env::var("AURA_BRIGHTNESS_DRY_RUN").ok().as_deref() == Some("1");
         if !dry_run {
-            let ddc_output = process::exec_command(&["ddcutil", "detect", "--brief"]).await.ok();
+            let ddc_output = process::exec_command_with_opts(
+                &["ddcutil", "detect", "--brief"],
+                brightness_probe_opts(),
+            )
+            .await
+            .ok();
             let ddc_monitors = ddc_output
                 .as_deref()
                 .map(parse_ddc_monitors)
@@ -790,7 +1103,7 @@ mod tests {
             .await
             .expect("enqueue");
         assert!(
-            started.elapsed() < Duration::from_millis(50),
+            started.elapsed() < Duration::from_millis(250),
             "enqueue blocked for {:?}",
             started.elapsed()
         );
@@ -844,10 +1157,68 @@ mod tests {
 
         std::env::remove_var("AURA_BRIGHTNESS_DRY_RUN");
     }
+
+    #[test]
+    fn backlight_id_rejects_path_traversal() {
+        assert!(super::is_safe_backlight_id("intel_backlight"));
+        assert!(super::is_safe_backlight_id("amdgpu_bl0"));
+        assert!(!super::is_safe_backlight_id("../etc"));
+        assert!(!super::is_safe_backlight_id("a/b"));
+        assert!(!super::is_safe_backlight_id(""));
+    }
+
+    #[test]
+    fn sysfs_target_brightness_clamps() {
+        assert_eq!(super::sysfs_target_brightness(0.5, 100), 50);
+        assert_eq!(super::sysfs_target_brightness(0.0, 100), 1);
+        assert_eq!(super::sysfs_target_brightness(1.0, 24242), 24242);
+        assert_eq!(super::sysfs_target_brightness(0.5, 0), 0);
+    }
+
+    #[tokio::test]
+    async fn apply_failure_reverts_cached_brightness() {
+        let _guard = brightness_test_lock();
+        std::env::remove_var("AURA_BRIGHTNESS_DRY_RUN");
+        super::reset_brightness_apply_count_for_tests();
+        tokio::time::sleep(std::time::Duration::from_millis(32)).await;
+
+        let monitor = super::Monitor {
+            name: "fail-revert".to_string(),
+            monitor_type: super::MonitorType::Default {
+                device: "aura-no-such-backlight".to_string(),
+            },
+            brightness: 0.4,
+        };
+        {
+            let mut monitors = super::MONITORS.write().await;
+            monitors.insert(monitor.name.clone(), monitor.clone());
+        }
+
+        super::enqueue_brightness_set(monitor, 0.8)
+            .await
+            .expect("enqueue");
+
+        let mut reverted = false;
+        for _ in 0..40 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let cached = super::MONITORS.read().await;
+            let stored = cached.get("fail-revert").expect("cached");
+            if (stored.brightness - 0.4).abs() < f64::EPSILON {
+                reverted = true;
+                break;
+            }
+        }
+        assert!(reverted, "hardware apply failure should restore previous brightness");
+        std::env::remove_var("AURA_BRIGHTNESS_DRY_RUN");
+    }
 }
 
 async fn get_ddc_brightness(bus_num: &str) -> Result<f64> {
-    let output = process::exec_command(&["ddcutil", "-b", bus_num, "getvcp", "10", "--brief"]).await?;
+    let output = process::exec_command_with_opts(
+        &["ddcutil", "-b", bus_num, "getvcp", "10", "--brief"],
+        brightness_probe_opts(),
+    )
+    .await?;
     Ok(parse_ddc_vcp_brightness(&output).unwrap_or(0.5))
 }
 

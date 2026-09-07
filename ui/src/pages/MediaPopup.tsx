@@ -7,7 +7,7 @@ import {
   type BrightnessSetResult,
 } from "@/lib/brightness-session"
 import { brightnessIcon, volumeIcon } from "@/lib/hw-control-icons"
-import { postPanelHover } from "@/lib/panel-hover"
+import { postPanelHover, scheduleLeaveAfterDrag } from "@/lib/panel-hover"
 import { cn } from "@/lib/utils"
 import { connectWs, useWsStore } from "@/lib/ws"
 
@@ -269,7 +269,9 @@ export default function MediaPopup() {
     <div
       className="flex h-full w-full items-stretch justify-center"
       onMouseEnter={() => postPanelHover("mediaPopupHover", true)}
-      onMouseLeave={() => postPanelHover("mediaPopupHover", false)}
+      onMouseLeave={(e) =>
+        scheduleLeaveAfterDrag(e, () => postPanelHover("mediaPopupHover", false))
+      }
     >
       <div className="flex h-full w-full items-stretch justify-center gap-2.5 rounded-l-2xl border border-r-0 border-surface0/50 bg-mantle/95 px-3 py-3 text-text shadow-2xl backdrop-blur-xl">
         <SliderColumn

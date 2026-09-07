@@ -655,7 +655,7 @@ async fn update_network_state() -> Result<()> {
 }
 
 async fn update_public_ip() -> Result<()> {
-    let body = reqwest::Client::new()
+    let body = crate::utils::http::client_with_timeout(std::time::Duration::from_secs(3))
         .get("https://ifconfig.me/ip")
         .header(reqwest::header::ACCEPT, "text/plain")
         .send()

@@ -60,7 +60,7 @@ pub async fn sync_caldav_read_only() -> Result<Value> {
     let body = if let Ok(fixture) = std::env::var("AURA_CALDAV_FIXTURE") {
         tokio::fs::read_to_string(&fixture).await?
     } else {
-        let client = reqwest::Client::new();
+        let client = crate::utils::http::client();
         let mut req = client
             .request(reqwest::Method::POST, &config.url)
             .header("Depth", "1")

@@ -229,8 +229,15 @@ export const api = {
 
   // Weather
   getWeather: () =>
-    call<{ temp: string; feels_like: string; description: string; humidity: number; icon: string }>(
-      "Weather.Get"
+    callData("Weather.Get", undefined, 6_000).then(
+      (data) =>
+        data as {
+          temp: string
+          feels_like: string
+          description: string
+          humidity: number
+          icon: string
+        },
     ),
 
   // VPN

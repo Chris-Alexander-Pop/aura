@@ -89,10 +89,10 @@ export function registerSidecarInvalidations(qc: QueryClient): () => void {
       invalidateModuleTiles(qc, "productivity")
     }),
     useWsStore.getState().on("Brightness.StateChanged", (raw) => {
-      if (!shouldApplyBrightnessWsEvent()) return
       if (!raw || typeof raw !== "object") return
-      const p = raw as { monitor?: string; brightness?: number }
+      const p = raw as { monitor?: string; brightness?: number; applied?: boolean }
       if (typeof p.brightness !== "number" || typeof p.monitor !== "string") return
+      if (p.applied !== false && !shouldApplyBrightnessWsEvent()) return
       const row = { brightness: p.brightness, monitor: p.monitor }
       qc.setQueryData(["brightness", p.monitor], row)
       const monitors = qc.getQueryData<{ monitors?: Array<{ monitor: string }> }>([

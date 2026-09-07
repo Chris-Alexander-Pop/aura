@@ -82,7 +82,7 @@ export function HubDashboard({ quick }: { quick: DashboardQuickStatusView | unde
     queryFn: api.getWeather,
     staleTime: 120_000,
     refetchInterval: WEATHER_REFETCH_MS,
-    retry: 1,
+    retry: 0,
   })
 
   const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })

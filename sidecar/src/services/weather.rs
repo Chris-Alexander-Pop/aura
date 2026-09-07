@@ -1,7 +1,8 @@
 use crate::services::ServiceRegistry;
-use crate::utils::storage;
+use crate::utils::{http, storage};
 use serde_json;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -74,36 +75,27 @@ pub fn register(registry: &mut ServiceRegistry) {
             drop(last_fetch);
         }
 
-        // Determine city
         let city_name = if let Some(c) = city {
             c
+        } else if let Some(c) = get_default_city().await {
+            c
+        } else if let Some(cached) = CACHED_WEATHER.read().await.as_ref() {
+            return Ok(cached.clone());
         } else {
-            // Try to get city from IP
-            let ip_response = reqwest::get("https://ipinfo.io/json").await.ok();
-            if let Some(response) = ip_response {
-                if let Ok(json) = response.json::<serde_json::Value>().await {
-                    if let Some(c) = json.get("city").and_then(|v| v.as_str()) {
-                        c.to_string()
-                    } else {
-                        "London".to_string() // Default fallback
-                    }
-                } else {
-                    "London".to_string()
-                }
-            } else {
-                "London".to_string()
-            }
+            anyhow::bail!("Weather location unavailable (offline or unset)");
         };
 
-        let weather_data = fetch_wttr_json(&city_name).await?;
-
-        let weather_json = current_weather_json(&weather_data.current_condition[0]);
-
-        *LAST_FETCH.write().await = Some(std::time::Instant::now());
-        *CACHED_WEATHER.write().await = Some(weather_json.clone());
-        *LAST_UPDATE.write().await = Some(std::time::Instant::now());
-
-        Ok(weather_json)
+        match fetch_and_cache_current(&city_name).await {
+            Ok(json) => Ok(json),
+            Err(e) => {
+                if let Some(cached) = CACHED_WEATHER.read().await.as_ref() {
+                    tracing::debug!("weather fetch failed, using cache: {e}");
+                    Ok(cached.clone())
+                } else {
+                    Err(e)
+                }
+            }
+        }
     });
 
     registry.register("Weather.GetForecast", |params| async move {
@@ -119,11 +111,7 @@ pub fn register(registry: &mut ServiceRegistry) {
             .and_then(|p| p.get("city").cloned())
             .and_then(|v| serde_json::from_value(v).ok());
 
-        let city_name = if let Some(c) = city {
-            c
-        } else {
-            get_default_city().await
-        };
+        let city_name = resolve_city(city).await?;
         let weather_data = fetch_wttr_json(&city_name).await?;
 
         // Extract forecast data
@@ -132,7 +120,7 @@ pub fn register(registry: &mut ServiceRegistry) {
     });
 
     registry.register("Weather.GetHourly", |_params| async move {
-        let city = get_default_city().await;
+        let city = resolve_city(None).await?;
         let weather_data = fetch_wttr_json(&city).await?;
 
         // Extract hourly data from weather array
@@ -239,11 +227,29 @@ pub(crate) fn weather_cache_ttl_secs() -> u64 {
     WEATHER_CACHE_TTL_SECS
 }
 
+async fn fetch_and_cache_current(city_name: &str) -> anyhow::Result<serde_json::Value> {
+    let weather_data = fetch_wttr_json(city_name).await?;
+    let weather_json = current_weather_json(&weather_data.current_condition[0]);
+    *LAST_FETCH.write().await = Some(std::time::Instant::now());
+    *CACHED_WEATHER.write().await = Some(weather_json.clone());
+    *LAST_UPDATE.write().await = Some(std::time::Instant::now());
+    Ok(weather_json)
+}
+
+async fn resolve_city(explicit: Option<String>) -> anyhow::Result<String> {
+    if let Some(c) = explicit {
+        return Ok(c);
+    }
+    get_default_city()
+        .await
+        .ok_or_else(|| anyhow::anyhow!("Weather location unavailable (offline or unset)"))
+}
+
 /// wttr JSON fetch; integration tests set `AURA_WEATHER_WTTR_URL` to a mock HTTP endpoint.
 async fn fetch_wttr_json(city_name: &str) -> anyhow::Result<WttrResponse> {
     let url = std::env::var("AURA_WEATHER_WTTR_URL")
         .unwrap_or_else(|_| format!("https://wttr.in/{}?format=j1", city_name));
-    let mut req = reqwest::Client::new().get(&url);
+    let mut req = http::client_with_timeout(http::request_timeout()).get(&url);
     if let Ok(key) = std::env::var("AURA_WEATHER_API_KEY") {
         req = req.header("Authorization", format!("Bearer {key}"));
     }
@@ -251,24 +257,32 @@ async fn fetch_wttr_json(city_name: &str) -> anyhow::Result<WttrResponse> {
     Ok(response.json().await?)
 }
 
-async fn get_default_city() -> String {
+async fn get_default_city() -> Option<String> {
     storage::init().await.ok();
     if let Ok(Some(city)) = storage::get_kv("weather", "location").await {
         if let Some(city_str) = city.as_str() {
-            return city_str.to_string();
-        }
-    }
-
-    // Fallback to IP-based detection
-    if let Ok(response) = reqwest::get("https://ipinfo.io/json").await {
-        if let Ok(json) = response.json::<serde_json::Value>().await {
-            if let Some(c) = json.get("city").and_then(|v| v.as_str()) {
-                return c.to_string();
+            let trimmed = city_str.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
             }
         }
     }
+    lookup_city_from_ip().await
+}
 
-    "London".to_string()
+async fn lookup_city_from_ip() -> Option<String> {
+    let timeout = Duration::from_secs(2).min(http::request_timeout());
+    let response = http::client_with_timeout(timeout)
+        .get("https://ipinfo.io/json")
+        .send()
+        .await
+        .ok()?;
+    let json = response.json::<serde_json::Value>().await.ok()?;
+    json.get("city")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
 }
 
 pub(crate) fn current_weather_json(cond: &CurrentCondition) -> serde_json::Value {

@@ -353,7 +353,7 @@ async fn exchange_code(
     code: &str,
     verifier: &str,
 ) -> Result<TokenResponse> {
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::client();
     let mut form = vec![
         ("code", code.to_string()),
         ("client_id", client_id.to_string()),
@@ -387,7 +387,7 @@ async fn refresh_access_token() -> Result<String> {
         .await?
         .ok_or_else(|| anyhow!("not connected to Google"))?;
 
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::client();
     let mut form = vec![
         ("client_id", client_id),
         ("grant_type", "refresh_token".into()),
@@ -410,7 +410,7 @@ async fn refresh_access_token() -> Result<String> {
 }
 
 async fn fetch_user_email(access_token: &str) -> Result<String> {
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::client();
     let resp = client
         .get(USERINFO_URL)
         .bearer_auth(access_token)
@@ -461,7 +461,7 @@ pub async fn list_calendars() -> Result<Vec<Calendar>> {
 }
 
 async fn fetch_and_cache_calendars(access_token: &str) -> Result<Vec<Calendar>> {
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::client();
     let resp = client
         .get(CALENDAR_LIST_URL)
         .bearer_auth(access_token)
@@ -577,7 +577,7 @@ pub async fn sync_google_read_only() -> Result<Value> {
     let time_min = (now - chrono::Duration::days(30)).to_rfc3339();
     let time_max = (now + chrono::Duration::days(90)).to_rfc3339();
 
-    let client = reqwest::Client::new();
+    let client = crate::utils::http::client();
     let mut synced = 0usize;
     storage::init().await?;
 

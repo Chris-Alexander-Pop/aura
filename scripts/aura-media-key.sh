@@ -4,14 +4,25 @@ set -euo pipefail
 
 ACTION="${1:-}"
 BASE="${AURA_SIDECAR_URL:-http://127.0.0.1:9080}"
+TOKEN=""
 
 sidecar_up() {
   curl -sf "${BASE}/api/meta" >/dev/null 2>&1
 }
 
-api_get() {
-  local method="$1"
-  curl -sf "${BASE}/api/${method}" 2>/dev/null || echo '{"ok":false}'
+sidecar_token() {
+  if [[ -n "$TOKEN" ]]; then
+    printf '%s' "$TOKEN"
+    return
+  fi
+  if [[ -n "${AURA_HTTP_TOKEN:-}" ]]; then
+    TOKEN="$AURA_HTTP_TOKEN"
+  elif [[ -n "${XDG_RUNTIME_DIR:-}" && -r "${XDG_RUNTIME_DIR}/aura-http-token" ]]; then
+    TOKEN="$(cat "${XDG_RUNTIME_DIR}/aura-http-token")"
+  else
+    TOKEN="$(curl -sf "${BASE}/api/meta" | python3 -c "import json,sys; print(json.load(sys.stdin).get('http_token',''))" 2>/dev/null || true)"
+  fi
+  printf '%s' "$TOKEN"
 }
 
 api_post() {
@@ -19,7 +30,12 @@ api_post() {
   local body="${2:-"{}"}"
   curl -sf -X POST "${BASE}/api/${method}" \
     -H "Content-Type: application/json" \
+    -H "X-Aura-Token: $(sidecar_token)" \
     -d "$body" 2>/dev/null || echo '{"ok":false}'
+}
+
+api_get() {
+  api_post "$1" "{}"
 }
 
 api_ok() {

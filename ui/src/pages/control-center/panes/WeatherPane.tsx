@@ -31,7 +31,7 @@ export default function WeatherPane() {
     queryFn: api.getWeather,
     staleTime: 120_000,
     refetchInterval: REFETCH_MS,
-    retry: 2,
+    retry: 0,
   })
 
   const errMsg =
