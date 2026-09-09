@@ -19,6 +19,7 @@ describe("special-workspace", () => {
     expect(specialWorkspaceToggleArg("special:communication")).toBe("communication")
     expect(iconFromSpecialWorkspace("special:communication")).toBe("chat")
     expect(iconFromSpecialWorkspace("special:music")).toBe("music_note")
+    expect(iconFromSpecialWorkspace("special:grok")).toBe("smart_toy")
   })
 
   it("collects covered workspace ids across all monitors", () => {

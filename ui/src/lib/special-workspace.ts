@@ -61,6 +61,8 @@ export function iconFromSpecialWorkspace(name: string): string {
       return "chat"
     case "music":
       return "music_note"
+    case "grok":
+      return "smart_toy"
     case "todo":
       return "checklist"
     case "sysmon":

@@ -26,13 +26,13 @@ import BarIconButton from "@/components/bar/BarIconButton"
 import NotificationToasts from "@/components/notifications/NotificationToasts"
 import { type StatusFlyoutId } from "@/components/bar/useFlyoutHover"
 import { iconFromHyprClass } from "@/components/bar/hyprWindowIcon"
+import SpecialWorkspaceGlyph, { isGrokSpecialWorkspace } from "@/components/bar/SpecialWorkspaceGlyph"
 import { cn } from "@/lib/utils"
 import { hyprlandQueryDefaults, useHyprlandSync } from "@/lib/useHyprlandSync"
 import { onHyprlandWorkspaceActive, scheduleHyprlandSnapshotRefresh } from "@/lib/hyprland-bar-cache"
 import { pickVisibleWorkspaces } from "@/lib/workspace-visible-range"
 import { useBarMonitorName } from "@/lib/useBarMonitor"
 import {
-  iconFromSpecialWorkspace,
   specialCoverByWorkspaceId,
   specialWorkspaceCovers,
   specialWorkspaceLabel,
@@ -149,7 +149,8 @@ function WorkspacesBlock() {
           const isCovered = specialCover != null
           const openSpecial = specialCover?.special
           const specialLabel = openSpecial ? specialWorkspaceLabel(openSpecial.name ?? "") : ""
-          const specialIcon = openSpecial ? iconFromSpecialWorkspace(openSpecial.name ?? "") : "layers"
+          const specialName = openSpecial?.name ?? ""
+          const grokCover = isCovered && isGrokSpecialWorkspace(specialName)
           const specialTitle = openSpecial?.name ?? specialLabel
           const coverMonitor = specialCover?.monitorName
           const isRemoteCover =
@@ -204,18 +205,27 @@ function WorkspacesBlock() {
                   layoutId={barMonitorName ? `bar-ws-special-${barMonitorName}` : "bar-ws-special"}
                   className={cn(
                     "absolute inset-0 z-20 overflow-hidden rounded-full text-crust shadow-[0_0_14px_rgb(var(--c-mauve)/0.35)]",
-                    isRemoteCover
-                      ? "border-2 border-teal bg-mauve shadow-[0_0_16px_rgb(var(--c-teal)/0.5)]"
-                      : "border-2 border-mauve bg-mauve",
+                    grokCover
+                      ? isRemoteCover
+                        ? "border-2 border-teal"
+                        : "border-2 border-mauve"
+                      : isRemoteCover
+                        ? "border-2 border-teal bg-mauve shadow-[0_0_16px_rgb(var(--c-teal)/0.5)]"
+                        : "border-2 border-mauve bg-mauve",
                   )}
                   transition={WS_PILL_SPRING}
                   aria-label={`Special workspace ${specialTitle} covering workspace ${id}`}
                 >
-                  <span className="absolute left-0.5 top-0.5 text-[7px] font-bold leading-none text-crust/70">
+                  <span
+                    className={cn(
+                      "absolute left-0.5 top-0.5 z-10 text-[7px] font-bold leading-none",
+                      grokCover ? "text-white/80" : "text-crust/70",
+                    )}
+                  >
                     {id}
                   </span>
                   <span className="flex h-full w-full items-center justify-center">
-                    <span className="icon text-[15px] leading-none">{specialIcon}</span>
+                    <SpecialWorkspaceGlyph name={specialName} />
                   </span>
                 </motion.span>
               ) : null}

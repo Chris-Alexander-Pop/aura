@@ -10,6 +10,7 @@ function appIcon(cls: string): string {
     if (c.includes("code") || c.includes("cursor")) return "code"
     if (c.includes("file") || c.includes("nautilus") || c.includes("thunar")) return "folder"
     if (c.includes("discord") || c.includes("chat")) return "chat"
+    if (c.includes("grok")) return "smart_toy"
     if (c.includes("spotify") || c.includes("music")) return "music_note"
     if (c.includes("steam") || c.includes("game")) return "sports_esports"
     if (c.includes("settings")) return "settings"

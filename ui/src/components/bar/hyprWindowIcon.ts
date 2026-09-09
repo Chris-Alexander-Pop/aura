@@ -6,6 +6,7 @@ export function iconFromHyprClass(cls: string): string {
   if (/code|cursor|vscode|idea|jetbrains/.test(c)) return "code"
   if (/nautilus|thunar|files|dolphin/.test(c)) return "folder"
   if (/discord|slack|telegram/.test(c)) return "chat"
+  if (/grok/.test(c)) return "smart_toy"
   if (/mpv|vlc/.test(c)) return "movie"
   return "window"
 }

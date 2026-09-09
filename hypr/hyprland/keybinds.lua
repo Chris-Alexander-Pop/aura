@@ -108,20 +108,27 @@ hl.bind("CTRL + SUPER + SHIFT + left", hl.dsp.window.move({ workspace = "-1" }),
 hl.bind("CTRL + SUPER + SHIFT + up", hl.dsp.window.move({ workspace = "special:special" }))
 hl.bind("CTRL + SUPER + SHIFT + down", hl.dsp.window.move({ workspace = "e+0" }))
 hl.bind("SUPER + ALT + S", hl.dsp.window.move({ workspace = "special:special" }))
-hl.bind("SUPER + ALT + M", function()
-  local win = hl.get_active_window()
-  if not win then return end
-  local on_music = win.workspace and win.workspace.name == "special:music"
-  if on_music then
-    local dest = hl.get_active_workspace()
-    if dest and dest.name == "special:music" then
-      dest = hl.get_last_workspace()
+
+local function toggle_move_special(name)
+  return function()
+    local win = hl.get_active_window()
+    if not win then return end
+    local target = "special:" .. name
+    local on_it = win.workspace and win.workspace.name == target
+    if on_it then
+      local dest = hl.get_active_workspace()
+      if dest and dest.name == target then
+        dest = hl.get_last_workspace()
+      end
+      hl.dispatch(hl.dsp.window.move({ workspace = dest and dest.id or "e+0" }))
+    else
+      hl.dispatch(hl.dsp.window.move({ workspace = target }))
     end
-    hl.dispatch(hl.dsp.window.move({ workspace = dest and dest.id or "e+0" }))
-  else
-    hl.dispatch(hl.dsp.window.move({ workspace = "special:music" }))
   end
-end)
+end
+
+hl.bind("SUPER + ALT + M", toggle_move_special("music"))
+hl.bind("SUPER + ALT + G", toggle_move_special("grok"))
 
 -- Groups
 hl.bind("ALT + Tab", hl.dsp.window.cycle_next(), E)
@@ -162,19 +169,23 @@ hl.bind("SUPER + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
 hl.bind("SUPER + ALT + F", hl.dsp.window.fullscreen({ mode = "maximized" }))
 hl.bind("SUPER + ALT + SPACE", hl.dsp.window.float({ action = "toggle" }))
 hl.bind("SUPER + Q", hl.dsp.window.close())
+-- SIGKILL the focused window's process. Works in submaps (frozen / stuck client).
+-- Multi-window apps that share one PID (Chrome, etc.) all die together.
+hl.bind("SUPER + SHIFT + Q", hl.dsp.window.kill(), { submap_universal = true })
 
 -- Special toggles
 hl.bind("CTRL + SHIFT + Escape", exec("ags request toggle module-hub"))
 -- Music scratch (Namida/Spotify/Feishin/… via special:music). Volume/brightness sliders stay on right-edge hover.
 hl.bind("SUPER + M", hl.dsp.workspace.toggle_special("music"))
 hl.bind("SUPER + D", hl.dsp.workspace.toggle_special("communication"))
+-- Grok Bot scratch (class grok-bot → special:grok). SUPER+G used to launch GitHub Desktop.
+hl.bind("SUPER + G", hl.dsp.workspace.toggle_special("grok"))
 hl.bind("SUPER + R", exec("ags request toggle calendar"))
 
 -- Apps
 hl.bind("SUPER + T", exec("app2unit -- " .. v.terminal))
 hl.bind("SUPER + W", exec("app2unit -- " .. v.browser))
 hl.bind("SUPER + C", exec("app2unit -- " .. v.editor))
-hl.bind("SUPER + G", exec("app2unit -- github-desktop"))
 hl.bind("SUPER + E", exec("app2unit -- " .. v.file_explorer))
 hl.bind("CTRL + ALT + Escape", exec("app2unit -- qps"))
 hl.bind("CTRL + ALT + V", exec("app2unit -- pavucontrol"))

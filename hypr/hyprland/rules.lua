@@ -75,6 +75,10 @@ hl.window_rule({
   match = { class = "discord|equibop|vesktop|whatsapp" },
   workspace = "special:communication",
 })
+hl.window_rule({
+  match = { class = "grok-bot" },
+  workspace = "special:grok",
+})
 hl.window_rule({ match = { class = "Todoist" }, workspace = "special:todo" })
 
 -- Dialogs
