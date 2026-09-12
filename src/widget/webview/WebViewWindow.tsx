@@ -9,6 +9,9 @@ import { attachWebViewCrashHandlers } from "../../lib/crash-log"
 
 const SIDECAR_URL = "http://127.0.0.1:9080"
 
+/** GJS will collect Gtk windows that only live on a discarded function return. */
+const retainedWindows: Gtk.Window[] = []
+
 export interface WebViewWindowOptions {
     name: string
     page: string
@@ -129,13 +132,24 @@ function createHyprlandWebViewWindow(opts: WebViewWindowOptions) {
     win.title = title
     win.set_default_size(width, height)
     win.set_child(webview)
-    win.visible = visible
-    applyTransparentWindowCss(win)
 
     win.connect("close-request", () => {
         win.visible = false
         return true
     })
+
+    retainedWindows.push(win)
+
+    if (visible) {
+        win.visible = true
+        try {
+            win.present()
+        } catch {
+            /* GTK4 Wayland maps on present(), not visible alone */
+        }
+    } else {
+        win.visible = false
+    }
 
     return win
 }
@@ -170,23 +184,26 @@ export function createWebViewWindow(opts: WebViewWindowOptions) {
     const webview = makeWebView(page, width, height, true, transparentWebView, name)
     opts.onSetup?.(webview)
 
-    const win = <window
-        name={name}
-        visible={visible}
-        anchor={anchor}
-        exclusivity={exclusivity}
-        {...(layer !== undefined ? { layer } : {})}
-        gdkmonitor={gdkmonitor}
-        margin={margin}
-        marginLeft={marginLeft ?? margin}
-        marginRight={marginRight ?? margin}
-        marginTop={marginTop ?? margin}
-        marginBottom={marginBottom ?? margin}
-        application={App}
-        css="background-color: transparent;"
-    >
-        {webview}
-    </window> as any
-
+    // Imperative Astal.Window — JSX <window> was mapping as an unanchored
+    // 200×200 surface (see PanelEdgeTriggers: "JSX alone was not showing").
+    const win = new Astal.Window({
+        name,
+        visible: false,
+        anchor,
+        exclusivity,
+        ...(gdkmonitor ? { gdkmonitor } : {}),
+        ...(layer !== undefined ? { layer } : {}),
+    })
+    if (gdkmonitor) win.set_gdkmonitor(gdkmonitor)
+    win.set_margin_left(marginLeft ?? margin)
+    win.set_margin_right(marginRight ?? margin)
+    win.set_margin_top(marginTop ?? margin)
+    win.set_margin_bottom(marginBottom ?? margin)
+    win.set_size_request(width, height)
+    applyTransparentWindowCss(win)
+    win.set_child(webview)
+    App.add_window(win)
+    retainedWindows.push(win)
+    if (visible) win.visible = true
     return win
 }

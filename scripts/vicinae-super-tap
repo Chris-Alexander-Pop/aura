@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 # Super-alone tap → vicinae toggle.
 #
-# Hyprland 0.56 keybind rewrite (#15568) breaks SUPER_L / SUPER_R sided-mod
-# binds; keycodes still work. Wired from Aura Lua:
-#   ~/.config/ags/hypr/hyprland/keybinds.lua
-#
-# A short-lived evdev watcher marks the tap interrupted if any other key is
-# pressed before Super is released, so Super+A etc. do not open the launcher.
+# Bound as SUPER_L / SUPER_R with ignore_mods (no SUPER+ prefix). SUPER+code:133
+# never matched a tap on Hyprland 0.56. Other keys before Super-up cancel the tap.
 set -euo pipefail
 
 RUNTIME="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/vicinae-super-tap"
@@ -14,13 +10,17 @@ mkdir -p "$RUNTIME"
 INTERRUPTED="$RUNTIME/interrupted"
 WATCHER_PID="$RUNTIME/watcher.pid"
 WATCHER_PY="$RUNTIME/watcher.py"
+LOG="${VICINAE_TAP_LOG:-$RUNTIME/tap.log}"
+
+log() {
+  printf '%s %s\n' "$(date '+%H:%M:%S')" "$*" >>"$LOG"
+}
 
 write_watcher() {
   cat >"$WATCHER_PY" <<'PY'
 import os, struct, select, sys
 
 INTERRUPTED = sys.argv[1]
-# Prefer the AT keyboard; fall back to by-path
 candidates = [
     "/dev/input/by-path/platform-i8042-serio-0-event-kbd",
 ]
@@ -29,19 +29,29 @@ if os.path.isdir(by_id):
     for name in sorted(os.listdir(by_id)):
         if name.endswith("-event-kbd"):
             candidates.append(os.path.join(by_id, name))
+by_path = "/dev/input/by-path"
+if os.path.isdir(by_path):
+    for name in sorted(os.listdir(by_path)):
+        if name.endswith("-event-kbd"):
+            candidates.append(os.path.join(by_path, name))
 
-EV_KEY, EV_SYN = 1, 0
+EV_KEY = 1
 KEY_LEFTMETA, KEY_RIGHTMETA = 125, 126
 EVENT_SIZE = struct.calcsize("llHHi")
 
-fd = None
+fds = []
+seen = set()
 for path in candidates:
     try:
+        real = os.path.realpath(path)
+        if real in seen:
+            continue
         fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
-        break
+        seen.add(real)
+        fds.append(fd)
     except OSError:
         continue
-if fd is None:
+if not fds:
     sys.exit(0)
 
 def mark():
@@ -53,27 +63,28 @@ def mark():
 
 try:
     while True:
-        r, _, _ = select.select([fd], [], [], 2.0)
+        r, _, _ = select.select(fds, [], [], 2.0)
         if not r:
-            # Super held >2s without other keys — treat as not a tap
             mark()
             break
-        data = os.read(fd, EVENT_SIZE * 64)
-        if not data:
-            break
-        for i in range(0, len(data) // EVENT_SIZE * EVENT_SIZE, EVENT_SIZE):
-            _sec, _usec, etype, code, value = struct.unpack_from("llHHi", data, i)
-            if etype != EV_KEY:
+        for fd in r:
+            data = os.read(fd, EVENT_SIZE * 64)
+            if not data:
                 continue
-            if code in (KEY_LEFTMETA, KEY_RIGHTMETA):
-                if value == 0:  # Super released
+            for i in range(0, len(data) // EVENT_SIZE * EVENT_SIZE, EVENT_SIZE):
+                _sec, _usec, etype, code, value = struct.unpack_from("llHHi", data, i)
+                if etype != EV_KEY:
+                    continue
+                if code in (KEY_LEFTMETA, KEY_RIGHTMETA):
+                    if value == 0:
+                        raise SystemExit(0)
+                    continue
+                if value == 1:
+                    mark()
                     raise SystemExit(0)
-                continue
-            if value == 1:  # other key pressed
-                mark()
-                raise SystemExit(0)
 finally:
-    os.close(fd)
+    for fd in fds:
+        os.close(fd)
 PY
 }
 
@@ -96,16 +107,26 @@ case "${1:-}" in
     write_watcher
     python3 "$WATCHER_PY" "$INTERRUPTED" &
     echo $! >"$WATCHER_PID"
+    log "press watcher=$!"
     ;;
   release)
-    # Let the watcher observe the Super release / any late key first
-    sleep 0.02
+    sleep 0.03
     stop_watcher
-    local_interrupted=$(cat "$INTERRUPTED" 2>/dev/null || echo 1)
+    interrupted=$(cat "$INTERRUPTED" 2>/dev/null || echo 1)
     rm -f "$INTERRUPTED"
-    if [[ "$local_interrupted" == "0" ]]; then
-      exec vicinae toggle
+    log "release interrupted=${interrupted}"
+    if [[ "$interrupted" != "0" ]]; then
+      exit 0
     fi
+    now=$(date +%s%3N)
+    last=$(cat "$RUNTIME/last-toggle" 2>/dev/null || echo 0)
+    if [[ "$now" =~ ^[0-9]+$ && "$last" =~ ^[0-9]+$ ]] && (( now - last < 300 )); then
+      log "debounce skip dt=$((now - last))"
+      exit 0
+    fi
+    echo "$now" >"$RUNTIME/last-toggle"
+    log "toggle"
+    exec vicinae toggle
     ;;
   *)
     echo "usage: $0 press|release" >&2

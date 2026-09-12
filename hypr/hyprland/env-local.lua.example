@@ -4,3 +4,8 @@
 -- Colon-free Aquamarine paths only (no /dev/dri/by-path/pci-…):
 -- hl.env("AQ_DRM_DEVICES", v.home .. "/.local/share/dri/intel-igpu")
 -- hl.env("LIBVA_DRIVER_NAME", "iHD")
+--
+-- NVIDIA render + Intel panel: blank WebKitGTK / GTK4 surfaces.
+-- hl.env("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+-- hl.env("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
+-- AGS also sets GSK_RENDERER=cairo for the shell only (see scripts/aura-session.sh).

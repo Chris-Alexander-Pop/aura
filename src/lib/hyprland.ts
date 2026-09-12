@@ -55,7 +55,10 @@ class HyprlandService extends GObject.Object {
             if (res && out) {
                 const decoder = new TextDecoder()
                 const json = decoder.decode(out)
-                this._workspaces = JSON.parse(json).map((w: any) => ({ id: w.id, name: w.name }))
+                this._workspaces = JSON.parse(json).map((w: any) => ({
+                    id: Number(w.id ?? w.address ?? w.name),
+                    name: w.name ?? String(w.address ?? w.id ?? ""),
+                })).filter((w: Workspace) => Number.isFinite(w.id) && w.id > 0)
                 this.emit('workspaces-changed')
             }
 
@@ -66,7 +69,8 @@ class HyprlandService extends GObject.Object {
                  const monitors = JSON.parse(json)
                  const focused = monitors.find((m: any) => m.focused)
                  if (focused) {
-                     this._focusedWorkspaceId = focused.activeWorkspace.id
+                     const aw = focused.activeWorkspace ?? focused.active_workspace ?? {}
+                     this._focusedWorkspaceId = Number(aw.id ?? aw.address ?? aw.name)
                      this.emit('focused-workspace-changed', this._focusedWorkspaceId)
                  }
             }

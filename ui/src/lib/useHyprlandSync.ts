@@ -17,6 +17,10 @@ export function useHyprlandSync() {
 
   useEffect(() => {
     connectWs()
+    // First paint used to wait on four separate hyprctl RPCs. Clients can
+    // arrive empty while workspaces are already known, which hid every tab
+    // until a workspace switch triggered GetBarSnapshot.
+    void scheduleHyprlandSnapshotRefresh(qc)
 
     const onAuraWorkspace = (e: Event) => {
       const { id } = (e as CustomEvent<{ id: number }>).detail

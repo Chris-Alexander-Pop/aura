@@ -15,7 +15,7 @@ import { initAuraSettingsShell } from "./src/lib/aura-settings-shell"
 import { installCrashHandlers, recordUncaught } from "./src/lib/crash-log"
 import { initMonitorShell } from "./src/lib/monitor-shell"
 import { initShellVisibility } from "./src/lib/shell-visibility"
-import { isHoverPanel, toggleHoverPanel, MODULE_HUB_ENABLED } from "./src/lib/panel-hover"
+import { isHoverPanel, toggleHoverPanel, MODULE_HUB_ENABLED, DROPDOWN_ENABLED } from "./src/lib/panel-hover"
 
 const DEBUG_EDGE = GLib.getenv("AURA_DEBUG_EDGE_TRIGGERS") === "1"
 
@@ -50,7 +50,8 @@ app.start({
 
                 // WebKit overlay panels
                 ControlCenterWindow()
-                DropdownWindow()
+                // Bottom-right card parked — re-enable DROPDOWN_ENABLED in panel-hover.ts
+                if (DROPDOWN_ENABLED) DropdownWindow()
                 CalendarWindow()
                 MediaPopupWindow()
             } catch (e) {
@@ -81,6 +82,10 @@ app.start({
                         res("module-hub disabled")
                         break
                     }
+                    if (name === "dropdown" && !DROPDOWN_ENABLED) {
+                        res("dropdown disabled")
+                        break
+                    }
                     if (name) {
                         if (isHoverPanel(name)) {
                             const visible = toggleHoverPanel(
@@ -94,6 +99,13 @@ app.start({
                         const win = app.get_window(name)
                         if (win) {
                             win.visible = !win.visible
+                            if (win.visible) {
+                                try {
+                                    ;(win as { present?: () => void }).present?.()
+                                } catch {
+                                    /* Astal layer-shell windows */
+                                }
+                            }
                             res(`toggled ${name} → ${win.visible}`)
                         } else {
                             res(`window not found: ${name}`)
@@ -105,7 +117,15 @@ app.start({
                 }
                 case "show": {
                     const win = app.get_window(parts[1])
-                    if (win) { win.visible = true; res("ok") }
+                    if (win) {
+                        win.visible = true
+                        try {
+                            ;(win as { present?: () => void }).present?.()
+                        } catch {
+                            /* Astal layer-shell windows */
+                        }
+                        res("ok")
+                    }
                     else res("not found")
                     break
                 }

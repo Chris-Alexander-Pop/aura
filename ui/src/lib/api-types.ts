@@ -365,16 +365,59 @@ function hyprClassName(item: Record<string, unknown>): string {
   return typeof c === "string" ? c : ""
 }
 
+function hyprStringField(raw: Record<string, unknown>, key: string): string {
+  const v = raw[key]
+  return typeof v === "string" ? v : ""
+}
+
+function hyprNumberish(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value)
+    if (Number.isFinite(n)) return n
+  }
+  return null
+}
+
+/**
+ * Classic hyprctl used `{id: 1}`. Lua-config Hyprland uses
+ * `{address: "1", type: "numbered", name: "1"}` with no `id`.
+ */
+export function hyprNumericWorkspaceId(raw: Record<string, unknown>): number | null {
+  for (const key of ["id", "address", "name"] as const) {
+    const n = hyprNumberish(raw[key])
+    if (n != null) return n
+  }
+  return null
+}
+
+function hyprWorkspaceName(raw: Record<string, unknown>): string | undefined {
+  const name = hyprStringField(raw, "name")
+  if (name) return name
+  const address = hyprStringField(raw, "address")
+  return address || undefined
+}
+
+function isOpenSpecialWorkspaceRaw(raw: Record<string, unknown>): boolean {
+  const wsType = hyprStringField(raw, "type")
+  const address = hyprStringField(raw, "address")
+  const name = hyprStringField(raw, "name")
+  return wsType === "special" || address.startsWith("special:") || name.startsWith("special:")
+}
+
 export function parseHyprWorkspaces(raw: unknown): HyprWorkspace[] {
   if (!Array.isArray(raw)) return []
   return raw
     .filter((x): x is Record<string, unknown> => isRecord(x))
-    .map((x) => ({
-      id: Number(x.id),
-      name: typeof x.name === "string" ? x.name : String(x.id ?? ""),
-      windows: typeof x.windows === "number" ? x.windows : 0,
-    }))
-    .filter((x) => Number.isFinite(x.id))
+    .map((x) => {
+      const id = hyprNumericWorkspaceId(x)
+      return {
+        id: id ?? NaN,
+        name: hyprWorkspaceName(x) ?? (id != null ? String(id) : ""),
+        windows: typeof x.windows === "number" ? x.windows : 0,
+      }
+    })
+    .filter((x) => Number.isFinite(x.id) && x.id > 0)
 }
 
 export function parseHyprClients(raw: unknown): HyprClient[] {
@@ -383,15 +426,12 @@ export function parseHyprClients(raw: unknown): HyprClient[] {
     .filter((x): x is Record<string, unknown> => isRecord(x))
     .map((x) => {
       const ws = isRecord(x.workspace) ? x.workspace : {}
-      const id = Number(ws.id)
+      const parsed = parseHyprWorkspaceRef(ws)
       return {
         address: typeof x.address === "string" ? x.address : "",
         title: typeof x.title === "string" ? x.title : "",
         class: hyprClassName(x),
-        workspace: {
-          id: Number.isFinite(id) ? id : -1,
-          name: typeof ws.name === "string" ? ws.name : undefined,
-        },
+        workspace: parsed,
         floating: x.floating === true,
       }
     })
@@ -400,21 +440,21 @@ export function parseHyprClients(raw: unknown): HyprClient[] {
 
 export function parseHyprActiveWorkspace(raw: unknown): HyprActiveWorkspace | null {
   if (!isRecord(raw)) return null
-  const id = Number(raw.id)
-  if (!Number.isFinite(id)) return null
+  const id = hyprNumericWorkspaceId(raw)
+  if (id == null || id <= 0) return null
   return {
     id,
-    name: typeof raw.name === "string" ? raw.name : String(id),
+    name: hyprWorkspaceName(raw) ?? String(id),
   }
 }
 
 function parseHyprWorkspaceRef(raw: unknown): HyprWorkspaceRef {
   if (!isRecord(raw)) return { id: -1 }
-  const id = Number(raw.id)
-  return {
-    id: Number.isFinite(id) ? id : -1,
-    name: typeof raw.name === "string" ? raw.name : undefined,
-  }
+  const name = hyprWorkspaceName(raw)
+  const id = hyprNumericWorkspaceId(raw)
+  if (id != null) return { id, name }
+  if (isOpenSpecialWorkspaceRaw(raw)) return { id: -1, name }
+  return { id: 0, name }
 }
 
 export function parseHyprMonitors(raw: unknown): HyprMonitor[] {
@@ -440,15 +480,12 @@ export function parseHyprActiveWindow(raw: unknown): HyprActiveWindow | null {
   const address = typeof raw.address === "string" ? raw.address : ""
   if (!address) return null
   const ws = isRecord(raw.workspace) ? raw.workspace : {}
-  const id = Number(ws.id)
+  const parsed = parseHyprWorkspaceRef(ws)
   return {
     address,
     title: typeof raw.title === "string" ? raw.title : "",
     class: hyprClassName(raw),
-    workspace: {
-      id: Number.isFinite(id) ? id : -1,
-      name: typeof ws.name === "string" ? ws.name : undefined,
-    },
+    workspace: parsed,
     floating: raw.floating === true,
   }
 }

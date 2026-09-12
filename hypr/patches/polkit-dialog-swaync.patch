@@ -1,8 +1,8 @@
 diff --git a/src/ui/Dialog.cpp b/src/ui/Dialog.cpp
-index bec6947..fe6e5e5 100644
+index 9d44ae2..a6c96f1 100644
 --- a/src/ui/Dialog.cpp
 +++ b/src/ui/Dialog.cpp
-@@ -113,7 +113,28 @@ void CDialog::showStatus(CSharedPointer<IElement>& wrap, bool& shown, bool show)
+@@ -118,7 +118,32 @@ void CDialog::showStatus(CSharedPointer<IElement>& wrap, bool& shown, bool show)
      } else if (!show && shown) {
          m_statusContainer->removeChild(wrap);
          shown = false;
@@ -16,9 +16,10 @@ index bec6947..fe6e5e5 100644
 +    if (!m_window || m_baseHeight <= 0)
 +        return;
 +
-+    constexpr double STATUS_LINE = 18.0;
-+    constexpr double STATUS_GAP  = 2.0;
-+    int              lines       = 0;
++    constexpr double STATUS_LINE    = 18.0;
++    constexpr double STATUS_GAP     = 2.0;
++    constexpr double PASSWORD_BLOCK = 2.0 + 36.0;
++    int              lines          = 0;
 +    if (m_infoShown)
 +        ++lines;
 +    if (m_errShown)
@@ -27,11 +28,31 @@ index bec6947..fe6e5e5 100644
 +        ++lines;
 +
 +    const double extra = lines > 0 ? STATUS_GAP + (double)lines * (STATUS_LINE + STATUS_GAP) : 0.0;
-+    m_window->setSize({m_windowWidth, m_baseHeight + extra});
++    double       h     = m_baseHeight + extra;
++    if (!m_passwordVisible)
++        h -= PASSWORD_BLOCK;
++    m_window->setSize({m_windowWidth, h});
+ }
+ 
+ void CDialog::showPasswordField(bool show) {
+@@ -135,6 +160,7 @@ void CDialog::showPasswordField(bool show) {
+         if (m_btnRow && m_authButton)
+             m_btnRow->removeChild(m_authButton);
+     }
++    syncWindowHeight();
  }
  
  void CDialog::setInfo(const std::string& text) {
-@@ -144,12 +165,34 @@ void CDialog::build() {
+@@ -157,8 +183,6 @@ void CDialog::setError(const std::string& text) {
+ void CDialog::build() {
+     const auto& cfg = g_pConfigManager->get();
+ 
+-    // the window is sized once for the details-expanded case and never resizes.
+-    // details start hidden; toggling them only fills space already reserved here.
+     size_t detailRows = 0;
+     if (cfg.showDetails) {
+         if (!m_req.actionId.empty())
+@@ -170,13 +194,35 @@ void CDialog::build() {
          detailRows += m_req.details.size();
      }
      const double extraForDetails = detailRows > 0 ? (double)detailRows * 8.0 : 0.0;
@@ -47,31 +68,32 @@ index bec6947..fe6e5e5 100644
 +    contentH += GAP + 14; // prompt
 +    if (!m_req.command.empty())
 +        contentH += GAP + 30; // command pill
-+    contentH += GAP + 36; // password field
-+    contentH += GAP + 28; // buttons
++    contentH += GAP + 36;     // password field
++    contentH += GAP + 28;     // buttons
 +    contentH += OUTER_MARGIN;
 +
 +    m_windowWidth = (double)cfg.windowWidth;
 +    m_baseHeight  = contentH + extraForDetails;
 +
-+    // status lines (info / error / caps lock) are added dynamically after fingerprint failure.
-+    constexpr double STATUS_LINE      = 18.0;
-+    constexpr double STATUS_GAP       = 2.0;
-+    const double     maxStatusBlock   = STATUS_GAP + 3.0 * (STATUS_LINE + STATUS_GAP);
-+    const double     initialHeight    = m_baseHeight;
++    constexpr double STATUS_LINE    = 18.0;
++    constexpr double STATUS_GAP     = 2.0;
++    const double     maxStatusBlock = STATUS_GAP + 3.0 * (STATUS_LINE + STATUS_GAP);
++    const double     passwordBlock  = GAP + 36.0;
++    const double     initialHeight  = m_baseHeight;
  
      m_window = CWindowBuilder::begin()
 -                   ->preferredSize({(double)cfg.windowWidth, targetHeight})
 -                   ->minSize({460.0, targetHeight})
 -                   ->maxSize({600.0, targetHeight})
-+                   ->preferredSize({m_windowWidth, initialHeight})
-+                   ->minSize({m_windowWidth, initialHeight})
-+                   ->maxSize({m_windowWidth, m_baseHeight + maxStatusBlock})
 -                   ->appTitle("Authentication Required")
++                   ->preferredSize({m_windowWidth, initialHeight})
++                   ->minSize({m_windowWidth, m_baseHeight - passwordBlock})
++                   ->maxSize({m_windowWidth, m_baseHeight + maxStatusBlock})
 +                   ->appTitle("Auth Required")
                     ->appClass("hyprpolkitagent")
                     ->commence();
-@@ -177,8 +220,8 @@ void CDialog::build() {
+ 
+@@ -203,8 +249,8 @@ void CDialog::build() {
  
      m_window->m_rootElement->addChild(CRectangleBuilder::begin()->color([] { return g_pAgent->backend()->getPalette()->m_colors.background; })->commence());
  
@@ -82,7 +104,9 @@ index bec6947..fe6e5e5 100644
      outer->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
      outer->setPositionFlag(IElement::HT_POSITION_FLAG_CENTER, true);
      m_window->m_rootElement->addChild(outer);
-@@ -190,45 +233,35 @@ void CDialog::build() {
+@@ -214,47 +260,37 @@ void CDialog::build() {
+         wrap->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
+         wrap->setPositionFlag(IElement::HT_POSITION_FLAG_HCENTER, true);
          wrap->addChild(CTextBuilder::begin()
 -                           ->text(std::string{"Authentication Required"})
 +                           ->text(std::string{"Auth Required"})
@@ -148,7 +172,7 @@ index bec6947..fe6e5e5 100644
          outer->addChild(wrap);
      }
  
-@@ -265,21 +298,25 @@ void CDialog::build() {
+@@ -291,21 +327,25 @@ void CDialog::build() {
  
          const auto palette = g_pAgent->backend()->getPalette();
          auto       box     = CRectangleBuilder::begin()
@@ -176,7 +200,7 @@ index bec6947..fe6e5e5 100644
                              ->clampSize({(double)cfg.passwordFieldWidth, -1.0})
                              ->color([] { return g_pAgent->backend()->getPalette()->m_colors.text; })
                              ->commence());
-@@ -299,7 +336,7 @@ void CDialog::build() {
+@@ -328,7 +368,7 @@ void CDialog::build() {
  
      // wraps are only attached when their label has text, so empty labels reserve no space
      {
@@ -185,7 +209,7 @@ index bec6947..fe6e5e5 100644
          statusCol->setPositionMode(IElement::HT_POSITION_ABSOLUTE);
          statusCol->setPositionFlag(IElement::HT_POSITION_FLAG_HCENTER, true);
          outer->addChild(statusCol);
-@@ -313,9 +350,24 @@ void CDialog::build() {
+@@ -342,9 +382,24 @@ void CDialog::build() {
              return w;
          };
  
@@ -213,7 +237,7 @@ index bec6947..fe6e5e5 100644
  
          m_capsWrap = makeWrap(m_capsLockLabel);
          m_errWrap  = makeWrap(m_errorLabel);
-@@ -323,8 +375,7 @@ void CDialog::build() {
+@@ -352,8 +407,7 @@ void CDialog::build() {
      }
  
      {
@@ -224,20 +248,20 @@ index bec6947..fe6e5e5 100644
          btnRow->setPositionFlag(IElement::HT_POSITION_FLAG_HCENTER, true);
  
 diff --git a/src/ui/Dialog.hpp b/src/ui/Dialog.hpp
-index c8ff2b8..9c24f63 100644
+index 53ff933..e9e3a28 100644
 --- a/src/ui/Dialog.hpp
 +++ b/src/ui/Dialog.hpp
-@@ -30,6 +30,7 @@ class CDialog {
-     void                                                            build();
+@@ -31,6 +31,7 @@ class CDialog {
      void                                                            buildPasswordField();
      void                                                            showStatus(Hyprutils::Memory::CSharedPointer<Hyprtoolkit::IElement>& wrap, bool& shown, bool show);
+     void                                                            showPasswordField(bool show);
 +    void                                                            syncWindowHeight();
  
      Hyprutils::Memory::CSharedPointer<Hyprtoolkit::IBackend>        m_backend;
      Hyprutils::Memory::CSharedPointer<Hyprtoolkit::IWindow>         m_window;
-@@ -60,4 +61,6 @@ class CDialog {
-     bool                                                            m_errShown       = false;
-     bool                                                            m_infoShown      = false;
+@@ -65,4 +66,6 @@ class CDialog {
+     bool                                                            m_sawPasswordPrompt = false;
+     bool                                                            m_passwordVisible   = true;
      std::string                                                     m_promptText     = "Password";
 +    double                                                          m_baseHeight     = 0;
 +    double                                                          m_windowWidth    = 0;

@@ -1,0 +1,20 @@
+[
+  {
+    "address": "1",
+    "type": "numbered",
+    "name": "1",
+    "windows": 2
+  },
+  {
+    "address": "special:music",
+    "type": "special",
+    "name": "special:music",
+    "windows": 1
+  },
+  {
+    "address": "3",
+    "type": "numbered",
+    "name": "3",
+    "windows": 1
+  }
+]

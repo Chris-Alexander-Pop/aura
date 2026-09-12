@@ -12,6 +12,7 @@ describe("special-workspace", () => {
   it("detects open special workspaces from hyprctl monitor refs", () => {
     expect(isSpecialWorkspaceOpen({ id: 0, name: "" })).toBe(false)
     expect(isSpecialWorkspaceOpen({ id: -98, name: "special:communication" })).toBe(true)
+    expect(isSpecialWorkspaceOpen({ id: -1, name: "special:special" })).toBe(true)
   })
 
   it("maps names to toggle args and icons", () => {

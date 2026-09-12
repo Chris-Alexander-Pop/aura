@@ -9,7 +9,7 @@
 //                flyout React → AGS via WebKit message handler "barFlyoutHover"
 // @ts-ignore
 import WebKit from "gi://WebKit?version=6.0"
-import { Astal, Gdk } from "ags/gtk4"
+import { Astal, Gdk, Gtk } from "ags/gtk4"
 import App from "ags/gtk4/app"
 import { createWebViewWindow } from "./WebViewWindow"
 import { attachWebViewCrashHandlers } from "../../lib/crash-log"
@@ -142,23 +142,29 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
     } catch (e) { print(`barFlyoutHover setup error: ${e}`) }
 
     // ── Flyout window (below strip in z-order; emerges from behind the bar) ──
-    const flyoutWin = <window
-        name={flyoutName}
-        gdkmonitor={gdkmonitor}
-        visible={false}
-        anchor={
+    const flyoutWin = new Astal.Window({
+        name: flyoutName,
+        visible: false,
+        anchor:
             Astal.WindowAnchor.LEFT |
             Astal.WindowAnchor.TOP |
-            Astal.WindowAnchor.BOTTOM
-        }
-        exclusivity={Astal.Exclusivity.IGNORE}
-        layer={Astal.Layer.TOP}
-        marginLeft={STRIP_W}
-        application={App}
-        css="background-color: transparent;"
-    >
-        {flyoutWv}
-    </window> as unknown
+            Astal.WindowAnchor.BOTTOM,
+        exclusivity: Astal.Exclusivity.IGNORE,
+        layer: Astal.Layer.TOP,
+        gdkmonitor,
+    })
+    flyoutWin.set_gdkmonitor(gdkmonitor)
+    flyoutWin.set_margin_left(STRIP_W)
+    flyoutWin.set_css_classes([])
+    try {
+        const provider = new Gtk.CssProvider()
+        provider.load_from_string("* { background-color: transparent; }")
+        flyoutWin.get_style_context().add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+    } catch {
+        /* ignore */
+    }
+    flyoutWin.set_child(flyoutWv)
+    App.add_window(flyoutWin)
 
     void flyoutWin
 

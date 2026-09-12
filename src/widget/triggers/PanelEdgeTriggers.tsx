@@ -8,6 +8,7 @@ import {
     scheduleHoverClose,
     showHoverPanel,
     MODULE_HUB_ENABLED,
+    DROPDOWN_ENABLED,
     registerEdgeTriggerForPanel,
     unregisterEdgeTrigger,
 } from "../../lib/panel-hover"
@@ -181,6 +182,8 @@ function mountModuleHubTrigger(
 
 /** Bottom-right L: short strip along the bottom edge + short strip up the right edge. */
 function mountDropdownCornerTriggers(gdkmonitor: Gdk.Monitor, tag: string): Gtk.Window[] {
+    if (!DROPDOWN_ENABLED) return []
+
     const { height } = monitorSize(gdkmonitor)
     const target = "dropdown"
     const out: Gtk.Window[] = []

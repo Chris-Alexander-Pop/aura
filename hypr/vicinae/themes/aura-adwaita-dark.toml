@@ -1,0 +1,29 @@
+# Adwaita Dark with a high-contrast selected row.
+# Stock libadwaita-dark uses #4a4a4f for list.item.selection.background,
+# which sits a few shades above the window chrome and disappears at
+# launcher_window.opacity 0.8.
+
+[meta]
+version = 1
+name = "Aura Adwaita Dark"
+description = "Adwaita Dark with a solid accent fill on the selected list row"
+variant = "dark"
+inherits = "libadwaita-dark"
+icon = "/usr/share/vicinae/themes/icons/libadwaita.svg"
+
+# Vicinae QML discards theme alpha on list rows and paints RGB at
+# Config.surfaceOpacity, so hover and selection need different RGB,
+# not a lighter/darker alpha of the same accent.
+[colors.list.item.hover]
+background = "#3d424c"
+foreground = "#ffffff"
+secondary_foreground = "#c0bfbc"
+
+[colors.list.item.selection]
+background = "#3584e4"
+foreground = "#ffffff"
+secondary_background = "#1c71d8"
+secondary_foreground = "#ffffff"
+
+[colors.grid.item]
+selection = { outline = "colors.core.accent" }

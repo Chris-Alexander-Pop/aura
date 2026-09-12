@@ -1,6 +1,7 @@
 import GLib from "gi://GLib"
 import Gdk from "gi://Gdk?version=4.0"
 import Gtk from "gi://Gtk?version=4.0"
+import { createRoot } from "ags"
 import app from "ags/gtk4/app"
 import Bar from "../widget/bar/Bar"
 import BarWebViewWindow from "../widget/webview/BarWebViewWindow"
@@ -23,6 +24,8 @@ const mountedTags = new Set<string>()
 const mountedMonitors = new Map<string, Gdk.Monitor>()
 /** Tags whose windows are mid-destroy — do not remount until settled. */
 const destroyingTags = new Set<string>()
+/** gnim roots created after `await` in sync — dispose on unmount so onMount/onCleanup run. */
+const mountedDisposers = new Map<string, () => void>()
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null
 let syncGen = 0
@@ -100,6 +103,13 @@ function unmountMonitorShell(tag: string) {
         destroyWindow(name)
     }
     unmountPanelEdgeTriggersByTag(tag)
+    const dispose = mountedDisposers.get(tag)
+    mountedDisposers.delete(tag)
+    try {
+        dispose?.()
+    } catch (e) {
+        console.error(`monitor-shell: dispose failed for ${tag}:`, e)
+    }
     mountedTags.delete(tag)
     mountedMonitors.delete(tag)
     // Allow remount after unmap+idle destroy has had a chance to run.
@@ -148,28 +158,35 @@ function mountMonitorShell(monitor: Gdk.Monitor) {
 
     if (DEBUG) console.error(`[monitor-shell] mount ${tag}`)
 
-    try {
-        if (USE_GTK_BAR) {
-            Bar(monitor)
-        } else {
-            BarWebViewWindow(monitor)
+    // syncMonitorShells awaits Hyprland.GetMonitors, which drops the app.start
+    // createRoot scope. JSX windows and onMount need their own root.
+    let disposeRoot: (() => void) | undefined
+    createRoot((dispose) => {
+        disposeRoot = dispose
+        try {
+            if (USE_GTK_BAR) {
+                Bar(monitor)
+            } else {
+                BarWebViewWindow(monitor)
+            }
+        } catch (e) {
+            console.error(`Failed to create bar for monitor ${tag}:`, e)
         }
-    } catch (e) {
-        console.error(`Failed to create bar for monitor ${tag}:`, e)
-    }
 
-    try {
-        mountEdgeTriggersForMonitor(monitor)
-    } catch (e) {
-        console.error(`Failed to create edge triggers for monitor ${tag}:`, e)
-    }
+        try {
+            mountEdgeTriggersForMonitor(monitor)
+        } catch (e) {
+            console.error(`Failed to create edge triggers for monitor ${tag}:`, e)
+        }
 
-    try {
-        OSD(monitor)
-    } catch (e) {
-        console.error(`Failed to create OSD for monitor ${tag}:`, e)
-    }
+        try {
+            OSD(monitor)
+        } catch (e) {
+            console.error(`Failed to create OSD for monitor ${tag}:`, e)
+        }
+    })
 
+    if (disposeRoot) mountedDisposers.set(tag, disposeRoot)
     mountedTags.add(tag)
     mountedMonitors.set(tag, monitor)
 }

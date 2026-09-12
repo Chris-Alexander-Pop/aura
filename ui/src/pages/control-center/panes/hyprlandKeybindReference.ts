@@ -26,8 +26,8 @@ export const HYPR_KEYBIND_SECTIONS: HyprKeybindSection[] = [
     title: "Session & apps",
     rows: [
       { combo: "SUPER + Return", action: "Open terminal (`exec` default terminal)" },
-      { combo: "SUPER + Q", action: "Close focused window (`killactive`)" },
-      { combo: "SUPER + Shift + Q", action: "Close all windows / force kill (config-dependent)" },
+      { combo: "SUPER + Q", action: "Close focused window (`window.close`)" },
+      { combo: "SUPER + Shift + Q", action: "Force-kill focused window process (`window.kill` / SIGKILL)" },
       { combo: "SUPER + M", action: "Exit compositor (`exit`)" },
       { combo: "SUPER + L", action: "Lock session (`exec` hyprlock / swaylock)" },
       { combo: "SUPER + D", action: "Application launcher (`exec` rofi, wofi, fuzzel, …)" },

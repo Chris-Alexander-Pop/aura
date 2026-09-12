@@ -25,6 +25,9 @@ export type ModuleHubTriggerMode = "left_edge" | "top_third" | "none"
 /** Temporarily off — module hub UI needs another pass. */
 export const MODULE_HUB_ENABLED = false
 
+/** Temporarily off — bottom-right quick-settings card + corner hover. */
+export const DROPDOWN_ENABLED = false
+
 let moduleHubTriggerMode: ModuleHubTriggerMode = "none"
 let hideShellOnFullscreen = true
 
@@ -44,6 +47,7 @@ type AuraWindow = Gtk.Window & {
     visible?: boolean
     show?: () => void
     hide?: () => void
+    present?: () => void
     set_gdkmonitor?: (m: Gdk.Monitor) => void
     set_anchor?: (a: number) => void
     set_margin_left?: (n: number) => void
@@ -184,6 +188,11 @@ export function showHoverPanel(
         /* Gtk.ApplicationWindow vs Astal */
     }
     win.visible = true
+    try {
+        win.present?.()
+    } catch {
+        /* layer-shell windows have no present() */
+    }
 }
 
 export function hideHoverPanel(name: string): void {

@@ -54,9 +54,22 @@ fi
 
 ensure_built
 
-if pgrep -f "ags run.*app\\.ts" >/dev/null 2>&1; then
+# NVIDIA render + Intel eDP: GSK GL and WebKit DMA-BUF paint fully transparent
+# surfaces (bar exists in hyprctl layers with alpha 0).
+export GSK_RENDERER="${GSK_RENDERER:-cairo}"
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+export WEBKIT_DISABLE_COMPOSITING_MODE="${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
+
+# Match the real AGS process, not `concurrently "… ags run app.ts"`.
+ags_shell_running() {
+  pgrep -u "$(id -u)" -x ags >/dev/null 2>&1 && return 0
+  pgrep -u "$(id -u)" -f 'gjs -m /run/user/[0-9]+/ags\.js' >/dev/null 2>&1
+}
+
+if ags_shell_running; then
   exit 0
 fi
 
-nohup env AURA_SIDECAR="$AURA_SIDECAR" ags run "$AURA_DIR/app.ts" >/tmp/aura-ags.log 2>&1 &
+: > /tmp/aura-ags.log
+nohup env AURA_SIDECAR="$AURA_SIDECAR" GSK_RENDERER="$GSK_RENDERER" WEBKIT_DISABLE_DMABUF_RENDERER="$WEBKIT_DISABLE_DMABUF_RENDERER" WEBKIT_DISABLE_COMPOSITING_MODE="$WEBKIT_DISABLE_COMPOSITING_MODE" ags run "$AURA_DIR/app.ts" >/tmp/aura-ags.log 2>&1 &
 disown -h $! 2>/dev/null || true

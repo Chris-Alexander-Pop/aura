@@ -10,6 +10,7 @@ type AuraWindow = Gtk.Window & {
     visible?: boolean
     hide?: () => void
     show?: () => void
+    present?: () => void
     set_gdkmonitor?: (m: Gdk.Monitor) => void
     get_gdkmonitor?: () => Gdk.Monitor | null
 }
@@ -39,6 +40,11 @@ function setWindowVisible(name: string, visible: boolean) {
                 win.show?.()
             } catch {
                 /* Gtk.ApplicationWindow vs Astal */
+            }
+            try {
+                win.present?.()
+            } catch {
+                /* layer-shell */
             }
         } else {
             try {

@@ -1,0 +1,20 @@
+[
+  {
+    "id": 0,
+    "name": "eDP-1",
+    "focused": true,
+    "activeWorkspace": { "address": "1", "type": "numbered", "name": "1" },
+    "specialWorkspace": {
+      "address": "special:special",
+      "type": "special",
+      "name": "special:special"
+    }
+  },
+  {
+    "id": 1,
+    "name": "HDMI-A-1",
+    "focused": false,
+    "activeWorkspace": { "address": "3", "type": "numbered", "name": "3" },
+    "specialWorkspace": { "address": "", "type": "", "name": "" }
+  }
+]

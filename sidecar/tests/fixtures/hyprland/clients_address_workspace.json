@@ -1,0 +1,20 @@
+[
+  {
+    "address": "0xabc",
+    "title": "foot",
+    "class": "foot",
+    "workspace": { "address": "2", "type": "numbered", "name": "2" },
+    "floating": false
+  },
+  {
+    "address": "0xdef",
+    "title": "discord",
+    "class": "discord",
+    "workspace": {
+      "address": "special:communication",
+      "type": "special",
+      "name": "special:communication"
+    },
+    "floating": false
+  }
+]

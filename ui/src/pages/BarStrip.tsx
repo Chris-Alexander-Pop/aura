@@ -30,7 +30,7 @@ import SpecialWorkspaceGlyph, { isGrokSpecialWorkspace } from "@/components/bar/
 import { cn } from "@/lib/utils"
 import { hyprlandQueryDefaults, useHyprlandSync } from "@/lib/useHyprlandSync"
 import { onHyprlandWorkspaceActive, scheduleHyprlandSnapshotRefresh } from "@/lib/hyprland-bar-cache"
-import { pickVisibleWorkspaces } from "@/lib/workspace-visible-range"
+import { collectOccupiedWorkspaceIds, pickVisibleWorkspaces } from "@/lib/workspace-visible-range"
 import { useBarMonitorName } from "@/lib/useBarMonitor"
 import {
   specialCoverByWorkspaceId,
@@ -107,25 +107,27 @@ function WorkspacesBlock() {
   }, [clients])
 
   const visibleWorkspaces = useMemo(() => {
-    const occupiedIds = [...clientsByWs.entries()]
-      .filter(([, wsClients]) => wsClients.length > 0)
-      .map(([id]) => id)
+    const occupiedIds = collectOccupiedWorkspaceIds(clientsByWs.keys(), list)
     const visible = pickVisibleWorkspaces(occupiedIds, monitorActiveId).map((id) => ({
       id,
       wsClients: clientsByWs.get(id) ?? [],
+      hyprWindows: list.find((ws) => ws.id === id)?.windows ?? 0,
     }))
     for (const wsId of specialCovers.keys()) {
       if (!visible.some((row) => row.id === wsId)) {
-        visible.push({ id: wsId, wsClients: clientsByWs.get(wsId) ?? [] })
+        visible.push({
+          id: wsId,
+          wsClients: clientsByWs.get(wsId) ?? [],
+          hyprWindows: list.find((ws) => ws.id === wsId)?.windows ?? 0,
+        })
       }
     }
     visible.sort((a, b) => a.id - b.id)
     return visible
-  }, [clientsByWs, monitorActiveId, specialCovers])
+  }, [clientsByWs, list, monitorActiveId, specialCovers])
 
-  const workspacesLoading =
-    (wsPending || activePending || clientsPending || monitorsPending) &&
-    (list.length === 0 || clientsRaw === undefined || monitorsRaw === undefined)
+  const hyprPending = wsPending || activePending || clientsPending || monitorsPending
+  const workspacesLoading = hyprPending && visibleWorkspaces.length === 0
 
   if (workspacesLoading) {
     return (
@@ -140,9 +142,9 @@ function WorkspacesBlock() {
   return (
     <LayoutGroup id="bar-workspaces">
       <div className="flex flex-col items-center gap-2.5 py-1">
-        {visibleWorkspaces.map(({ id, wsClients }) => {
+        {visibleWorkspaces.map(({ id, wsClients, hyprWindows }) => {
           const windowCount = wsClients.length
-          const occupied = windowCount > 0
+          const occupied = windowCount > 0 || hyprWindows > 0
           const icons = wsClients.slice(0, 2).map((client) => iconFromHyprClass(client.class))
           const isActive = monitorActiveId === id
           const specialCover: SpecialWorkspaceCover | undefined = specialCovers.get(id)
@@ -158,13 +160,13 @@ function WorkspacesBlock() {
           return (
             <motion.button
               key={id}
-              layout
               type="button"
+              initial={false}
               title={
                 isCovered
                   ? `Special workspace “${specialLabel}” covering workspace ${id}${coverMonitor ? ` on ${coverMonitor}` : ""} — click to close`
                   : occupied
-                    ? `Workspace ${id} (${windowCount} window${windowCount === 1 ? "" : "s"})`
+                    ? `Workspace ${id} (${windowCount || hyprWindows} window${(windowCount || hyprWindows) === 1 ? "" : "s"})`
                     : `Workspace ${id}`
               }
               onClick={() => {
@@ -181,18 +183,20 @@ function WorkspacesBlock() {
               whileTap={{ scale: 0.9 }}
               transition={WS_PILL_SPRING}
               className={cn(
-                "relative group flex h-8 w-8 shrink-0 flex-col items-center justify-center gap-px rounded-full border",
-                isActive || isCovered
-                  ? "border-transparent bg-transparent"
-                  : occupied
-                    ? "border-surface2 bg-surface0 text-subtext1 hover:bg-surface1"
-                    : "border-transparent text-overlay0 hover:bg-surface0/70 hover:text-subtext0",
-                isActive && !isCovered && "text-crust",
+                "relative group flex h-8 w-8 min-h-8 min-w-8 shrink-0 flex-col items-center justify-center gap-px overflow-hidden rounded-full border",
+                isActive && !isCovered
+                  ? "border-teal bg-teal text-crust"
+                  : isCovered
+                    ? "border-transparent bg-transparent"
+                    : occupied
+                      ? "border-surface2 bg-surface0 text-subtext1 hover:bg-surface1"
+                      : "border-transparent text-overlay0 hover:bg-surface0/70 hover:text-subtext0",
               )}
             >
               {isActive ? (
                 <motion.span
                   layoutId={barMonitorName ? `bar-ws-active-pill-${barMonitorName}` : "bar-ws-active-pill"}
+                  initial={false}
                   className={cn(
                     "absolute inset-0 rounded-full border border-teal bg-teal shadow-[0_0_14px_rgb(var(--c-teal)/0.45)]",
                     isCovered ? "z-[15]" : "z-0",
@@ -203,6 +207,7 @@ function WorkspacesBlock() {
               {isCovered ? (
                 <motion.span
                   layoutId={barMonitorName ? `bar-ws-special-${barMonitorName}` : "bar-ws-special"}
+                  initial={false}
                   className={cn(
                     "absolute inset-0 z-20 overflow-hidden rounded-full text-crust shadow-[0_0_14px_rgb(var(--c-mauve)/0.35)]",
                     grokCover
@@ -236,10 +241,10 @@ function WorkspacesBlock() {
                   isActive && !isCovered && "text-crust",
                 )}
               >
-                {occupied ? (
+                {occupied && icons.length > 0 ? (
                   <>
                     <span className="text-[8px] font-semibold leading-none">{id}</span>
-                    <span className="flex items-center justify-center gap-px leading-none">
+                    <span className="flex max-w-full items-center justify-center gap-px overflow-hidden leading-none">
                       {icons.map((icon, index) => (
                         <span key={`${icon}-${index}`} className="icon text-[10px] leading-none">
                           {icon}
@@ -462,7 +467,7 @@ export default function BarStrip() {
         style={{ width: BAR_STRIP_WIDTH_PX }}
       >
         <div className="flex min-h-0 flex-1 flex-col px-0.5 py-1.5">
-          <div className="flex min-h-0 shrink-0 flex-col gap-1 overflow-hidden">
+          <div className="flex shrink-0 flex-col gap-1">
             <BarSectionGroup ids={topSections} renderSection={renderSection} />
           </div>
           <div className="min-h-0 flex-1" aria-hidden />

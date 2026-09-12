@@ -55,17 +55,42 @@ function hyprJson(cmd: string): unknown {
     }
 }
 
+function workspaceNumericId(ws: unknown): number | null {
+    if (!ws || typeof ws !== "object") return null
+    const o = ws as { id?: unknown; address?: unknown; name?: unknown }
+    for (const value of [o.id, o.address, o.name]) {
+        const id = typeof value === "number" ? value : Number(value)
+        if (Number.isFinite(id) && id > 0) return id
+    }
+    return null
+}
+
 function clientsByWorkspace(): Map<number, number> {
     const counts = new Map<number, number>()
     const raw = hyprJson("hyprctl -j clients")
     if (!Array.isArray(raw)) return counts
     for (const item of raw) {
-        const ws = item?.workspace
-        const id = typeof ws?.id === "number" ? ws.id : Number(ws?.id)
-        if (!Number.isFinite(id) || id <= 0) continue
+        const id = workspaceNumericId((item as { workspace?: unknown } | null)?.workspace)
+        if (id == null) continue
         counts.set(id, (counts.get(id) ?? 0) + 1)
     }
     return counts
+}
+
+function occupiedFromWorkspacesList(): number[] {
+    const raw = hyprJson("hyprctl -j workspaces")
+    if (!Array.isArray(raw)) return []
+    const ids: number[] = []
+    for (const item of raw) {
+        const id = workspaceNumericId(item)
+        const windows = typeof (item as { windows?: unknown } | null)?.windows === "number"
+            ? (item as { windows: number }).windows
+            : Number((item as { windows?: unknown } | null)?.windows)
+        if (id != null && Number.isFinite(windows) && windows > 0) {
+            ids.push(id)
+        }
+    }
+    return ids
 }
 
 export default function Workspaces() {
@@ -75,15 +100,16 @@ export default function Workspaces() {
         const update = () => {
             const focused = hyprland.focusedWorkspaceId
             const counts = clientsByWorkspace()
-            const occupiedIds = [...counts.entries()]
-                .filter(([, n]) => n > 0)
-                .map(([id]) => id)
+            const occupiedIds = [...new Set([
+                ...[...counts.entries()].filter(([, n]) => n > 0).map(([id]) => id),
+                ...occupiedFromWorkspacesList(),
+            ])]
             const visible = pickVisibleWorkspaces(occupiedIds, focused)
             setWsStates(
                 visible.map((id) => ({
                     id,
                     focused: focused === id,
-                    occupied: (counts.get(id) ?? 0) > 0,
+                    occupied: occupiedIds.includes(id),
                 }))
             )
         }

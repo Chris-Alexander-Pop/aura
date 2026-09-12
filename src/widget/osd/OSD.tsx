@@ -121,7 +121,7 @@ export default function OSD(gdkmonitor: Gdk.Monitor) {
             name={`osd-${monitorTag(gdkmonitor)}`}
             class="osd-window"
             gdkmonitor={gdkmonitor}
-            visible={visible()}
+            visible={visible}
             anchor={anchor}
             margin={20}
             application={App}

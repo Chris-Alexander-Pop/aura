@@ -4,8 +4,8 @@ mod common;
 
 use ags_sidecar::services::hyprland::{
     event_triggers_state_changed, note_hyprland_event_line, parse_active_window,
-    parse_clients, parse_monitors, parse_workspaces, parse_workspace_event_id,
-    validate_dispatch,
+    parse_active_workspace, parse_clients, parse_monitors, parse_workspaces,
+    parse_workspace_event_id, parse_workspace_numeric_id, validate_dispatch,
 };
 use common::{call_method_unchecked, load_fixture, test_registry};
 use serde_json::json;
@@ -108,4 +108,49 @@ fn json_fixture_variants_parse_clients_and_monitors() {
         serde_json::from_str(&load_fixture("hyprland/monitors_snake_case.json")).unwrap();
     let mon = parse_monitors(&mon_raw);
     assert_eq!(mon[0].active_workspace.id, 3);
+}
+
+#[test]
+fn lua_config_hyprctl_uses_address_instead_of_id() {
+    let ws = parse_workspaces(
+        &serde_json::from_str(&load_fixture("hyprland/workspaces_address.json")).unwrap(),
+    );
+    assert_eq!(ws.iter().map(|w| w.id).collect::<Vec<_>>(), vec![1, 3]);
+
+    let clients = parse_clients(
+        &serde_json::from_str(&load_fixture("hyprland/clients_address_workspace.json")).unwrap(),
+    );
+    assert_eq!(clients.len(), 2);
+    assert_eq!(clients[0].workspace.id, 2);
+    assert_eq!(clients[1].workspace.id, -1);
+    assert_eq!(
+        clients[1].workspace.name.as_deref(),
+        Some("special:communication")
+    );
+
+    let active = parse_active_workspace(
+        &serde_json::from_str(&load_fixture("hyprland/activeworkspace_address.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(active.id, 2);
+
+    let monitors = parse_monitors(
+        &serde_json::from_str(&load_fixture("hyprland/monitors_address_workspace.json")).unwrap(),
+    );
+    assert_eq!(monitors[0].active_workspace.id, 1);
+    assert_eq!(monitors[0].special_workspace.id, -1);
+    assert_eq!(
+        monitors[0].special_workspace.name.as_deref(),
+        Some("special:special")
+    );
+    assert_eq!(monitors[1].special_workspace.id, 0);
+
+    assert_eq!(
+        parse_workspace_numeric_id(&serde_json::json!({
+            "address": "4",
+            "type": "numbered",
+            "name": "4"
+        })),
+        Some(4)
+    );
 }

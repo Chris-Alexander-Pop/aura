@@ -1,6 +1,35 @@
 /** Max workspace tab buttons shown in the bar strip at once. */
 export const WORKSPACE_MAX_VISIBLE = 10
 
+/** Hypr workspace row with a window count (`hyprctl -j workspaces`). */
+export type WorkspaceWindowCount = {
+  id: number
+  windows?: number
+}
+
+/**
+ * Occupied workspace IDs from live clients, plus Hyprland's `windows` counts.
+ *
+ * Clients are the source of truth for icons. The workspace list is a fallback
+ * for the first paint when `GetClients` is still empty (hyprctl clients is
+ * slower and is allowed to return [] on failure).
+ */
+export function collectOccupiedWorkspaceIds(
+  clientWorkspaceIds: Iterable<number>,
+  workspaces?: Iterable<WorkspaceWindowCount>,
+): number[] {
+  const ids = new Set<number>()
+  for (const id of clientWorkspaceIds) {
+    if (id > 0) ids.add(id)
+  }
+  if (workspaces) {
+    for (const ws of workspaces) {
+      if (ws.id > 0 && (ws.windows ?? 0) > 0) ids.add(ws.id)
+    }
+  }
+  return [...ids].sort((a, b) => a - b)
+}
+
 /**
  * Pick workspace IDs to show in the bar strip.
  *

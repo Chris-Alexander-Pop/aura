@@ -191,6 +191,10 @@ echo -e "\n${CYAN}Building sidecar...${NC}"
 build_sidecar "$BUILD_MODE"
 
 export AURA_SIDECAR="${SIDECAR_DIR}/target/${BUILD_MODE}/ags-sidecar"
+# NVIDIA render / Intel scanout: WebKitGTK DMA-BUF surfaces stay fully transparent.
+export GSK_RENDERER="${GSK_RENDERER:-cairo}"
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+export WEBKIT_DISABLE_COMPOSITING_MODE="${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
 
 if [ "$BUILD_UI" = true ]; then
     build_ui
@@ -227,7 +231,13 @@ cd "$SCRIPT_DIR"
 
 if [ "$BACKGROUND" = true ]; then
     echo -e "\n${CYAN}Starting frontend watch + AGS (background)...${NC}"
-    nohup $RUNNER run watch >>"$LOG_FILE" 2>&1 &
+    if pgrep -u "$(id -u)" -x ags >/dev/null 2>&1 || pgrep -u "$(id -u)" -f 'gjs -m /run/user/[0-9]+/ags\.js' >/dev/null 2>&1; then
+        echo -e "${YELLOW}⚠${NC} AGS already running (Hyprland session). Starting CSS watch only."
+        echo -e "  Restart the shell with: ${CYAN}./scripts/aura-restart.sh${NC}"
+        nohup $RUNNER run watch:css >>"$LOG_FILE" 2>&1 &
+    else
+        nohup $RUNNER run watch >>"$LOG_FILE" 2>&1 &
+    fi
     WATCH_PID=$!
     BG_LAUNCHED=true
     {

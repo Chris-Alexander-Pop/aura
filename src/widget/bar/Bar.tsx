@@ -18,15 +18,7 @@ export default function Bar(gdkmonitor: Gdk.Monitor) {
         Astal.WindowAnchor.TOP |
         Astal.WindowAnchor.BOTTOM
 
-    return <window
-        name={`bar-${monitorTag(gdkmonitor)}`}
-        class="bar-window"
-        gdkmonitor={gdkmonitor}
-        visible={true}
-        exclusivity={Astal.Exclusivity.EXCLUSIVE}
-        anchor={anchor}
-        application={App}
-    >
+    const child = (
         <box
             css={`
                 background-color: ${colors.m3surfaceContainer};
@@ -51,5 +43,19 @@ export default function Bar(gdkmonitor: Gdk.Monitor) {
             <StatusIcons />
             <Power />
         </box>
-    </window>
+    ) as Gtk.Widget
+
+    const win = new Astal.Window({
+        name: `bar-${monitorTag(gdkmonitor)}`,
+        cssClasses: ["bar-window"],
+        visible: false,
+        exclusivity: Astal.Exclusivity.EXCLUSIVE,
+        anchor,
+        gdkmonitor,
+    })
+    win.set_gdkmonitor(gdkmonitor)
+    win.set_child(child)
+    App.add_window(win)
+    win.visible = true
+    return win
 }

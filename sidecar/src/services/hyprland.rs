@@ -62,20 +62,51 @@ async fn hyprctl_dispatch(parts: &[String]) -> Result<()> {
     Ok(())
 }
 
+fn json_i64(v: &Value) -> Option<i64> {
+    match v {
+        Value::Number(n) => n.as_i64().or_else(|| n.as_u64().map(|u| u as i64)),
+        Value::String(s) => s.trim().parse::<i64>().ok(),
+        _ => None,
+    }
+}
+
+/// Numeric workspace id from classic `{id: 1}` or Lua-config
+/// `{address: "1", type: "numbered", name: "1"}` (no `id` field).
+pub fn parse_workspace_numeric_id(item: &Value) -> Option<i64> {
+    item.get("id")
+        .and_then(json_i64)
+        .or_else(|| item.get("address").and_then(json_i64))
+        .or_else(|| item.get("name").and_then(json_i64))
+}
+
+fn hypr_string_field<'a>(item: &'a Value, key: &str) -> &'a str {
+    item.get(key).and_then(|v| v.as_str()).unwrap_or("")
+}
+
+fn is_open_special_workspace(item: &Value) -> bool {
+    let ws_type = hypr_string_field(item, "type");
+    let address = hypr_string_field(item, "address");
+    let name = hypr_string_field(item, "name");
+    ws_type == "special"
+        || address.starts_with("special:")
+        || name.starts_with("special:")
+}
+
 pub fn parse_workspaces(raw: &Value) -> Vec<HyprWorkspace> {
     let Some(arr) = raw.as_array() else {
         return vec![];
     };
     let mut out = Vec::new();
     for item in arr {
-        let Some(id) = item.get("id").and_then(|v| v.as_i64()) else {
+        let Some(id) = parse_workspace_numeric_id(item).filter(|id| *id > 0) else {
             continue;
         };
         let name = item
             .get("name")
             .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| id.to_string());
         let windows = item
             .get("windows")
             .and_then(|v| v.as_u64())
@@ -94,19 +125,37 @@ pub fn parse_active_workspace(raw: &Value) -> Option<HyprActiveWorkspace> {
     if raw.is_null() {
         return None;
     }
-    let id = raw.get("id")?.as_i64()?;
+    let id = parse_workspace_numeric_id(raw).filter(|id| *id > 0)?;
     let name = raw
         .get("name")
         .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| id.to_string());
     Some(HyprActiveWorkspace { id, name })
 }
 
 fn parse_workspace_ref(item: &Value) -> Option<HyprWorkspaceRef> {
-    let id = item.get("id")?.as_i64()?;
-    let name = item.get("name").and_then(|v| v.as_str()).map(str::to_owned);
-    Some(HyprWorkspaceRef { id, name })
+    let name = item
+        .get("name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .or_else(|| {
+            let address = hypr_string_field(item, "address");
+            if address.is_empty() {
+                None
+            } else {
+                Some(address.to_string())
+            }
+        });
+    if let Some(id) = parse_workspace_numeric_id(item) {
+        return Some(HyprWorkspaceRef { id, name });
+    }
+    if is_open_special_workspace(item) {
+        return Some(HyprWorkspaceRef { id: -1, name });
+    }
+    Some(HyprWorkspaceRef { id: 0, name })
 }
 
 fn parse_fullscreen(raw: &Value) -> u8 {
@@ -831,6 +880,10 @@ mod tests {
             "workspaces_not_array.json",
             "activewindow_null.json",
             "monitors_snake_case.json",
+            "workspaces_address.json",
+            "clients_address_workspace.json",
+            "monitors_address_workspace.json",
+            "activeworkspace_address.json",
         ] {
             let path = hyprland_fixture_path(name);
             assert!(path.exists(), "missing fixture {}", path.display());

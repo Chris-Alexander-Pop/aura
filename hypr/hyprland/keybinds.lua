@@ -8,21 +8,21 @@ local rotate = hypr .. "/scripts/set-monitor-rotation.sh"
 
 local function exec(cmd) return hl.dsp.exec_cmd(cmd) end
 local L = { locked = true }
-local R = { release = true }
 local E = { repeating = true }
 local LE = { locked = true, repeating = true }
 local M = { mouse = true }
 
--- Launcher (Super tap → vicinae)
--- Hyprland 0.56 keybind rewrite breaks SUPER_L/SUPER_R sided-mod binds; use
--- keycodes (125+8 / 126+8) plus scripts/vicinae-super-tap for Super+key ignore.
+-- Super tap → vicinae. Bind the Super *key* (not SUPER+SUPER_L): on 0.56 the
+-- tap never matches SUPER+code:133 / SUPER+SUPER_L. ignore_mods so the event
+-- still fires whether Hyprland has already added SUPER to the modmask.
+-- Watcher cancels the tap if another key goes down before Super-up.
 local super_tap = ags .. "/scripts/vicinae-super-tap"
-hl.bind("SUPER + code:133", exec(super_tap .. " press"))
-hl.bind("SUPER + code:134", exec(super_tap .. " press"))
-hl.bind("SUPER + code:133", exec(super_tap .. " release"), R)
-hl.bind("SUPER + code:134", exec(super_tap .. " release"), R)
-hl.bind("SUPER + A", exec("ags request toggle launcher"))
-hl.bind("SUPER + SPACE", exec("ags request toggle launcher"))
+local tap_press = { ignore_mods = true, allow_input_capture = true, non_consuming = true }
+local tap_release = { release = true, ignore_mods = true, allow_input_capture = true, non_consuming = true }
+hl.bind("SUPER_L", exec(super_tap .. " press"), tap_press)
+hl.bind("SUPER_R", exec(super_tap .. " press"), tap_press)
+hl.bind("SUPER_L", exec(super_tap .. " release"), tap_release)
+hl.bind("SUPER_R", exec(super_tap .. " release"), tap_release)
 
 -- Media transport
 hl.bind("XF86AudioPlay", exec("playerctl play-pause"), L)
@@ -34,8 +34,6 @@ hl.bind("XF86AudioPrev", exec("playerctl previous"), L)
 hl.bind("XF86AudioStop", exec("playerctl stop"), L)
 
 -- Aura restart
-hl.bind("CTRL + SUPER + SHIFT + R", exec(ags .. "/scripts/aura-restart.sh"), R)
-hl.bind("CTRL + SUPER + ALT + R", exec(ags .. "/scripts/aura-restart.sh"), R)
 hl.bind("SUPER + SHIFT + R", exec(ags .. "/scripts/aura-restart.sh"))
 
 -- Workspaces 1-10 / groups (was wsaction.zsh — classic `hyprctl dispatch workspace N`
@@ -163,8 +161,6 @@ hl.bind("CTRL + SUPER + ALT + backslash", function()
   hl.dispatch(hl.dsp.window.center())
 end)
 
--- Super+P → Aura control center (overrides old pin bind)
-hl.bind("SUPER + P", exec("ags request toggle control-center"))
 hl.bind("SUPER + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
 hl.bind("SUPER + ALT + F", hl.dsp.window.fullscreen({ mode = "maximized" }))
 hl.bind("SUPER + ALT + SPACE", hl.dsp.window.float({ action = "toggle" }))
@@ -185,6 +181,7 @@ hl.bind("SUPER + R", exec("ags request toggle calendar"))
 -- Apps
 hl.bind("SUPER + T", exec("app2unit -- " .. v.terminal))
 hl.bind("SUPER + W", exec("app2unit -- " .. v.browser))
+hl.bind("SUPER + SHIFT + W", exec("app2unit -- " .. v.browser .. " --private-window"))
 hl.bind("SUPER + C", exec("app2unit -- " .. v.editor))
 hl.bind("SUPER + E", exec("app2unit -- " .. v.file_explorer))
 hl.bind("CTRL + ALT + Escape", exec("app2unit -- qps"))
@@ -195,8 +192,6 @@ hl.bind("Print", exec(ags .. "/scripts/full-screenshot.sh"), L)
 hl.bind("SUPER + SHIFT + S", exec(ags .. "/scripts/region-screenshot.sh"))
 hl.bind("SUPER + SHIFT + ALT + S", exec(ags .. "/scripts/region-screenshot.sh"))
 hl.bind("SUPER + ALT + R", exec('notify-send -u low Aura "Screen recording needs wf-recorder + sidecar Capture RPC"'))
-hl.bind("CTRL + ALT + R", exec('notify-send -u low Aura "Screen recording needs wf-recorder + sidecar Capture RPC"'))
-hl.bind("SUPER + SHIFT + ALT + R", exec('notify-send -u low Aura "Screen recording needs wf-recorder + sidecar Capture RPC"'))
 hl.bind("SUPER + SHIFT + C", exec("hyprpicker -a"))
 
 -- Volume / brightness via Aura OSD (overrides raw wpctl binds)
@@ -222,9 +217,6 @@ hl.bind("SUPER + ALT + F12", exec(
   [[notify-send -u low -i dialog-information-symbolic 'Test notification' "Here's a really long message to test truncation and wrapping\nYou can middle click or flick this notification to dismiss it!" -a 'Shell' -A "Test1=I got it!" -A "Test2=Another action"]]
 ), L)
 
-hl.bind("SUPER + slash", exec("ags request toggle control-center"))
-hl.bind("SUPER + SHIFT + slash", exec("ags request toggle control-center"))
-
 -- Middle click paste is already off via misc.middle_click_paste = false.
 -- Do not bind mouse:274 — that swallows BTN_MIDDLE so apps never see it.
 
@@ -244,8 +236,8 @@ hl.bind("SUPER + ALT + mouse_down", hl.dsp.window.move({ workspace = "+1" }))
 hl.bind("SUPER + ALT + mouse_up", hl.dsp.window.move({ workspace = "-1" }))
 
 -- Aura panels
-hl.bind("SUPER + SHIFT + B", exec("ags request toggle dropdown"))
-hl.bind("SUPER + SHIFT + D", exec("ags request toggle calendar"))
+-- Bottom-right dropdown parked — re-enable DROPDOWN_ENABLED in panel-hover.ts
+-- hl.bind("SUPER + SHIFT + B", exec("ags request toggle dropdown"))
 
 -- User extras
 hl.bind("SUPER + SHIFT + T", exec(home .. "/.local/bin/toggle_touchscreen.sh"))
