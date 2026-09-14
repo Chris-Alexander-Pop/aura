@@ -7,7 +7,16 @@ import Bar from "../widget/bar/Bar"
 import BarWebViewWindow from "../widget/webview/BarWebViewWindow"
 import OSD from "../widget/osd/OSD"
 import { mountEdgeTriggersForMonitor } from "./aura-settings-shell"
-import { gdkMonitorConnector, gdkMonitorGeometry, monitorTag, sanitizeMonitorTag } from "./monitor"
+import { quiesceLayerWindow, setLayerClosedHandler } from "./layer-shell-protect"
+import {
+    gdkMonitorConnector,
+    gdkMonitorGeometry,
+    monitorTag,
+    sanitizeMonitorTag,
+    shellTagFromWindowName,
+} from "./monitor"
+import { isHoverPanel, hideHoverPanel } from "./panel-hover"
+import { markShellTagDead, markShellTagLive } from "./monitor-live"
 import sidecar from "./sidecar"
 import {
     edgeTriggerNamesForTag,
@@ -38,6 +47,8 @@ let pendingHyprKey: string | null = null
 /** Bounded retries while waiting for Gdk to catch up with Hyprland. */
 let layoutRetryBudget = 0
 const MAX_LAYOUT_RETRIES = 12
+/** Gdk.Monitor objects we already hooked `invalidate` on. */
+const invalidateHooked = new WeakSet<Gdk.Monitor>()
 
 type AuraWindow = Gtk.Window & {
     name?: string
@@ -49,6 +60,26 @@ function shellWindowNamesForTag(tag: string): string[] {
     const names = [`bar-wv-${tag}`, `bar-flyout-${tag}`, `osd-${tag}`, ...edgeTriggerNamesForTag(tag)]
     if (app.get_window(`bar-${tag}`)) names.push(`bar-${tag}`)
     return names
+}
+
+/**
+ * Stop painting on this output now. Hyprland IPC is too slow: GTK processes
+ * wl_output removal on the same main loop and WebKit SIGSEGVs on the dead
+ * GdkSurface (gdk_surface_get_display) before the 500ms remount debounce.
+ */
+function freezeTag(tag: string, reason: string) {
+    if (!mountedTags.has(tag) && !app.get_window(`bar-wv-${tag}`) && !app.get_window(`osd-${tag}`)) {
+        markShellTagDead(tag)
+        return
+    }
+    markShellTagDead(tag)
+    destroyingTags.add(tag)
+    console.error(`[monitor-shell] freeze ${tag} (${reason})`)
+    for (const name of shellWindowNamesForTag(tag)) {
+        const win = app.get_window(name) as AuraWindow | null
+        if (!win) continue
+        quiesceLayerWindow(win)
+    }
 }
 
 function shellWindowsExistForTag(tag: string): boolean {
@@ -98,6 +129,7 @@ function rebindMonitorShell(tag: string, monitor: Gdk.Monitor) {
 
 function unmountMonitorShell(tag: string) {
     if (DEBUG) console.error(`[monitor-shell] unmount ${tag}`)
+    markShellTagDead(tag)
     destroyingTags.add(tag)
     for (const name of shellWindowNamesForTag(tag)) {
         destroyWindow(name)
@@ -189,6 +221,8 @@ function mountMonitorShell(monitor: Gdk.Monitor) {
     if (disposeRoot) mountedDisposers.set(tag, disposeRoot)
     mountedTags.add(tag)
     mountedMonitors.set(tag, monitor)
+    markShellTagLive(tag)
+    attachMonitorInvalidate(monitor)
 }
 
 function gdkMonitorsList(): Gdk.Monitor[] {
@@ -270,7 +304,12 @@ export async function syncMonitorShells() {
     }
 
     for (const tag of removed) {
+        freezeTag(tag, "sync-removed")
         unmountMonitorShell(tag)
+    }
+
+    for (const monitor of monitors) {
+        attachMonitorInvalidate(monitor)
     }
 
     let needRetry = false
@@ -342,6 +381,9 @@ function onHyprlandMonitorsPayload(params?: Record<string, unknown>) {
     if (key === pendingHyprKey) return
     if (DEBUG) console.error(`[monitor-shell] Hyprland monitors changed → ${key}`)
     pendingHyprKey = key
+    for (const tag of mountedTags) {
+        if (!tags.has(tag)) freezeTag(tag, "hyprland-removed")
+    }
     scheduleMonitorSync()
 }
 
@@ -358,6 +400,49 @@ function attachHyprlandListener() {
     )
 }
 
+function attachMonitorInvalidate(monitor: Gdk.Monitor) {
+    if (invalidateHooked.has(monitor)) return
+    invalidateHooked.add(monitor)
+    const tag = monitorTag(monitor)
+    try {
+        ;(monitor as Gdk.Monitor & { connect: (s: string, cb: () => void) => number }).connect(
+            "invalidate",
+            () => {
+                freezeTag(tag, "gdk-invalidate")
+                scheduleMonitorSync()
+            }
+        )
+    } catch {
+        /* older Gdk */
+    }
+}
+
+function freezeMissingGdkMonitors() {
+    const listed = new Set(gdkMonitorsList())
+    for (const [tag, monitor] of mountedMonitors) {
+        if (!listed.has(monitor)) {
+            freezeTag(tag, "gdk-removed")
+        }
+    }
+    for (const monitor of listed) {
+        attachMonitorInvalidate(monitor)
+    }
+}
+
+function onLayerSurfaceClosed(win: Gtk.Window) {
+    const name = (win as AuraWindow).name
+    if (name && isHoverPanel(name)) {
+        try {
+            hideHoverPanel(name)
+        } catch {
+            /* ignore */
+        }
+    }
+    const tag = shellTagFromWindowName(name)
+    if (tag) freezeTag(tag, "layer-closed")
+    scheduleMonitorSync()
+}
+
 function attachMonitorListener() {
     if (listenerAttached) return
     listenerAttached = true
@@ -368,14 +453,17 @@ function attachMonitorListener() {
         return
     }
 
+    freezeMissingGdkMonitors()
     display.get_monitors().connect("items-changed", () => {
         if (DEBUG) console.error("[monitor-shell] Gdk monitors items-changed")
+        freezeMissingGdkMonitors()
         scheduleMonitorSync()
     })
 }
 
 /** Mount shell UI for every current output and keep it in sync on hotplug. */
 export function initMonitorShell() {
+    setLayerClosedHandler(onLayerSurfaceClosed)
     void syncMonitorShells()
     attachMonitorListener()
     attachHyprlandListener()

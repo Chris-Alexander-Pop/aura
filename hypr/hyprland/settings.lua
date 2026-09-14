@@ -73,9 +73,15 @@ hl.config({
     disable_splash_rendering = true,
     force_default_wallpaper = 0,
     allow_session_lock_restore = true,
+    -- hyprlock's first EGL frame on this hybrid GPU is often >1s.
+    -- Default 1000ms then paints lockdead ("lockscreen app died") on a
+    -- lock that is still coming up. Cap is 5000.
+    lockdead_screen_delay = 5000,
     middle_click_paste = false,
     focus_on_activate = true,
-    session_lock_xray = true,
+    -- Opaque hyprlock background. xray keeps drawing the live session
+    -- under a missing lock surface, so lockdead looks like a window.
+    session_lock_xray = false,
     mouse_move_enables_dpms = true,
     key_press_enables_dpms = true,
     background_color = v.rgb("surfaceContainer"),

@@ -540,6 +540,13 @@ pub fn event_triggers_state_changed(event: &str) -> bool {
     )
 }
 
+fn is_output_hotplug_event(event: &str) -> bool {
+    matches!(
+        event,
+        "monitoradded" | "monitorremoved" | "monitoraddedv2" | "monitorremovedv2"
+    )
+}
+
 fn active_window_address_changed(addr: &str) -> bool {
     let addr = addr.trim();
     if addr.is_empty() {
@@ -574,9 +581,46 @@ pub fn note_hyprland_event_line(line: &str) {
         }
         return;
     }
+    if is_output_hotplug_event(event) {
+        emit_hyprland_state_now();
+        return;
+    }
     if event_triggers_state_changed(event) {
         schedule_hyprland_state_emit();
     }
+}
+
+async fn emit_hyprland_state_snapshot() {
+    let (clients_raw, mon_raw) = tokio::join!(
+        hyprctl_json_or_null(&["clients"]),
+        hyprctl_json_or_null(&["monitors"]),
+    );
+    let clients = parse_clients(&clients_raw);
+    let monitors = parse_monitors(&mon_raw);
+    let fullscreen_monitor_ids = fullscreen_monitor_ids(&clients, &monitors);
+    let monitor_tags: Vec<Value> = monitors
+        .iter()
+        .map(|m| json!({ "id": m.id, "name": m.name }))
+        .collect();
+    notify::emit(
+        "Hyprland.StateChanged",
+        json!({
+            "areas": STATE_CHANGED_AREAS,
+            "fullscreen_monitor_ids": fullscreen_monitor_ids,
+            "monitors": monitor_tags,
+        }),
+    );
+}
+
+fn emit_hyprland_state_now() {
+    if tokio::runtime::Handle::try_current().is_err() {
+        return;
+    }
+    // Cancel a pending 50ms emit so we do not wait after output hotplug.
+    HYPRLAND_EMIT_GEN.fetch_add(1, Ordering::Relaxed);
+    tokio::spawn(async move {
+        emit_hyprland_state_snapshot().await;
+    });
 }
 
 fn schedule_hyprland_state_emit() {
@@ -590,25 +634,7 @@ fn schedule_hyprland_state_emit() {
         if HYPRLAND_EMIT_GEN.load(Ordering::Relaxed) != gen {
             return;
         }
-        let (clients_raw, mon_raw) = tokio::join!(
-            hyprctl_json_or_null(&["clients"]),
-            hyprctl_json_or_null(&["monitors"]),
-        );
-        let clients = parse_clients(&clients_raw);
-        let monitors = parse_monitors(&mon_raw);
-        let fullscreen_monitor_ids = fullscreen_monitor_ids(&clients, &monitors);
-        let monitor_tags: Vec<Value> = monitors
-            .iter()
-            .map(|m| json!({ "id": m.id, "name": m.name }))
-            .collect();
-        notify::emit(
-            "Hyprland.StateChanged",
-            json!({
-                "areas": STATE_CHANGED_AREAS,
-                "fullscreen_monitor_ids": fullscreen_monitor_ids,
-                "monitors": monitor_tags,
-            }),
-        );
+        emit_hyprland_state_snapshot().await;
     });
 }
 
@@ -908,5 +934,8 @@ mod tests {
         note_hyprland_event_line("workspace>>3");
         assert!(event_triggers_state_changed("workspace"));
         assert!(!event_triggers_state_changed("bell"));
+        assert!(is_output_hotplug_event("monitorremoved"));
+        assert!(is_output_hotplug_event("monitoraddedv2"));
+        assert!(!is_output_hotplug_event("workspace"));
     }
 }

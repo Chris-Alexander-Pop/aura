@@ -6,6 +6,7 @@ import Gtk from "gi://Gtk?version=4.0"
 import { Astal, Gdk } from "ags/gtk4"
 import App from "ags/gtk4/app"
 import { attachWebViewCrashHandlers } from "../../lib/crash-log"
+import { protectLayerShellWindow } from "../../lib/layer-shell-protect"
 
 const SIDECAR_URL = "http://127.0.0.1:9080"
 
@@ -204,6 +205,7 @@ export function createWebViewWindow(opts: WebViewWindowOptions) {
     win.set_child(webview)
     App.add_window(win)
     retainedWindows.push(win)
+    protectLayerShellWindow(win)
     if (visible) win.visible = true
     return win
 }

@@ -50,7 +50,7 @@ end
 
 -- Apps
 M.terminal = "foot"
-M.browser = "zen-browser"
+M.browser = "/home/chris/.local/bin/zen-browser"
 M.editor = "code"
 M.file_explorer = "thunar"
 

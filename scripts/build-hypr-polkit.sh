@@ -12,6 +12,13 @@
 #   ./scripts/build-hypr-polkit.sh --restart    # ensure + restart user unit
 #   ./scripts/build-hypr-polkit.sh --system-toolkit  # use pacman hyprtoolkit (often too old)
 #
+# Do not run --ensure from ExecStartPre. cmake of hyprtoolkit is minutes of
+# -j$(nproc) cc1plus. systemd TimeoutStartSec defaults to 90s, so the unit
+# kills the build, Restart=on-failure starts another, and dist/ is already
+# gone (rebuild used to rm -rf it first). Login then melts the CPU forever.
+# The user unit ExecStart is scripts/hyprpolkitagent-start.sh (Aura dist or
+# Arch Qt fallback). --ensure belongs in hyprland-patched/update.sh.
+#
 set -euo pipefail
 
 AURA_DIR="${AURA_DIR:-$HOME/.config/ags}"
@@ -81,7 +88,7 @@ abi_fingerprint() {
   hg=$(soname_path hyprgraphics 2>/dev/null || echo missing-hyprgraphics)
   hl=$(soname_path hyprlang 2>/dev/null || echo missing-hyprlang)
   local pkgs
-  pkgs=$(pacman -Q aquamarine hyprutils hyprtoolkit hyprgraphics hyprlang hyprland-patched hyprland 2>/dev/null | sort || true)
+  pkgs=$(pacman -Q aquamarine aquamarine-patched hyprutils hyprtoolkit hyprgraphics hyprlang hyprland-patched hyprland 2>/dev/null | sort || true)
   local agent_rev toolkit_rev="system"
   if [[ -d "$BUILD_ROOT/hyprpolkitagent/.git" ]]; then
     agent_rev=$(git -C "$BUILD_ROOT/hyprpolkitagent" rev-parse HEAD 2>/dev/null || echo unknown)
@@ -194,6 +201,14 @@ rebuild() {
   need make
   need rg
 
+  local lock="${XDG_RUNTIME_DIR:-/tmp}/aura-hypr-polkit-build.lock"
+  mkdir -p "$(dirname "$lock")"
+  exec 9>"$lock"
+  if ! flock -n 9; then
+    echo "error: another hyprpolkitagent build is already running" >&2
+    exit 1
+  fi
+
   for pkg in hyprutils hyprgraphics hyprlang pixman-1 libdrm sdbus-c++; do
     pkg-config --exists "$pkg" 2>/dev/null || {
       echo "error: pkg-config missing $pkg (install Hyprland stack deps)" >&2
@@ -204,9 +219,11 @@ rebuild() {
   clone_or_pull https://github.com/hyprwm/hyprpolkitagent.git "$BUILD_ROOT/hyprpolkitagent"
   apply_patches "$BUILD_ROOT/hyprpolkitagent" "polkit-*.patch"
 
-  # Wipe previous install so stale bundled libs cannot shadow system SONAMEs.
-  rm -rf "$DIST"
-  mkdir -p "$DIST"
+  # Install into a staging prefix. Never rm -rf "$DIST" first: a killed or
+  # timed-out build used to leave login with no agent and a restart loop.
+  local stage="$BUILD_ROOT/dist-staging"
+  rm -rf "$stage"
+  mkdir -p "$stage"
 
   local bundled=0
   local pkg_config_path=""
@@ -220,13 +237,13 @@ rebuild() {
     rm -rf "$BUILD_ROOT/hyprtoolkit/build"
     cmake -S "$BUILD_ROOT/hyprtoolkit" -B "$BUILD_ROOT/hyprtoolkit/build" \
       -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX="$DIST"
+      -DCMAKE_INSTALL_PREFIX="$stage"
     cmake --build "$BUILD_ROOT/hyprtoolkit/build" -j"$JOBS"
     cmake --install "$BUILD_ROOT/hyprtoolkit/build"
-    pkg_config_path="$DIST/lib/pkgconfig"
+    pkg_config_path="$stage/lib/pkgconfig"
     # Sanity: bundled toolkit must resolve against *current* system SONAMEs.
     local toolkit_lib
-    toolkit_lib=$(ls "$DIST"/lib/libhyprtoolkit.so.* 2>/dev/null | head -1 || true)
+    toolkit_lib=$(ls "$stage"/lib/libhyprtoolkit.so.* 2>/dev/null | head -1 || true)
     if [[ -z "$toolkit_lib" ]] || ldd "$toolkit_lib" | grep -q 'not found'; then
       echo "error: bundled hyprtoolkit has unresolved libs (aquamarine/hyprutils mismatch?):" >&2
       ldd "$toolkit_lib" 2>/dev/null | grep 'not found' >&2 || true
@@ -234,7 +251,7 @@ rebuild() {
     fi
   fi
 
-  log "hyprpolkitagent → $DIST"
+  log "hyprpolkitagent → $DIST (via $stage)"
   # Fresh build dir every time so cmake cannot cache old SONAME paths.
   rm -rf "$BUILD_ROOT/hyprpolkitagent/build"
   local cmake_env=()
@@ -250,24 +267,33 @@ rebuild() {
   fi
   "${cmake_env[@]}" cmake -S "$BUILD_ROOT/hyprpolkitagent" -B "$BUILD_ROOT/hyprpolkitagent/build" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX="$DIST" \
+    -DCMAKE_INSTALL_PREFIX="$stage" \
     "${rpath_args[@]}"
   cmake --build "$BUILD_ROOT/hyprpolkitagent/build" -j"$JOBS"
   cmake --install "$BUILD_ROOT/hyprpolkitagent/build"
 
-  if [[ ! -x "$BIN" ]]; then
-    echo "error: expected binary at $BIN" >&2
+  local staged_bin="$stage/libexec/hyprpolkitagent"
+  if [[ ! -x "$staged_bin" ]]; then
+    echo "error: expected binary at $staged_bin" >&2
     exit 1
   fi
-  if ldd "$BIN" | grep -qi qt; then
+  # RPATH points at the final DIST/lib, so ldd needs the staging lib dir now.
+  local ldd_env=()
+  if [[ "$bundled" -eq 1 ]]; then
+    ldd_env+=(env "LD_LIBRARY_PATH=${stage}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}")
+  fi
+  if "${ldd_env[@]}" ldd "$staged_bin" | grep -qi qt; then
     echo "error: built binary still links Qt — wrong source tree?" >&2
     exit 1
   fi
-  if ldd "$BIN" | grep -q 'not found'; then
+  if "${ldd_env[@]}" ldd "$staged_bin" | grep -q 'not found'; then
     echo "error: built binary has unresolved libraries:" >&2
-    ldd "$BIN" | grep 'not found' >&2
+    "${ldd_env[@]}" ldd "$staged_bin" | grep 'not found' >&2
     exit 1
   fi
+
+  rm -rf "$DIST"
+  mv "$stage" "$DIST"
 
   write_systemd_dropin "$bundled"
   write_stamp
@@ -277,31 +303,23 @@ rebuild() {
   ldd "$BIN" | rg 'hyprtoolkit|aquamarine|hyprutils' || true
 }
 
-# Keep the user unit drop-in honest about LD_LIBRARY_PATH.
+# Keep the user unit on the start wrapper (Aura dist, else Arch Qt).
+# Never ExecStartPre --ensure: that compiled hyprtoolkit during login.
 write_systemd_dropin() {
   local bundled=${1:-0}
   local dropin_dir="$AURA_DIR/hypr/systemd/user/hyprpolkitagent.service.d"
   mkdir -p "$dropin_dir"
-  if [[ "$bundled" -eq 1 ]]; then
-    cat >"$dropin_dir/override.conf" <<EOF
+  cat >"$dropin_dir/override.conf" <<EOF
 [Service]
-# Aura-built agent + bundled hyprtoolkit (scripts/build-hypr-polkit.sh).
-# dist/lib is rebuilt whenever aquamarine/hyprutils SONAMEs change (--ensure).
+# Aura wrapper: hyprtoolkit agent when dist/ links, else Arch Qt agent.
+# Rebuilds happen via scripts/build-hypr-polkit.sh --ensure (update.sh),
+# never from ExecStartPre (90s timeout + Restart=on-failure = cc1plus loop).
 ExecStart=
-ExecStart=%h/.config/ags/hypr/dist/libexec/hyprpolkitagent
-Environment=LD_LIBRARY_PATH=%h/.config/ags/hypr/dist/lib
-ExecStartPre=%h/.config/ags/scripts/build-hypr-polkit.sh --ensure
-EOF
-  else
-    cat >"$dropin_dir/override.conf" <<EOF
-[Service]
-# Aura-built hyprtoolkit-native agent against system hyprtoolkit (no Qt).
-ExecStart=
-ExecStart=%h/.config/ags/hypr/dist/libexec/hyprpolkitagent
+ExecStart=%h/.config/ags/scripts/hyprpolkitagent-start.sh
 Environment=
-ExecStartPre=%h/.config/ags/scripts/build-hypr-polkit.sh --ensure
+TimeoutStartSec=30
+RestartSec=2s
 EOF
-  fi
   if systemctl --user list-unit-files hyprpolkitagent.service &>/dev/null; then
     systemctl --user daemon-reload 2>/dev/null || true
   fi

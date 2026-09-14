@@ -188,7 +188,7 @@ apply_links() {
   link_file "$HYPR_DIR/application-style.conf" "$HOME/.config/hypr/application-style.conf"
   link_dir "$HYPR_DIR/hyprpolkitagent" "$HOME/.config/hyprpolkitagent"
   link_file "$HYPR_DIR/hyprlock.conf" "$HOME/.config/hypr/hyprlock.conf"
-  # Wrapper: flock + HDMI blank + park Waydroid (hyprlock itself is still hyprlang).
+  # Wrapper: flock + GBM shm lock + park Waydroid (hyprlock itself is still hyprlang).
   if [[ -f "$AURA_DIR/scripts/hyprlock.sh" ]]; then
     chmod +x "$AURA_DIR/scripts/hyprlock.sh"
     mkdir -p "$HOME/.local/bin"

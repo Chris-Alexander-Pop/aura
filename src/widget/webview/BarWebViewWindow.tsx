@@ -13,6 +13,7 @@ import { Astal, Gdk, Gtk } from "ags/gtk4"
 import App from "ags/gtk4/app"
 import { createWebViewWindow } from "./WebViewWindow"
 import { attachWebViewCrashHandlers } from "../../lib/crash-log"
+import { protectLayerShellWindow } from "../../lib/layer-shell-protect"
 
 import { BAR_STRIP_WIDTH_PX, gdkMonitorConnector, monitorTag } from "../../lib/monitor"
 
@@ -165,6 +166,7 @@ export default function BarWebViewWindow(gdkmonitor: Gdk.Monitor) {
     }
     flyoutWin.set_child(flyoutWv)
     App.add_window(flyoutWin)
+    protectLayerShellWindow(flyoutWin)
 
     void flyoutWin
 

@@ -205,6 +205,7 @@ hl.bind("XF86MonBrightnessDown", exec(media .. " brightness-down"), LE)
 hl.bind("F6", exec(media .. " brightness-up"))
 hl.bind("F5", exec(media .. " brightness-down"))
 
+hl.bind("SUPER + L", exec(home .. "/.local/bin/hyprlock"), L)
 hl.bind("SUPER + SHIFT + L", exec("systemctl suspend-then-hibernate"))
 
 -- Clipboard
@@ -226,6 +227,7 @@ hl.bind("CTRL + ALT + SUPER + Right", exec(rotate .. " 3"))
 hl.bind("CTRL + ALT + SUPER + Down", exec(rotate .. " 2"))
 hl.bind("CTRL + ALT + SUPER + Left", exec(rotate .. " 1"))
 hl.bind("CTRL + ALT + SUPER + H", exec(hypr .. "/scripts/rehome-workspaces-to-internal.sh --disable-externals"))
+hl.bind("CTRL + ALT + SUPER + M", exec(hypr .. "/scripts/kick-hdmi-phy.sh --force"))
 
 -- Pointer workspace scroll (default submap / universal)
 hl.bind("SUPER + mouse_down", hl.dsp.focus({ workspace = "e+1" }))

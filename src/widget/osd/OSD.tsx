@@ -6,6 +6,8 @@ import sidecar from "../../lib/sidecar"
 import { colors, fonts } from "../../lib/theme"
 import { registerOsdHandler, showOsd, type OsdKind } from "../../lib/osdController"
 import { monitorTag } from "../../lib/monitor"
+import { isShellTagLive } from "../../lib/monitor-live"
+import { protectLayerShellWindow } from "../../lib/layer-shell-protect"
 
 const HIDE_MS = 2000
 
@@ -23,13 +25,14 @@ export default function OSD(gdkmonitor: Gdk.Monitor) {
     let lastSourceMuted: boolean | null = null
 
     const applyShow = (k: OsdKind, text: string, percent: number) => {
+        if (!isShellTagLive(monitorTag(gdkmonitor))) return
         setKind(k)
         setLabel(text)
         setPct(Math.max(0, Math.min(100, percent)))
         setVisible(true)
         if (hideId != null) GLib.source_remove(hideId)
         hideId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, HIDE_MS, () => {
-            setVisible(false)
+            if (isShellTagLive(monitorTag(gdkmonitor))) setVisible(false)
             hideId = null
             return false
         })
@@ -46,6 +49,17 @@ export default function OSD(gdkmonitor: Gdk.Monitor) {
     }
 
     onMount(() => {
+        const tag = monitorTag(gdkmonitor)
+        const arm = () => {
+            const win = App.get_window(`osd-${tag}`)
+            if (win) protectLayerShellWindow(win)
+        }
+        arm()
+        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            arm()
+            return GLib.SOURCE_REMOVE
+        })
+
         const unregister = registerOsdHandler(show)
 
         const onAudio = (state: unknown) => {

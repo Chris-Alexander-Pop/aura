@@ -9,6 +9,27 @@ export function sanitizeMonitorTag(raw: string): string {
     return raw.replace(/[^a-zA-Z0-9_-]/g, "-")
 }
 
+const SHELL_WINDOW_PREFIXES = ["bar-wv-", "bar-flyout-", "osd-", "bar-"] as const
+const TRIGGER_WINDOW_PREFIXES = [
+    "module-hub-trigger-left-",
+    "module-hub-trigger-",
+    "dropdown-trigger-bottom-",
+    "dropdown-trigger-right-",
+    "media-popup-trigger-",
+] as const
+
+/** Connector tag encoded in a per-monitor shell / edge-trigger window name. */
+export function shellTagFromWindowName(name: string | undefined | null): string | null {
+    if (!name) return null
+    for (const prefix of TRIGGER_WINDOW_PREFIXES) {
+        if (name.startsWith(prefix)) return name.slice(prefix.length)
+    }
+    for (const prefix of SHELL_WINDOW_PREFIXES) {
+        if (name.startsWith(prefix)) return name.slice(prefix.length)
+    }
+    return null
+}
+
 /** Logical pixel geometry of a Gdk monitor (fallback 0,0 @ 1920×1080). */
 export function gdkMonitorGeometry(monitor: Gdk.Monitor): MonitorGeometry {
     try {

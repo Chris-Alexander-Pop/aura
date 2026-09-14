@@ -7,7 +7,7 @@ set -euo pipefail
 LOCK_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/aura"
 WANTED_FILE="$LOCK_DIR/session-lock-wanted"
 
-if pidof -q /usr/bin/hyprlock; then
+if pidof -q /usr/bin/hyprlock || pidof -q "${HOME}/.local/libexec/hyprlock"; then
   exit 0
 fi
 
@@ -32,7 +32,7 @@ if [[ "$locked" -eq 0 ]]; then
   exit 0
 fi
 
-# Prefer Aura wrapper (flock + HDMI blank + waydroid park).
+# Prefer Aura wrapper (flock + GBM shm lock + waydroid park).
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 if [[ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" && -d "$XDG_RUNTIME_DIR/hypr" ]]; then
   HYPRLAND_INSTANCE_SIGNATURE="$(ls -1 "$XDG_RUNTIME_DIR/hypr" 2>/dev/null | head -1 || true)"

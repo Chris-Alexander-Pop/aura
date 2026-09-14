@@ -5,6 +5,12 @@ set -euo pipefail
 AURA_DIR="${AURA_DIR:-$HOME/.config/ags}"
 export PATH="$HOME/.bun/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
 
+WATCHDOG_PIDFILE="${XDG_RUNTIME_DIR:-/tmp}/aura-ags-watchdog.pid"
+if [[ -f "$WATCHDOG_PIDFILE" ]]; then
+  kill "$(cat "$WATCHDOG_PIDFILE")" 2>/dev/null || true
+  rm -f "$WATCHDOG_PIDFILE"
+fi
+
 pkill -u "$(id -u)" -x ags 2>/dev/null || true
 pkill -u "$(id -u)" -f 'gjs -m /run/user/[0-9]+/ags\.js' 2>/dev/null || true
 pkill -u "$(id -u)" -x ags-sidecar 2>/dev/null || true

@@ -2,6 +2,7 @@ import { Astal, Gtk, Gdk } from "ags/gtk4"
 import App from "ags/gtk4/app"
 import { colors } from "../../lib/theme"
 import { monitorTag } from "../../lib/monitor"
+import { protectLayerShellWindow } from "../../lib/layer-shell-protect"
 
 import Logo from "./Logo"
 import Workspaces from "./Workspaces"
@@ -56,6 +57,7 @@ export default function Bar(gdkmonitor: Gdk.Monitor) {
     win.set_gdkmonitor(gdkmonitor)
     win.set_child(child)
     App.add_window(win)
+    protectLayerShellWindow(win)
     win.visible = true
     return win
 }

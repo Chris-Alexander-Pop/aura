@@ -19,6 +19,7 @@ import {
     monitorSize,
     monitorTag,
 } from "../../lib/monitor"
+import { protectLayerShellWindow } from "../../lib/layer-shell-protect"
 
 export type ModuleHubTriggerMode = "left_edge" | "top_third" | "none"
 
@@ -96,7 +97,7 @@ function destroyTriggerWindow(win: Gtk.Window) {
 function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
     const win = new Astal.Window({
         name: spec.name,
-        visible: true,
+        visible: false,
         anchor: spec.anchor,
         // Default TOP so open hover panels (OVERLAY) can cover the hit strip.
         layer: spec.layer ?? Astal.Layer.TOP,
@@ -137,6 +138,8 @@ function createEdgeTrigger(gdkmonitor: Gdk.Monitor, spec: TriggerSpec) {
 
     win.set_child(box)
     app.add_window(win)
+    protectLayerShellWindow(win)
+    win.visible = true
     edgeTriggerWindows.push(win)
     registerEdgeTriggerForPanel(spec.targetWindow, win)
 

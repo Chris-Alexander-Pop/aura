@@ -2,8 +2,9 @@ import Gdk from "gi://Gdk?version=4.0"
 import Gtk from "gi://Gtk?version=4.0"
 import app from "ags/gtk4/app"
 import sidecar from "./sidecar"
-import { gdkMonitorGeometry, monitorTag, sanitizeMonitorTag } from "./monitor"
+import { gdkMonitorGeometry, monitorTag, sanitizeMonitorTag, shellTagFromWindowName } from "./monitor"
 import { getHideShellOnFullscreen, hideHoverPanel } from "./panel-hover"
+import { isShellTagDead } from "./monitor-live"
 import { edgeTriggerNamesForTag } from "../widget/triggers/PanelEdgeTriggers"
 
 type AuraWindow = Gtk.Window & {
@@ -29,6 +30,8 @@ function getWindow(name: string): AuraWindow | null {
 }
 
 function setWindowVisible(name: string, visible: boolean) {
+    const tag = shellTagFromWindowName(name)
+    if (tag && isShellTagDead(tag)) return
     const win = getWindow(name)
     if (!win) return
     try {
@@ -148,6 +151,8 @@ function buildHyprIdToTagMap(hyprMonitors: HyprMonitorGeom[]): Map<number, strin
 }
 
 function hideWindowIfNeeded(name: string) {
+    const tag = shellTagFromWindowName(name)
+    if (tag && isShellTagDead(tag)) return
     const win = getWindow(name)
     if (!win) return
     try {

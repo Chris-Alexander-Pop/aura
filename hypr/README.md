@@ -81,7 +81,7 @@ systemctl --user restart hyprpolkitagent
 pkexec true
 ```
 
-`--ensure` is hooked into `hyprland-patched/update.sh`, `sync-hypr-patched.sh`, and the unit’s `ExecStartPre`, so aquamarine/hyprutils SONAME bumps after a Hypr update cannot leave a dead agent. By default the script **bundles hyprtoolkit from git** (API-matched to the agent) while linking aquamarine/hyprutils from the system; an ABI stamp skips rebuilds when nothing changed.
+`--ensure` is hooked into `hyprland-patched/update.sh` and `sync-hypr-patched.sh`, so aquamarine/hyprutils SONAME bumps after a Hypr update cannot leave a dead agent. It is **not** an `ExecStartPre`: compiling hyprtoolkit on login exceeds systemd's 90s start timeout, the unit restarts, and `cc1plus` loops until you kill it. The user unit runs `scripts/hyprpolkitagent-start.sh`, which starts the Aura build when `hypr/dist/` still links and otherwise the Arch Qt agent. By default the script **bundles hyprtoolkit from git** (API-matched to the agent) while linking aquamarine/hyprutils from the system; an ABI stamp skips rebuilds when nothing changed.
 
 Theming (hyprtoolkit build reads these):
 
@@ -150,7 +150,7 @@ hyprctl dispatch 'hl.dsp.window.move({ workspace = N })'
 
 - hyprlock does **not** use Lua. Keep editing `hypr/hyprlock.conf`.
 - Invalid options (e.g. `auth:fingerprint:max_attempts` before a patched rebuild) make hyprlock print config errors; drop them or rebuild a patched hyprlock that supports the option.
-- Duplicate instances abort on `ext-session-lock` and dump cores — the Aura wrapper serializes starts. `hypridle` should use `pidof hyprlock || hyprlock`.
+- Duplicate instances abort on `ext-session-lock` and dump cores. The Aura wrapper serializes starts. Graphical-session PATH has no `~/.local/bin`, so hypridle must call `/home/chris/.local/bin/hyprlock` (not a bare `hyprlock`).
 - If hyprlock dies while Hyprland still holds the lock, the wrapper relaunches a few times and `hyprlock-watchdog.timer` restores the UI (needs `session-lock-wanted` marker from the wrapper).
 - Waydroid: use `ro.hardware.gralloc=minigbm_gbm_mesa` + `drm_device=/dev/dri/renderD128` (Intel). Wrong `gralloc=default` crash-loops surfaceflinger. Session is `waydroid-session.service` (Aura); lock wrapper soft-parks it during hyprlock only.
 

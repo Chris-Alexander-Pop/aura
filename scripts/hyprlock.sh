@@ -3,7 +3,9 @@
 #
 # Background is a static image (hypr/hyprlock-bg.png) set in hyprlock.conf —
 # hyprlock's own `screenshot` blur is broken on this hybrid-GPU laptop.
-# Turn off external displays before locking so HDMI does not show garbage.
+# Lock surfaces are created on every output (laptop + HP HDMI). Patched
+# hyprlock presents those frames via wl_shm so the Quadro HDMI does not
+# need a working wl_egl_window.
 #
 # Fingerprint empty-Enter restart comes from hyprlock-patched:
 #   https://github.com/Chris-Alexander-Pop/hyprlock/tree/patched
@@ -29,8 +31,19 @@ if ! flock -n 9; then
   exit 0
 fi
 
+# Prefer a just-built user binary so lock patches do not wait on sudo pacman -U.
+HYPRLOCK_BIN=/usr/bin/hyprlock
+if [[ -x "${HOME}/.local/libexec/hyprlock" ]]; then
+  HYPRLOCK_BIN="${HOME}/.local/libexec/hyprlock"
+fi
+
+hyprlock_running() {
+  pidof -q /usr/bin/hyprlock && return 0
+  [[ "$HYPRLOCK_BIN" != /usr/bin/hyprlock ]] && pidof -q "$HYPRLOCK_BIN"
+}
+
 # Real binary only — never match this wrapper script.
-if pidof -q /usr/bin/hyprlock; then
+if hyprlock_running; then
   exit 0
 fi
 
@@ -39,45 +52,60 @@ fi
 waydroid_was_running=0
 if systemctl --user is-active --quiet waydroid-session.service 2>/dev/null; then
   waydroid_was_running=1
-  systemctl --user stop waydroid-session.service >/dev/null 2>&1 || true
+  timeout 3 systemctl --user stop waydroid-session.service >/dev/null 2>&1 || true
 elif command -v waydroid >/dev/null 2>&1; then
   if waydroid status 2>/dev/null | grep -q 'Session:[[:space:]]*RUNNING'; then
     waydroid_was_running=1
-    waydroid session stop >/dev/null 2>&1 || true
+    timeout 3 waydroid session stop >/dev/null 2>&1 || true
   fi
 fi
 
+# Hyprland renders on the Quadro. Mesa Wayland EGL cannot init against those
+# NVIDIA fds. NVIDIA wayland-egl window surfaces then fail swap on the Intel
+# eDP (incomplete FBO / EGL_BAD_SURFACE). Force Mesa GBM on the iGPU and let
+# patched hyprlock present via wl_shm on every output.
+unset __VK_LAYER_NV_optimus
+unset GBM_BACKEND
+unset __NV_PRIME_RENDER_OFFLOAD
+unset HYPRLOCK_SKIP_OUTPUTS
+export __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+export __GLX_VENDOR_LIBRARY_NAME=mesa
+export GALLIUM_DRIVER="${GALLIUM_DRIVER:-iris}"
+if [[ -e /dev/dri/by-path/pci-0000:00:02.0-render ]]; then
+  export HYPRLOCK_GBM_DEVICE=/dev/dri/by-path/pci-0000:00:02.0-render
+else
+  export HYPRLOCK_GBM_DEVICE=/dev/dri/renderD128
+fi
+
 script="$HOME/.config/hypr/scripts/graceful-external-displays-off.sh"
-[[ -x "$script" ]] && "$script" --dpms || true
+# Do not --lock HDMI. Disabling the HP dropped the seat (password field
+# gone / keys ignored) and skipped a lock surface, so Hyprland waited
+# forever and the fail UI was only on the laptop panel.
 
 touch "$WANTED_FILE"
 status=0
 attempts=0
 max_attempts=4
 
+HYPRLOCK_LOG="$LOCK_DIR/hyprlock.log"
+
 set +e
 while (( attempts < max_attempts )); do
-  if pidof -q /usr/bin/hyprlock; then
+  if hyprlock_running; then
     status=0
     break
   fi
-  /usr/bin/hyprlock "$@"
+  "$HYPRLOCK_BIN" "$@" >"$HYPRLOCK_LOG" 2>&1
   status=$?
   # Clean unlock / normal exit — do not relaunch.
   if [[ "$status" -eq 0 ]]; then
     break
   fi
   attempts=$((attempts + 1))
-  logger -t aura-hyprlock "hyprlock exited status=$status; restore attempt ${attempts}/${max_attempts}"
+  logger -t aura-hyprlock "hyprlock exited status=$status; restore attempt ${attempts}/${max_attempts}; log=$HYPRLOCK_LOG"
   sleep 0.6
 done
 set -e
-
-# Keep the wanted marker on crash so hyprlock-watchdog can restore after the
-# wrapper exits. Clear only on a clean unlock.
-if [[ "$status" -eq 0 ]]; then
-  rm -f "$WANTED_FILE"
-fi
 
 if [[ "$waydroid_was_running" -eq 1 ]]; then
   if systemctl --user cat waydroid-session.service >/dev/null 2>&1; then
@@ -85,6 +113,16 @@ if [[ "$waydroid_was_running" -eq 1 ]]; then
   else
     (sleep 2 && waydroid session start >/dev/null 2>&1) &
   fi
+fi
+
+# Keep the wanted marker only while hyprlock is actually up. After a clean
+# unlock or a failed launch, drop it. If an older wrapper left HDMI disabled,
+# put it back.
+if hyprlock_running; then
+  :
+else
+  rm -f "$WANTED_FILE"
+  [[ -x "$script" ]] && "$script" --restore || true
 fi
 
 exit "$status"
