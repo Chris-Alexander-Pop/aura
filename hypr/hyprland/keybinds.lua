@@ -164,6 +164,9 @@ end)
 hl.bind("SUPER + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
 hl.bind("SUPER + ALT + F", hl.dsp.window.fullscreen({ mode = "maximized" }))
 hl.bind("SUPER + ALT + SPACE", hl.dsp.window.float({ action = "toggle" }))
+-- Pin a float so it stays on every workspace. Super+P is free here (old
+-- hyprlang $kbPinWindow). Screen-shadow still uses Super+P only in its overlay.
+hl.bind("SUPER + P", hl.dsp.window.pin())
 hl.bind("SUPER + Q", hl.dsp.window.close())
 -- SIGKILL the focused window's process. Works in submaps (frozen / stuck client).
 -- Multi-window apps that share one PID (Chrome, etc.) all die together.
