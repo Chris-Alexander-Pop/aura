@@ -17,6 +17,9 @@ case "$mode" in
     [[ -z "$selected" ]] && exit 0
     cliphist delete <<<"$selected"
     ;;
+  -w|--wipe)
+    exec "$HOME/.local/bin/clipboard-wipe"
+    ;;
   *)
     pick
     ;;
