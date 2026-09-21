@@ -361,7 +361,7 @@ export function NotificationsPane() {
           <div>
             <h3 className="text-sm font-semibold text-text">Quiet hours schedule</h3>
             <p className="text-xs text-subtext0 mt-1 max-w-prose">
-              Aura preference (stored in sidecar). Does not force OS DND on all apps until daemon integration lands.
+              Manual DND and scheduled quiet hours drive swaync, so banners stay down.
             </p>
           </div>
           <div

@@ -27,7 +27,7 @@ Hyprland file policy: Aura-owned fragments live under **`hypr/`** (see `hypr/REA
 | VPN state machine / per-app routing | [vpn_service.md](vpn_service.md) |
 | Vicinae / Capture / Settings services | [launcher_vicinae.md](launcher_vicinae.md), [shell_platform.md](shell_platform.md) |
 | Keybinds **live editor** in React | UI stays reference + optional `Keybinds.List` read-only first |
-| Wiring DND schedule to OS daemon in v1 | Sidecar stores Aura prefs; daemon DND is best-effort via swaync/mako if exposed |
+| Wiring DND schedule to OS daemon | `SetDnd` and a 30s tick drive `swaync-client -dn/-df` (skip in tests via `ags-it-` / `AURA_NOTIFICATION_DAEMON=0`) |
 
 ---
 

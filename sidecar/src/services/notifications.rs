@@ -1,12 +1,14 @@
 //! Freedesktop notification listener + in-memory history for Control Center.
 use crate::notify;
 use crate::services::ServiceRegistry;
+use crate::utils::process;
 use crate::utils::storage;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Once;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
@@ -18,6 +20,10 @@ const RULES_KEY: &str = "rules";
 
 static EMIT_GEN: AtomicU64 = AtomicU64::new(0);
 static NEXT_INTERNAL_ID: AtomicU64 = AtomicU64::new(1);
+static LAST_DAEMON_BLOCK: AtomicBool = AtomicBool::new(false);
+static DAEMON_DND_INITIALIZED: AtomicBool = AtomicBool::new(false);
+static DND_TICK: Once = Once::new();
+const SWAYNC_CLIENT: &str = "/usr/bin/swaync-client";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct NotificationAction {
@@ -196,6 +202,7 @@ pub fn register(registry: &mut ServiceRegistry) {
         )?;
         storage::init().await?;
         storage::set_kv(NS, DND_KEY, &serde_json::to_value(&prefs)?).await?;
+        sync_daemon_dnd(dnd_blocks_now(&prefs)).await;
         schedule_emit("dnd").await;
         Ok(json!({ "success": true }))
     });
@@ -287,6 +294,100 @@ pub fn dnd_blocks_now(prefs: &DndPrefs) -> bool {
     }
 }
 
+/// Skip live swaync in unit/integration tests and when explicitly disabled.
+pub fn should_drive_notification_daemon_env(
+    notification_daemon: Option<&str>,
+    exec_fixture: bool,
+    storage_db: Option<&str>,
+) -> bool {
+    if exec_fixture {
+        return false;
+    }
+    match notification_daemon {
+        Some("0") | Some("off") | Some("false") => return false,
+        _ => {}
+    }
+    if storage_db.is_some_and(|path| path.contains("ags-it-")) {
+        return false;
+    }
+    true
+}
+
+fn should_drive_notification_daemon() -> bool {
+    should_drive_notification_daemon_env(
+        std::env::var("AURA_NOTIFICATION_DAEMON")
+            .ok()
+            .as_deref(),
+        std::env::var(process::EXEC_FIXTURE_ENV).is_ok(),
+        std::env::var("AURA_STORAGE_DB").ok().as_deref(),
+    )
+}
+
+/// swaync-client argv after the binary. `hide_existing` only when entering DND.
+pub fn swaync_dnd_args(block: bool, hide_existing: bool) -> Vec<&'static [&'static str]> {
+    let mut cmds: Vec<&'static [&'static str]> = vec![if block {
+        &["-dn", "-sw"]
+    } else {
+        &["-df", "-sw"]
+    }];
+    if block && hide_existing {
+        cmds.push(&["--hide-all", "-sw"]);
+    }
+    cmds
+}
+
+async fn apply_swaync_dnd(block: bool, hide_existing: bool) -> Result<()> {
+    for args in swaync_dnd_args(block, hide_existing) {
+        let output = tokio::process::Command::new(SWAYNC_CLIENT)
+            .args(args)
+            .output()
+            .await?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "swaync-client {} failed: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+    Ok(())
+}
+
+async fn sync_daemon_dnd(block: bool) {
+    if !should_drive_notification_daemon() {
+        return;
+    }
+    let was = LAST_DAEMON_BLOCK.swap(block, Ordering::SeqCst);
+    let initialized = DAEMON_DND_INITIALIZED.swap(true, Ordering::SeqCst);
+    if initialized && was == block {
+        return;
+    }
+    let hide_existing = block && (!initialized || !was);
+    if let Err(e) = apply_swaync_dnd(block, hide_existing).await {
+        tracing::warn!("failed to apply swaync DND ({block}): {e}");
+    }
+}
+
+/// Push sidecar DND/quiet-hours onto swaync at boot and every 30s.
+pub fn spawn_dnd_daemon_sync() {
+    DND_TICK.call_once(|| {
+        tokio::spawn(async {
+            loop {
+                match load_dnd_for_daemon().await {
+                    Ok(prefs) => sync_daemon_dnd(dnd_blocks_now(&prefs)).await,
+                    Err(e) => tracing::debug!("dnd daemon sync: {e}"),
+                }
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            }
+        });
+    });
+}
+
+async fn load_dnd_for_daemon() -> Result<DndPrefs> {
+    storage::init().await?;
+    load_dnd().await
+}
+
 async fn mark_closed(internal_id: u64) {
     let sid_to_remove = {
         let mut store = STORE.write().await;
@@ -323,7 +424,13 @@ pub async fn record_notification(
     if notification_blocked_by_rules(&rules, &app_name) {
         return None;
     }
-    let dnd = load_dnd().await.unwrap_or_default();
+    // Lib tests share the process with a live Aura DB. Never let the user's
+    // DND prefs swallow fixture rows.
+    let dnd = if cfg!(test) {
+        DndPrefs::default()
+    } else {
+        load_dnd().await.unwrap_or_default()
+    };
     if dnd_blocks_now(&dnd) {
         return None;
     }
@@ -402,6 +509,7 @@ async fn schedule_emit(reason: &str) {
 
 /// Spawn D-Bus listeners (fail-soft when no session bus).
 pub fn spawn_dbus_listener() {
+    spawn_dnd_daemon_sync();
     tokio::spawn(async {
         if let Err(e) = run_dbus_monitor().await {
             tracing::debug!("notification dbus-monitor: {e}");
@@ -650,6 +758,26 @@ mod tests {
 
     fn notification_test_lock() -> &'static Mutex<()> {
         NOTIFICATION_TEST_LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn daemon_drive_skips_tests_and_opt_out() {
+        assert!(should_drive_notification_daemon_env(None, false, None));
+        assert!(!should_drive_notification_daemon_env(Some("0"), false, None));
+        assert!(!should_drive_notification_daemon_env(Some("off"), false, None));
+        assert!(!should_drive_notification_daemon_env(None, true, None));
+        assert!(!should_drive_notification_daemon_env(
+            None,
+            false,
+            Some("/tmp/ags-it-1.db")
+        ));
+    }
+
+    #[test]
+    fn swaync_dnd_args_hide_only_when_entering() {
+        assert_eq!(swaync_dnd_args(true, true), vec![&["-dn", "-sw"][..], &["--hide-all", "-sw"][..]]);
+        assert_eq!(swaync_dnd_args(true, false), vec![&["-dn", "-sw"][..]]);
+        assert_eq!(swaync_dnd_args(false, true), vec![&["-df", "-sw"][..]]);
     }
 
     #[test]
