@@ -216,6 +216,23 @@ rebuild() {
     }
   done
 
+  # /tmp is tmpfs with a ~25MB per-user quota. A -j$(nproc) g++ run writes one
+  # assembly file per job there; once the quota is full, `as` reports
+  # "can't open /tmp/cc*.s". Keep compiler temps on disk, and pipe stages so
+  # gcc does not need those files at all.
+  local gcc_tmp="$BUILD_ROOT/gcc-tmp"
+  rm -rf "$gcc_tmp"
+  mkdir -p "$gcc_tmp"
+  export TMPDIR="$gcc_tmp"
+  local _flagvar _flagval
+  for _flagvar in CFLAGS CXXFLAGS; do
+    _flagval="${!_flagvar-}"
+    case " ${_flagval} " in
+      *" -pipe "*) ;;
+      *) export "${_flagvar}=${_flagval:+${_flagval} }-pipe" ;;
+    esac
+  done
+
   clone_or_pull https://github.com/hyprwm/hyprpolkitagent.git "$BUILD_ROOT/hyprpolkitagent"
   apply_patches "$BUILD_ROOT/hyprpolkitagent" "polkit-*.patch"
 
