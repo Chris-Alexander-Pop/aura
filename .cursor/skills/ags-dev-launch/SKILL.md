@@ -19,7 +19,7 @@ description: >-
 | Same without Rust watch | `./aura --no-rust-watch` |
 | Debug sidecar (symbols, ~200 MB binary) | `./aura --debug` |
 | CSS + AGS only (no `./aura` pipeline) | `bun run watch` |
-| Stop a background `./aura --bg` session | `./aura --kill` (PID file only; no `killall`) |
+| Stop the shell and any `./aura` / `--bg` watchers | `./aura --kill` |
 
 Ensure `bun install` at repo root and in `ui/`. `./aura` uses bun (`$RUNNER run build`) when bun is on PATH.
 
@@ -36,4 +36,4 @@ Ensure `bun install` at repo root and in `ui/`. `./aura` uses bun (`$RUNNER run 
 
 ## What `./aura` does not do
 
-It does **not** `killall` bun, ags, notification daemons, or competing shells. Stop other desktops yourself if they contend for the bar. `--kill` only signals PIDs recorded from `--bg`.
+It does **not** `killall` bun, notification daemons, or competing shells on startup. `--kill` stops the Aura shell (`ags` / `gjs …/ags.js`), its sidecar, the session watchdog, and this repo's `./aura` watchers.

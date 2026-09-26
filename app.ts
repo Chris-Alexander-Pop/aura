@@ -19,6 +19,13 @@ import { isHoverPanel, toggleHoverPanel, MODULE_HUB_ENABLED, DROPDOWN_ENABLED } 
 
 const DEBUG_EDGE = GLib.getenv("AURA_DEBUG_EDGE_TRIGGERS") === "1"
 
+// `ags` execs `gjs -m …/ags.js`, so the shell otherwise shows up as gjs/ags.
+try {
+    GLib.file_set_contents("/proc/self/comm", "aura")
+} catch {
+    /* comm is cosmetic */
+}
+
 // Initialize sidecar (bar/osd use stdin/stdout path)
 // @ts-ignore
 globalThis.sidecar = sidecar

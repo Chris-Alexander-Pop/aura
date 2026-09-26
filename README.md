@@ -28,7 +28,7 @@ hyprctl reload
 
 `./setup` symlinks this repo to `~/.config/ags` if needed, seeds gitignored `hypr/hyprland/*-local.lua` from the examples, builds sidecar + UI, and runs `scripts/aura-hypr-link.sh`. Use `./setup --link-only` to skip the build.
 
-`./aura` rebuilds as needed, sets `AURA_SIDECAR` for that session, and runs Tailwind + `ags run app.ts`. It does **not** kill other processes. `./aura --kill` only stops a previous `./aura --bg` session (PIDs in `/tmp/aura-dev.pid`).
+`./aura` rebuilds as needed, sets `AURA_SIDECAR` for that session, and runs Tailwind + `ags run app.ts`. It does **not** kill other processes on startup. `./aura --kill` stops the on-screen shell (including the Hyprland watchdog), plus any `./aura` or `./aura --bg` watchers.
 
 Frontend only (sidecar already on the resolver path):
 

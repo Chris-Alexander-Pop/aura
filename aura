@@ -47,23 +47,131 @@ print_header() {
     echo ""
 }
 
-kill_session() {
-    echo -e "${CYAN}Stopping Aura --bg session...${NC}"
+# PIDs already queued, space-separated.
+KILL_PIDS=""
 
-    if [ ! -f "$PID_FILE" ]; then
-        echo -e "${YELLOW}⚠${NC} No PID file ($PID_FILE). ./aura --kill only stops a background session started with --bg."
+queue_pid() {
+    local pid=$1
+    [ -n "$pid" ] || return 0
+    [[ "$pid" == "$$" ]] && return 0
+    [[ " $KILL_PIDS " == *" $pid "* ]] && return 0
+    kill -0 "$pid" 2>/dev/null || return 0
+    KILL_PIDS="$KILL_PIDS $pid"
+}
+
+queue_descendants() {
+    local pid=$1 child
+    for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+        queue_descendants "$child"
+        queue_pid "$child"
+    done
+}
+
+cmdline_of() {
+    [[ -r "/proc/$1/cmdline" ]] || return 0
+    { tr '\0' ' ' < "/proc/$1/cmdline" || true; } 2>/dev/null
+}
+
+cwd_of() {
+    { readlink -f "/proc/$1/cwd" || true; } 2>/dev/null
+}
+
+kill_session() {
+    echo -e "${CYAN}Stopping Aura session...${NC}"
+
+    local aura_real sidecar_real self_cmd pid cmd cwd
+    aura_real="$(readlink -f "${BASH_SOURCE[0]}")"
+    sidecar_real="$(readlink -f "$SIDECAR_DIR")"
+    self_cmd="$(cmdline_of $$)"
+
+    if [ -f "$PID_FILE" ]; then
+        while read -r pid; do
+            queue_descendants "$pid"
+            queue_pid "$pid"
+        done < "$PID_FILE"
+    fi
+
+    # Match the real script path and a symlink launch (~/.config/ags/aura).
+    for pid in $(ps -u "$(id -u)" -o pid= 2>/dev/null || true); do
+        cmd="$(cmdline_of "$pid")"
+        [[ "$cmd" == "$self_cmd" ]] && continue
+        local tok matched=false
+        if [[ "$cmd" == *"$aura_real"* ]]; then
+            matched=true
+        else
+            for tok in $cmd; do
+                [[ "$tok" == */aura ]] || continue
+                [[ "$(readlink -f "$tok" 2>/dev/null || true)" == "$aura_real" ]] && matched=true && break
+            done
+        fi
+        [[ "$matched" == true ]] || continue
+        queue_descendants "$pid"
+        queue_pid "$pid"
+    done
+
+    # Foreground and --bg both leave cargo-watch in the sidecar dir, and bun
+    # `run watch` in the repo root. A Hyprland session (aura-session.sh) does neither.
+    for pid in $(pgrep -u "$(id -u)" -f 'cargo-watch|cargo watch' 2>/dev/null || true); do
+        cwd="$(cwd_of "$pid")"
+        [[ "$cwd" == "$sidecar_real" ]] || continue
+        queue_descendants "$pid"
+        queue_pid "$pid"
+    done
+
+    # On-screen shell: Hyprland starts this via aura-session.sh and a watchdog
+    # restarts it. Kill the watchdog first so the bar does not come back.
+    local watchdog_pidfile="${XDG_RUNTIME_DIR:-/tmp}/aura-ags-watchdog.pid"
+    if [ -f "$watchdog_pidfile" ]; then
+        queue_pid "$(cat "$watchdog_pidfile" 2>/dev/null || true)"
+    fi
+    for pid in $(pgrep -u "$(id -u)" -x ags 2>/dev/null || true); do
+        queue_descendants "$pid"
+        queue_pid "$pid"
+    done
+    for pid in $(pgrep -u "$(id -u)" -f 'gjs -m /run/user/[0-9]+/ags\.js' 2>/dev/null || true); do
+        queue_descendants "$pid"
+        queue_pid "$pid"
+    done
+    for pid in $(pgrep -u "$(id -u)" -x ags-sidecar 2>/dev/null || true); do
+        cwd="$(cwd_of "$pid")"
+        cmd="$(cmdline_of "$pid")"
+        [[ "$cmd" == *"$sidecar_real"* || "$cwd" == "$sidecar_real" || "$cmd" == *"/.config/ags/sidecar/"* ]] || continue
+        queue_pid "$pid"
+    done
+
+    for pid in $(
+        pgrep -u "$(id -u)" -x bun 2>/dev/null || true
+        pgrep -u "$(id -u)" -x npm 2>/dev/null || true
+        pgrep -u "$(id -u)" -x node 2>/dev/null || true
+    ); do
+        cwd="$(cwd_of "$pid")"
+        [[ "$cwd" == "$(readlink -f "$SCRIPT_DIR")" ]] || continue
+        cmd="$(cmdline_of "$pid")"
+        [[ "$cmd" == *"run watch"* || "$cmd" == *"watch:css"* || "$cmd" == *"ags run app.ts"* ]] || continue
+        queue_descendants "$pid"
+        queue_pid "$pid"
+    done
+
+    if [ -z "$KILL_PIDS" ]; then
+        rm -f "$PID_FILE"
+        echo -e "${YELLOW}⚠${NC} No Aura session found."
         return 0
     fi
 
-    while read -r pid; do
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null || true
-        fi
-    done < "$PID_FILE"
-    rm -f "$PID_FILE"
+    # Children first so a foreground ./aura exiting does not orphan bun or cargo-watch.
+    for pid in $KILL_PIDS; do
+        kill "$pid" 2>/dev/null || true
+    done
 
-    sleep 0.5
-    echo -e "${GREEN}✓${NC} Aura --bg session stopped"
+    sleep 0.4
+    for pid in $KILL_PIDS; do
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    done
+
+    rm -f "$PID_FILE"
+    echo -e "${GREEN}✓${NC} Aura session stopped"
 }
 
 check_dependencies() {
@@ -148,7 +256,7 @@ show_usage() {
     echo "  --no-ui-build   Skip React UI build (use existing dist)"
     echo "  --bg            Run watch + AGS in background (log: /tmp/aura-dev.log)"
     echo "                  Crash dumps: ~/.local/share/aura/crashes/ (AURA_CRASH_DIR)"
-    echo "  --kill          Stop a ./aura --bg session (PIDs in \$AURA_PID_FILE only)"
+    echo "  --kill          Stop a ./aura session (foreground or --bg)"
     echo "  --help, -h      Show this help"
 }
 
