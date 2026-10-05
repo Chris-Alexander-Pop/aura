@@ -1,4 +1,6 @@
 # Fingerprint empty-Enter wake lives on the public fork + a local helper.
+# A live reader ignores a single Enter. A second Enter within 1.2s soft-rearms.
+# USB reset runs only when the device is actually missing.
 #
 # Fork:   https://github.com/Chris-Alexander-Pop/hyprlock  (branch: patched)
 # Docs:   https://github.com/Chris-Alexander-Pop/hyprlock/blob/patched/PATCHES.md
