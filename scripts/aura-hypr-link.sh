@@ -154,8 +154,8 @@ install_waydroid_session_unit() {
   mkdir -p "$(dirname "$dest")"
   ln -sfn "$src" "$dest"
   systemctl --user daemon-reload 2>/dev/null || true
-  systemctl --user enable waydroid-session.service 2>/dev/null || true
-  echo "ok  $dest -> $src (enabled)"
+  systemctl --user disable waydroid-session.service 2>/dev/null || true
+  echo "ok  $dest -> $src (not enabled)"
 }
 
 install_hyprlock_watchdog() {
